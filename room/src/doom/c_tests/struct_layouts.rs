@@ -145,7 +145,8 @@ fn mobj_t_offsets() {
 
 #[test]
 fn side_t_size() {
-    // textureoffset(4) + rowoffset(4) + top(2) + bottom(2) + mid(2) + pad(2) + sector*(8)
+    // textureoffset(4) + rowoffset(4) + toptexture(2) + bottomtexture(2)
+    //   + midtexture(2) + implicit pad(2) + sector*(8) = 24
     assert_eq!(size_of::<side_t>(), 24);
 }
 
@@ -237,10 +238,13 @@ fn drawseg_t_offsets() {
 
 #[test]
 fn vissprite_t_size() {
-    // prev*(8)+next*(8)+x1(4)+x2(4)+gx…patch(11×4=44)+pad(4)+colormap*(8)+mobjflags(4)+pad(4)
-    // = 16 + 8 + 44 + 4 + 8 + 4 + 4 - wait, let me recount:
-    // 2 pointers: 16; x1+x2: 8; gx+gy+gz+gzt+startfrac+scale+xiscale+texturemid+patch: 9×4=36;
-    // pad: 4; colormap*: 8; mobjflags: 4; trailing pad: 4 → 16+8+36+4+8+4+4 = 80
+    // prev*(8) + next*(8) = 16
+    // x1(4) + x2(4) = 8
+    // gx+gy+gz+gzt+startfrac+scale+xiscale+texturemid+patch = 9×4 = 36
+    // implicit pad(4) to align colormap* to 8
+    // colormap*(8)
+    // mobjflags(4) + trailing pad(4) to align struct to 8
+    // Total = 16 + 8 + 36 + 4 + 8 + 4 + 4 = 80
     assert_eq!(size_of::<vissprite_t>(), 80);
 }
 

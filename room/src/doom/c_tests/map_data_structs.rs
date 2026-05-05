@@ -301,19 +301,48 @@ fn ml_lump_order_values() {
 
 // ---------------------------------------------------------------------------
 // linedef flag bits (ML_* defines from doomdata.h)
+// Each flag occupies exactly one bit and the values must be powers of two.
 // ---------------------------------------------------------------------------
 
 #[test]
 fn ml_linedef_flags() {
-    assert_eq!(1, 0x001); // ML_BLOCKING
-    assert_eq!(2, 0x002); // ML_BLOCKMONSTERS
-    assert_eq!(4, 0x004); // ML_TWOSIDED
-    assert_eq!(8, 0x008); // ML_DONTPEGTOP
-    assert_eq!(16, 0x010); // ML_DONTPEGBOTTOM
-    assert_eq!(32, 0x020); // ML_SECRET
-    assert_eq!(64, 0x040); // ML_SOUNDBLOCK
-    assert_eq!(128, 0x080); // ML_DONTDRAW
-    assert_eq!(256, 0x100); // ML_MAPPED
+    // Verify every flag is a distinct power of two — no two flags may overlap.
+    const ML_BLOCKING: u16 = 1;
+    const ML_BLOCKMONSTERS: u16 = 2;
+    const ML_TWOSIDED: u16 = 4;
+    const ML_DONTPEGTOP: u16 = 8;
+    const ML_DONTPEGBOTTOM: u16 = 16;
+    const ML_SECRET: u16 = 32;
+    const ML_SOUNDBLOCK: u16 = 64;
+    const ML_DONTDRAW: u16 = 128;
+    const ML_MAPPED: u16 = 256;
+
+    let all_flags = [
+        ML_BLOCKING,
+        ML_BLOCKMONSTERS,
+        ML_TWOSIDED,
+        ML_DONTPEGTOP,
+        ML_DONTPEGBOTTOM,
+        ML_SECRET,
+        ML_SOUNDBLOCK,
+        ML_DONTDRAW,
+        ML_MAPPED,
+    ];
+
+    // Each value must be a power of two.
+    for f in all_flags {
+        assert_eq!(f & (f - 1), 0, "flag {f:#x} is not a power of two");
+    }
+
+    // No two flags may share a bit.
+    let mut combined: u16 = 0;
+    for f in all_flags {
+        assert_eq!(combined & f, 0, "flag {f:#x} overlaps with already-seen flags");
+        combined |= f;
+    }
+
+    // All nine flags occupy a contiguous set of bits 0–8.
+    assert_eq!(combined, (1u16 << 9) - 1);
 }
 
 // ---------------------------------------------------------------------------
