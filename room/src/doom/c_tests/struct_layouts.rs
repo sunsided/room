@@ -8,7 +8,7 @@
 
 use std::mem::{offset_of, size_of};
 
-use crate::doom::c_ffi::{divline_t, intercept_t, line_t, mobj_t, sector_t, vertex_t};
+use crate::doom::c_ffi::{divline_t, drawseg_t, intercept_t, line_t, mobj_t, node_t, sector_t, seg_t, side_t, vertex_t, vissprite_t};
 
 // ---------------------------------------------------------------------------
 // vertex_t
@@ -137,4 +137,128 @@ fn mobj_t_offsets() {
     assert_eq!(offset_of!(mobj_t, reactiontime), 184);
     assert_eq!(offset_of!(mobj_t, player), 192);
     assert_eq!(offset_of!(mobj_t, tracer), 216);
+}
+
+// ---------------------------------------------------------------------------
+// side_t  (r_defs.h — used by r_segs.c and many others)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn side_t_size() {
+    // textureoffset(4) + rowoffset(4) + top(2) + bottom(2) + mid(2) + pad(2) + sector*(8)
+    assert_eq!(size_of::<side_t>(), 24);
+}
+
+#[test]
+fn side_t_offsets() {
+    assert_eq!(offset_of!(side_t, textureoffset), 0);
+    assert_eq!(offset_of!(side_t, rowoffset), 4);
+    assert_eq!(offset_of!(side_t, toptexture), 8);
+    assert_eq!(offset_of!(side_t, bottomtexture), 10);
+    assert_eq!(offset_of!(side_t, midtexture), 12);
+    assert_eq!(offset_of!(side_t, sector), 16);
+}
+
+// ---------------------------------------------------------------------------
+// seg_t  (r_defs.h — used by r_segs.c, r_bsp.c)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn seg_t_size() {
+    // v1*(8) + v2*(8) + offset(4) + angle(4) + sidedef*(8) + linedef*(8)
+    //   + frontsector*(8) + backsector*(8) = 56
+    assert_eq!(size_of::<seg_t>(), 56);
+}
+
+#[test]
+fn seg_t_offsets() {
+    assert_eq!(offset_of!(seg_t, v1), 0);
+    assert_eq!(offset_of!(seg_t, v2), 8);
+    assert_eq!(offset_of!(seg_t, offset), 16);
+    assert_eq!(offset_of!(seg_t, angle), 20);
+    assert_eq!(offset_of!(seg_t, sidedef), 24);
+    assert_eq!(offset_of!(seg_t, linedef), 32);
+    assert_eq!(offset_of!(seg_t, frontsector), 40);
+    assert_eq!(offset_of!(seg_t, backsector), 48);
+}
+
+// ---------------------------------------------------------------------------
+// node_t  (r_defs.h — used by r_bsp.c)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn node_t_size() {
+    // x(4)+y(4)+dx(4)+dy(4)=16 + bbox[2][4](32) + children[2](4) = 52
+    // max alignment = int (4); 52 % 4 == 0 → no trailing padding
+    assert_eq!(size_of::<node_t>(), 52);
+}
+
+#[test]
+fn node_t_offsets() {
+    assert_eq!(offset_of!(node_t, x), 0);
+    assert_eq!(offset_of!(node_t, y), 4);
+    assert_eq!(offset_of!(node_t, dx), 8);
+    assert_eq!(offset_of!(node_t, dy), 12);
+    assert_eq!(offset_of!(node_t, bbox), 16);
+    assert_eq!(offset_of!(node_t, children), 48);
+}
+
+// ---------------------------------------------------------------------------
+// drawseg_t  (r_defs.h — used by r_segs.c, r_plane.c, r_things.c)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn drawseg_t_size() {
+    // curline*(8) + 6×int(24) + 3×pointer(24) = 56 → but curline is at 0,
+    // 6 ints at 8..39, pointer sprtopclip at 40 (natural alignment), etc.
+    // Total = 8 + 32 + 24 = 64
+    assert_eq!(size_of::<drawseg_t>(), 64);
+}
+
+#[test]
+fn drawseg_t_offsets() {
+    assert_eq!(offset_of!(drawseg_t, curline), 0);
+    assert_eq!(offset_of!(drawseg_t, x1), 8);
+    assert_eq!(offset_of!(drawseg_t, x2), 12);
+    assert_eq!(offset_of!(drawseg_t, scale1), 16);
+    assert_eq!(offset_of!(drawseg_t, scale2), 20);
+    assert_eq!(offset_of!(drawseg_t, scalestep), 24);
+    assert_eq!(offset_of!(drawseg_t, silhouette), 28);
+    assert_eq!(offset_of!(drawseg_t, bsilheight), 32);
+    assert_eq!(offset_of!(drawseg_t, tsilheight), 36);
+    assert_eq!(offset_of!(drawseg_t, sprtopclip), 40);
+    assert_eq!(offset_of!(drawseg_t, sprbottomclip), 48);
+    assert_eq!(offset_of!(drawseg_t, maskedtexturecol), 56);
+}
+
+// ---------------------------------------------------------------------------
+// vissprite_t  (r_defs.h — used by r_things.c)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn vissprite_t_size() {
+    // prev*(8)+next*(8)+x1(4)+x2(4)+gx…patch(11×4=44)+pad(4)+colormap*(8)+mobjflags(4)+pad(4)
+    // = 16 + 8 + 44 + 4 + 8 + 4 + 4 - wait, let me recount:
+    // 2 pointers: 16; x1+x2: 8; gx+gy+gz+gzt+startfrac+scale+xiscale+texturemid+patch: 9×4=36;
+    // pad: 4; colormap*: 8; mobjflags: 4; trailing pad: 4 → 16+8+36+4+8+4+4 = 80
+    assert_eq!(size_of::<vissprite_t>(), 80);
+}
+
+#[test]
+fn vissprite_t_offsets() {
+    assert_eq!(offset_of!(vissprite_t, prev), 0);
+    assert_eq!(offset_of!(vissprite_t, next), 8);
+    assert_eq!(offset_of!(vissprite_t, x1), 16);
+    assert_eq!(offset_of!(vissprite_t, x2), 20);
+    assert_eq!(offset_of!(vissprite_t, gx), 24);
+    assert_eq!(offset_of!(vissprite_t, gy), 28);
+    assert_eq!(offset_of!(vissprite_t, gz), 32);
+    assert_eq!(offset_of!(vissprite_t, gzt), 36);
+    assert_eq!(offset_of!(vissprite_t, startfrac), 40);
+    assert_eq!(offset_of!(vissprite_t, scale), 44);
+    assert_eq!(offset_of!(vissprite_t, xiscale), 48);
+    assert_eq!(offset_of!(vissprite_t, texturemid), 52);
+    assert_eq!(offset_of!(vissprite_t, patch), 56);
+    assert_eq!(offset_of!(vissprite_t, colormap), 64);
+    assert_eq!(offset_of!(vissprite_t, mobjflags), 72);
 }
