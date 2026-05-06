@@ -501,3 +501,311 @@ extern "C" {
     /// Scaled (actual) view width; set alongside viewwidth in R_ExecuteSetViewSize.
     pub static mut scaledviewwidth: c_int;
 }
+
+// ---------------------------------------------------------------------------
+// r_segs.c
+// Segment rendering state – set each frame by R_StoreWallRange before any
+// draw calls; all zero before the first frame is rendered.
+// ---------------------------------------------------------------------------
+
+extern "C" {
+    /// True if any texture on the current seg might be visible.
+    pub static mut segtextured: c_int;
+    /// False when the back sector shares the same floor plane.
+    pub static mut markfloor: c_int;
+    /// False when the back sector shares the same ceiling plane.
+    pub static mut markceiling: c_int;
+    /// True when there is a masked (transparent) mid-texture on the seg.
+    pub static mut maskedtexture: c_int;
+    /// Texture number for the upper (top) wall texture.
+    pub static mut toptexture: c_int;
+    /// Texture number for the lower (bottom) wall texture.
+    pub static mut bottomtexture: c_int;
+    /// Texture number for the middle (solid) wall texture.
+    pub static mut midtexture: c_int;
+    /// Normal angle of the current segment (BAM units).
+    pub static mut rw_normalangle: c_uint;
+    /// Angle from player to line origin; used for texture offsetting.
+    pub static mut rw_angle1: c_int;
+    /// Left column (inclusive) of the wall strip being drawn.
+    pub static mut rw_x: c_int;
+    /// Right column (exclusive) of the wall strip.
+    pub static mut rw_stopx: c_int;
+    /// Angle used to compute per-column scale (BAM units).
+    pub static mut rw_centerangle: c_uint;
+    /// Horizontal texture offset along the seg.
+    pub static mut rw_offset: c_int;
+    /// Perpendicular distance from the player to the seg.
+    pub static mut rw_distance: c_int;
+    /// Scale factor at the left edge of the strip.
+    pub static mut rw_scale: c_int;
+    /// Per-column scale delta.
+    pub static mut rw_scalestep: c_int;
+    /// Texture-coordinate midpoint for the mid texture.
+    pub static mut rw_midtexturemid: c_int;
+    /// Texture-coordinate midpoint for the top texture.
+    pub static mut rw_toptexturemid: c_int;
+    /// Texture-coordinate midpoint for the bottom texture.
+    pub static mut rw_bottomtexturemid: c_int;
+    /// World-space top of the visible wall opening (ceiling).
+    pub static mut worldtop: c_int;
+    /// World-space bottom of the visible wall opening (floor).
+    pub static mut worldbottom: c_int;
+    /// World-space top of the back-sector ceiling (two-sided walls).
+    pub static mut worldhigh: c_int;
+    /// World-space bottom of the back-sector floor (two-sided walls).
+    pub static mut worldlow: c_int;
+    /// Current high-wall pixel position (fixed-point screen coords).
+    pub static mut pixhigh: c_int;
+    /// Current low-wall pixel position (fixed-point screen coords).
+    pub static mut pixlow: c_int;
+    /// Per-column step for pixhigh.
+    pub static mut pixhighstep: c_int;
+    /// Per-column step for pixlow.
+    pub static mut pixlowstep: c_int;
+    /// Current top texture fractional row (fixed-point).
+    pub static mut topfrac: c_int;
+    /// Per-column step for topfrac.
+    pub static mut topstep: c_int;
+    /// Current bottom texture fractional row (fixed-point).
+    pub static mut bottomfrac: c_int;
+    /// Per-column step for bottomfrac.
+    pub static mut bottomstep: c_int;
+    /// Pointer to the active light table array for this seg's light level.
+    pub static mut walllights: *mut *mut u8; // lighttable_t**
+    /// Column offset array for masked (transparent) mid-textures.
+    pub static mut maskedtexturecol: *mut c_short;
+}
+
+// ---------------------------------------------------------------------------
+// r_things.c
+// Sprite rendering state – set during R_DrawMasked / R_ProjectSprite.
+// pspritescale and pspriteiscale are set per frame; all others zero before
+// R_InitSprites is called.
+// ---------------------------------------------------------------------------
+
+/// One animation-frame of a sprite, matching r_defs.h `spriteframe_t`.
+///
+/// Layout (28 bytes):
+///   +0  rotate (boolean/int – 4 bytes)
+///   +4  lump[8] (short[8] – 16 bytes)
+///   +20 flip[8] (byte[8] – 8 bytes)
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct spriteframe_t {
+    /// 0 = use frame 0 for all rotations; 1 = use rotation-specific lumps.
+    pub rotate: c_int,
+    /// WAD lump index (relative to firstspritelump) for each of 8 rotations.
+    pub lump: [c_short; 8],
+    /// 1 = horizontally flip the lump for this rotation; 0 = no flip.
+    pub flip: [u8; 8],
+}
+
+extern "C" {
+    /// Scale applied to player weapon (psprite) columns this frame.
+    pub static mut pspritescale: c_int;
+    /// Inverse of pspritescale (= FRACUNIT / pspritescale).
+    pub static mut pspriteiscale: c_int;
+    /// Pointer to the active light-table array for sprites this frame.
+    pub static mut spritelights: *mut *mut u8; // lighttable_t**
+    /// Clipping array initialised to -1 for psprite bottom clipping.
+    pub static mut negonearray: [c_short; 320]; // [SCREENWIDTH]
+    /// Clipping array initialised to SCREENHEIGHT for psprite top clipping.
+    pub static mut screenheightarray: [c_short; 320]; // [SCREENWIDTH]
+    /// Pointer to the sprite definition table (set by R_InitSprites).
+    pub static mut sprites: *mut c_void; // spritedef_t*
+    /// Total number of sprite names found in the WAD (set by R_InitSprites).
+    pub static mut numsprites: c_int;
+    /// Temporary frame-building array used during R_InitSprites; length 29.
+    pub static mut sprtemp: [spriteframe_t; 29];
+    /// Highest frame index seen for the current sprite during R_InitSprites.
+    pub static mut maxframe: c_int;
+    /// Name of the sprite currently being processed by R_InitSprites.
+    pub static mut spritename: *mut c_char;
+}
+
+// ---------------------------------------------------------------------------
+// g_game.c
+// Movement tables and game-state globals.
+// forwardmove / sidemove / angleturn are static initialisers (non-zero).
+// ---------------------------------------------------------------------------
+
+extern "C" {
+    /// Forward movement speed table: [slow, fast] (fixed_t, unit/tic).
+    /// Values: {0x19, 0x32} = {25, 50}.
+    pub static mut forwardmove: [c_int; 2];
+    /// Lateral (strafe) movement speed table: [slow, fast] (fixed_t, unit/tic).
+    /// Values: {0x18, 0x28} = {24, 40}.
+    pub static mut sidemove: [c_int; 2];
+    /// Turn-speed table: [normal, fast, slow] (BAM units/tic).
+    /// Values: {640, 1280, 320}.  Index 2 is used for the first SLOWTURNTICS (6)
+    /// tics; after that index 0 (or 1 with run) is used.
+    pub static mut angleturn: [c_int; 3];
+    /// Next slot in the circular body-queue ring buffer.
+    pub static mut bodyqueslot: c_int;
+    /// When true, savegame file size is capped at the vanilla limit (0x2c000).
+    pub static mut vanilla_savegame_limit: c_int;
+    /// When true, demo file size is capped at the vanilla limit.
+    pub static mut vanilla_demo_limit: c_int;
+    /// When true, all graphics are preloaded at level start.
+    pub static mut precache: c_int;
+    /// When true (set by -testcontrols), exit after the first tic.
+    pub static mut testcontrols: c_int;
+    /// Gametic at which the current level started.
+    pub static mut levelstarttic: c_int;
+    /// Total enemy count on the current level (for intermission).
+    pub static mut totalkills: c_int;
+    /// Total item count on the current level (for intermission).
+    pub static mut totalitems: c_int;
+    /// Total secret count on the current level (for intermission).
+    pub static mut totalsecret: c_int;
+}
+
+// ---------------------------------------------------------------------------
+// p_pspr.c
+// Weapon-sprite (psprite) state globals.
+// swingx/swingy are computed each tic by P_CalcSwing; zero before first tic.
+// ---------------------------------------------------------------------------
+
+extern "C" {
+    /// Horizontal weapon-bob offset (fixed_t); updated each tic by P_CalcSwing.
+    pub static mut swingx: c_int;
+    /// Vertical weapon-bob offset (fixed_t); updated each tic by P_CalcSwing.
+    pub static mut swingy: c_int;
+}
+
+// ---------------------------------------------------------------------------
+// hu_stuff.c
+// HUD globals – string tables and toggle flags.
+// ---------------------------------------------------------------------------
+
+extern "C" {
+    /// The 10 pre-defined chat macro strings (Ctrl+1 … Ctrl+0).
+    /// Pointers to string literals from d_englsh.h; never NULL.
+    pub static mut chat_macros: [*mut c_char; 10];
+    /// The 4 per-player name-prefix strings ("Green: ", "Indigo: ", …).
+    pub static mut player_names: [*mut c_char; 4];
+    /// The most-recently dequeued chat character (internal use).
+    pub static mut chat_char: c_char;
+    /// True while a chat message is being composed.
+    pub static mut chat_on: c_int;
+    /// When true, the "message_dontfuckwithme" flag suppresses the next msg.
+    pub static mut message_dontfuckwithme: c_int;
+    /// Level-name strings for DOOM shareware/registered/retail (36 real + 9 placeholder).
+    pub static mut mapnames: [*mut c_char; 45];
+    /// Level-name strings for commercial IWADs (32 DOOM2 + 32 Plutonia + 32 TNT).
+    pub static mut mapnames_commercial: [*mut c_char; 96];
+}
+
+// ---------------------------------------------------------------------------
+// am_map.c
+// ---------------------------------------------------------------------------
+
+extern "C" {
+    /// True while the automap is open.
+    pub static mut automapactive: c_int;
+}
+
+// ---------------------------------------------------------------------------
+// i_scale.c
+// Screen-scaling mode descriptors.
+// ---------------------------------------------------------------------------
+
+/// A screen scaling mode descriptor, matching `screen_mode_t` in `i_video.h`.
+///
+/// Layout on 64-bit (32 bytes):
+///   +0  width          (int, 4 bytes)
+///   +4  height         (int, 4 bytes)
+///   +8  InitMode       (fn ptr, 8 bytes)
+///   +16 DrawScreen     (fn ptr, 8 bytes)
+///   +24 poor_quality   (int/boolean, 4 bytes)
+///   +28 [4 bytes tail-padding to align struct to 8]
+#[repr(C)]
+pub struct screen_mode_t {
+    /// Output buffer width in pixels.
+    pub width: c_int,
+    /// Output buffer height in pixels.
+    pub height: c_int,
+    /// Optional initialiser called once with the game palette.
+    pub init_mode: Option<unsafe extern "C" fn(*mut u8)>,
+    /// Draw function: copies src buffer → dest buffer for the given rectangle.
+    pub draw_screen: Option<unsafe extern "C" fn(c_int, c_int, c_int, c_int) -> c_int>,
+    /// True when this mode uses blended interpolation (lower visual quality).
+    pub poor_quality: c_int,
+}
+
+extern "C" {
+    // Direct pixel-double scale modes (320×200 → N×(320×200))
+    pub static mut mode_scale_1x: screen_mode_t; // 320×200
+    pub static mut mode_scale_2x: screen_mode_t; // 640×400
+    pub static mut mode_scale_3x: screen_mode_t; // 960×600
+    pub static mut mode_scale_4x: screen_mode_t; // 1280×800
+    pub static mut mode_scale_5x: screen_mode_t; // 1600×1000
+
+    // Vertically-stretched modes (320×200 → N×(320×240))
+    pub static mut mode_stretch_1x: screen_mode_t; // 320×240  (poor)
+    pub static mut mode_stretch_2x: screen_mode_t; // 640×480
+    pub static mut mode_stretch_3x: screen_mode_t; // 960×720
+    pub static mut mode_stretch_4x: screen_mode_t; // 1280×960
+    pub static mut mode_stretch_5x: screen_mode_t; // 1600×1200
+
+    // Horizontally-squashed modes (320×200 → N×(256×200))
+    pub static mut mode_squash_1x: screen_mode_t; // 256×200  (poor)
+    pub static mut mode_squash_2x: screen_mode_t; // 512×400
+    pub static mut mode_squash_3x: screen_mode_t; // 768×600
+    pub static mut mode_squash_4x: screen_mode_t; // 1024×800
+    pub static mut mode_squash_5x: screen_mode_t; // 1280×1000
+}
+
+// ---------------------------------------------------------------------------
+// Additional constants from C headers
+// ---------------------------------------------------------------------------
+
+/// Screen width used by the "squash" scale modes (SCREENWIDTH_4_3 in i_video.h).
+pub const SCREENWIDTH_4_3: c_int = 256;
+/// Screen height used by the "stretch" scale modes (SCREENHEIGHT_4_3 in i_video.h).
+pub const SCREENHEIGHT_4_3: c_int = 240;
+
+/// Ticks per second (TICRATE in i_timer.h).
+pub const TICRATE: c_int = 35;
+
+/// First printable character in the HUD font (HU_FONTSTART in hu_stuff.h).
+pub const HU_FONTSTART: u8 = b'!'; // 33
+/// Last printable character in the HUD font (HU_FONTEND in hu_stuff.h).
+pub const HU_FONTEND: u8 = b'_'; // 95
+/// Number of glyphs in the HUD font (HU_FONTSIZE = HU_FONTEND - HU_FONTSTART + 1).
+pub const HU_FONTSIZE: usize = (HU_FONTEND - HU_FONTSTART + 1) as usize; // 63
+
+/// Broadcast player index (HU_BROADCAST in hu_stuff.h).
+pub const HU_BROADCAST: c_int = 5;
+/// HUD message area width in characters (HU_MSGWIDTH in hu_stuff.h).
+pub const HU_MSGWIDTH: c_int = 64;
+/// HUD message area height in lines (HU_MSGHEIGHT in hu_stuff.h).
+pub const HU_MSGHEIGHT: c_int = 1;
+
+/// Size of the body-object circular queue (BODYQUESIZE in g_game.c).
+pub const BODYQUESIZE: usize = 32;
+/// Number of tics during which slow-turn speed is used before switching to
+/// normal turn speed (SLOWTURNTICS in g_game.c).
+pub const SLOWTURNTICS: c_int = 6;
+/// Speed threshold above which the turbo-cheat detector fires
+/// (TURBOTHRESHOLD in g_game.c = 0x32 = 50).
+pub const TURBOTHRESHOLD: c_int = 0x32;
+
+/// Weapon-sprite lower speed (LOWERSPEED in p_pspr.c = FRACUNIT × 6).
+pub const LOWERSPEED: c_int = FRACUNIT * 6;
+/// Weapon-sprite raise speed (RAISESPEED in p_pspr.c = FRACUNIT × 6).
+pub const RAISESPEED: c_int = FRACUNIT * 6;
+/// Y-position of the weapon at its lowest (off-screen) rest point
+/// (WEAPONBOTTOM in p_pspr.c = 128 × FRACUNIT).
+pub const WEAPONBOTTOM: c_int = 128 * FRACUNIT;
+/// Y-position of the weapon at its highest (ready) position
+/// (WEAPONTOP in p_pspr.c = 32 × FRACUNIT).
+pub const WEAPONTOP: c_int = 32 * FRACUNIT;
+
+/// Minimum sprite Z distance; sprites closer than this are not projected
+/// (MINZ in r_things.c = FRACUNIT × 4).
+pub const MINZ: c_int = FRACUNIT * 4;
+/// Vertical centre of the screen in pixels, used for sprite projection
+/// (BASEYCENTER in r_things.c = 100).
+pub const BASEYCENTER: c_int = 100;

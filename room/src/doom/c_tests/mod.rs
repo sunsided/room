@@ -4,10 +4,16 @@
 //! behavioral baselines before the module is ported to Rust.
 
 mod harness;
+mod g_game_c;
+mod hu_stuff_c;
+mod i_scale_c;
 mod lookup_tables;
 mod map_data_structs;
 mod p_maputl_c;
+mod p_pspr_c;
 mod r_data_c;
 mod r_draw_c;
+mod r_segs_c;
+mod r_things_c;
 mod struct_layouts;
 mod wrapping_arithmetic;
