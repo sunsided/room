@@ -148,7 +148,7 @@ fn mapsidedef_t_offsets() {
 }
 
 // ---------------------------------------------------------------------------
-// maplinedef_t  (6 × short + sidenum[2] = 14 bytes)
+// maplinedef_t  (7 × short = 14 bytes: v1, v2, flags, special, tag, sidenum[2])
 // ---------------------------------------------------------------------------
 
 #[test]

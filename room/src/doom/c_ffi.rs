@@ -497,7 +497,7 @@ pub struct vissprite_t {
 
 extern "C" {
     /// The fuzz column-offset lookup table; length == FUZZTABLE.
-    pub static fuzzoffset: [c_int; FUZZTABLE];
+    pub static mut fuzzoffset: [c_int; FUZZTABLE];
     /// Scaled (actual) view width; set alongside viewwidth in R_ExecuteSetViewSize.
     pub static mut scaledviewwidth: c_int;
 }
