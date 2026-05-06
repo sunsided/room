@@ -39,7 +39,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            gcc \
             libc6-dev
 
       - name: Build (includes C compilation via FFI)
