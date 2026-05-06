@@ -50,3 +50,5 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace --locked
+        env:
+          RUST_LOG: info
