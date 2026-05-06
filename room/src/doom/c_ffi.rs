@@ -752,7 +752,7 @@ extern "C" {
     // Horizontally-squashed modes (320×200 → N×(256×200))
     pub static mut mode_squash_1x: screen_mode_t; // 256×200  (poor)
     pub static mut mode_squash_2x: screen_mode_t; // 512×400
-    pub static mut mode_squash_3x: screen_mode_t; // 768×600
+    pub static mut mode_squash_3x: screen_mode_t; // 800×600  (quirk: not 768×600)
     pub static mut mode_squash_4x: screen_mode_t; // 1024×800
     pub static mut mode_squash_5x: screen_mode_t; // 1280×1000
 }
