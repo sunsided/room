@@ -362,17 +362,17 @@ pub const ST_NEGATIVE: c_int = 3;
 // WAD lumps.  p_setup.c indexes directly into the lump list using these.
 // ---------------------------------------------------------------------------
 
-pub const ML_LABEL: i32 = 0; // ExMx / MAPxx separator
-pub const ML_THINGS: i32 = 1; // Monster/item placement
-pub const ML_LINEDEFS: i32 = 2; // Line definitions
-pub const ML_SIDEDEFS: i32 = 3; // Side (texture) definitions
-pub const ML_VERTEXES: i32 = 4; // Vertex coordinates
-pub const ML_SEGS: i32 = 5; // BSP line segments
-pub const ML_SSECTORS: i32 = 6; // BSP sub-sectors
-pub const ML_NODES: i32 = 7; // BSP nodes
-pub const ML_SECTORS: i32 = 8; // Sector definitions
-pub const ML_REJECT: i32 = 9; // Sector-to-sector visibility table
-pub const ML_BLOCKMAP: i32 = 10; // Motion-clipping blockmap
+pub const ML_LABEL: c_int = 0; // ExMx / MAPxx separator
+pub const ML_THINGS: c_int = 1; // Monster/item placement
+pub const ML_LINEDEFS: c_int = 2; // Line definitions
+pub const ML_SIDEDEFS: c_int = 3; // Side (texture) definitions
+pub const ML_VERTEXES: c_int = 4; // Vertex coordinates
+pub const ML_SEGS: c_int = 5; // BSP line segments
+pub const ML_SSECTORS: c_int = 6; // BSP sub-sectors
+pub const ML_NODES: c_int = 7; // BSP nodes
+pub const ML_SECTORS: c_int = 8; // Sector definitions
+pub const ML_REJECT: c_int = 9; // Sector-to-sector visibility table
+pub const ML_BLOCKMAP: c_int = 10; // Motion-clipping blockmap
 
 // ---------------------------------------------------------------------------
 // LineDef flag bits (ML_* defines from doomdata.h).
