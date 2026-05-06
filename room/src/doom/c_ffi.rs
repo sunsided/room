@@ -357,6 +357,39 @@ pub const ST_POSITIVE: c_int = 2;
 pub const ST_NEGATIVE: c_int = 3;
 
 // ---------------------------------------------------------------------------
+// WAD lump-order indices (doomdata.h anonymous enum).
+// These are the fixed positions of each data lump within a map's group of
+// WAD lumps.  p_setup.c indexes directly into the lump list using these.
+// ---------------------------------------------------------------------------
+
+pub const ML_LABEL: i32 = 0; // ExMx / MAPxx separator
+pub const ML_THINGS: i32 = 1; // Monster/item placement
+pub const ML_LINEDEFS: i32 = 2; // Line definitions
+pub const ML_SIDEDEFS: i32 = 3; // Side (texture) definitions
+pub const ML_VERTEXES: i32 = 4; // Vertex coordinates
+pub const ML_SEGS: i32 = 5; // BSP line segments
+pub const ML_SSECTORS: i32 = 6; // BSP sub-sectors
+pub const ML_NODES: i32 = 7; // BSP nodes
+pub const ML_SECTORS: i32 = 8; // Sector definitions
+pub const ML_REJECT: i32 = 9; // Sector-to-sector visibility table
+pub const ML_BLOCKMAP: i32 = 10; // Motion-clipping blockmap
+
+// ---------------------------------------------------------------------------
+// LineDef flag bits (ML_* defines from doomdata.h).
+// Used by p_map.c, p_spec.c, and the renderer to determine line properties.
+// ---------------------------------------------------------------------------
+
+pub const ML_BLOCKING: u16 = 1; // Solid obstacle
+pub const ML_BLOCKMONSTERS: u16 = 2; // Blocks monsters only
+pub const ML_TWOSIDED: u16 = 4; // Has a back sector
+pub const ML_DONTPEGTOP: u16 = 8; // Upper texture is unpegged
+pub const ML_DONTPEGBOTTOM: u16 = 16; // Lower texture is unpegged
+pub const ML_SECRET: u16 = 32; // Secret on automap
+pub const ML_SOUNDBLOCK: u16 = 64; // Sound propagation barrier
+pub const ML_DONTDRAW: u16 = 128; // Hidden on automap
+pub const ML_MAPPED: u16 = 256; // Already revealed on automap
+
+// ---------------------------------------------------------------------------
 // Screen constants (from i_video.h / st_stuff.h)
 // ---------------------------------------------------------------------------
 

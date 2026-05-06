@@ -11,6 +11,8 @@
 
 use std::mem::{offset_of, size_of};
 
+use crate::doom::c_ffi;
+
 // ---------------------------------------------------------------------------
 // Rust mirrors of the PACKEDATTR (packed) C structs from doomdata.h.
 // All fields use the exact C primitive that doomtype.h maps to:
@@ -270,33 +272,24 @@ fn mapthing_t_offsets() {
 
 // ---------------------------------------------------------------------------
 // ML_ lump-index constants (doomdata.h enum values must be consecutive)
+// The constants live in c_ffi so the rest of the ported code can use them.
 // ---------------------------------------------------------------------------
 
 #[test]
 fn ml_lump_order_values() {
-    const ML_LABEL: i32 = 0;
-    const ML_THINGS: i32 = 1;
-    const ML_LINEDEFS: i32 = 2;
-    const ML_SIDEDEFS: i32 = 3;
-    const ML_VERTEXES: i32 = 4;
-    const ML_SEGS: i32 = 5;
-    const ML_SSECTORS: i32 = 6;
-    const ML_NODES: i32 = 7;
-    const ML_SECTORS: i32 = 8;
-    const ML_REJECT: i32 = 9;
-    const ML_BLOCKMAP: i32 = 10;
-
-    assert_eq!(ML_LABEL, 0);
-    assert_eq!(ML_THINGS, 1);
-    assert_eq!(ML_LINEDEFS, 2);
-    assert_eq!(ML_SIDEDEFS, 3);
-    assert_eq!(ML_VERTEXES, 4);
-    assert_eq!(ML_SEGS, 5);
-    assert_eq!(ML_SSECTORS, 6);
-    assert_eq!(ML_NODES, 7);
-    assert_eq!(ML_SECTORS, 8);
-    assert_eq!(ML_REJECT, 9);
-    assert_eq!(ML_BLOCKMAP, 10);
+    assert_eq!(c_ffi::ML_LABEL, 0);
+    assert_eq!(c_ffi::ML_THINGS, 1);
+    assert_eq!(c_ffi::ML_LINEDEFS, 2);
+    assert_eq!(c_ffi::ML_SIDEDEFS, 3);
+    assert_eq!(c_ffi::ML_VERTEXES, 4);
+    assert_eq!(c_ffi::ML_SEGS, 5);
+    assert_eq!(c_ffi::ML_SSECTORS, 6);
+    assert_eq!(c_ffi::ML_NODES, 7);
+    assert_eq!(c_ffi::ML_SECTORS, 8);
+    assert_eq!(c_ffi::ML_REJECT, 9);
+    assert_eq!(c_ffi::ML_BLOCKMAP, 10);
+    // Lump indices must be consecutive: BLOCKMAP is the last, at index 10.
+    assert_eq!(c_ffi::ML_BLOCKMAP - c_ffi::ML_LABEL, 10);
 }
 
 // ---------------------------------------------------------------------------
@@ -307,26 +300,16 @@ fn ml_lump_order_values() {
 #[test]
 fn ml_linedef_flags() {
     // Verify every flag is a distinct power of two — no two flags may overlap.
-    const ML_BLOCKING: u16 = 1;
-    const ML_BLOCKMONSTERS: u16 = 2;
-    const ML_TWOSIDED: u16 = 4;
-    const ML_DONTPEGTOP: u16 = 8;
-    const ML_DONTPEGBOTTOM: u16 = 16;
-    const ML_SECRET: u16 = 32;
-    const ML_SOUNDBLOCK: u16 = 64;
-    const ML_DONTDRAW: u16 = 128;
-    const ML_MAPPED: u16 = 256;
-
     let all_flags = [
-        ML_BLOCKING,
-        ML_BLOCKMONSTERS,
-        ML_TWOSIDED,
-        ML_DONTPEGTOP,
-        ML_DONTPEGBOTTOM,
-        ML_SECRET,
-        ML_SOUNDBLOCK,
-        ML_DONTDRAW,
-        ML_MAPPED,
+        c_ffi::ML_BLOCKING,
+        c_ffi::ML_BLOCKMONSTERS,
+        c_ffi::ML_TWOSIDED,
+        c_ffi::ML_DONTPEGTOP,
+        c_ffi::ML_DONTPEGBOTTOM,
+        c_ffi::ML_SECRET,
+        c_ffi::ML_SOUNDBLOCK,
+        c_ffi::ML_DONTDRAW,
+        c_ffi::ML_MAPPED,
     ];
 
     // Each value must be a power of two.
@@ -343,6 +326,17 @@ fn ml_linedef_flags() {
 
     // All nine flags occupy a contiguous set of bits 0–8.
     assert_eq!(combined, (1u16 << 9) - 1);
+
+    // Verify expected absolute values match the C header definitions.
+    assert_eq!(c_ffi::ML_BLOCKING, 1);
+    assert_eq!(c_ffi::ML_BLOCKMONSTERS, 2);
+    assert_eq!(c_ffi::ML_TWOSIDED, 4);
+    assert_eq!(c_ffi::ML_DONTPEGTOP, 8);
+    assert_eq!(c_ffi::ML_DONTPEGBOTTOM, 16);
+    assert_eq!(c_ffi::ML_SECRET, 32);
+    assert_eq!(c_ffi::ML_SOUNDBLOCK, 64);
+    assert_eq!(c_ffi::ML_DONTDRAW, 128);
+    assert_eq!(c_ffi::ML_MAPPED, 256);
 }
 
 // ---------------------------------------------------------------------------
