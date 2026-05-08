@@ -65,14 +65,14 @@ fn m_zoomin_value() {
     );
 }
 
-/// `M_ZOOMOUT = FRACUNIT / 1.02 = 64251` (truncated).
+/// `M_ZOOMOUT = FRACUNIT / 1.02 ≈ 64250` (truncated).
 /// Multiply scale by this factor each tic while zooming out.
 #[test]
 fn m_zoomout_value() {
-    // 65536 / 1.02 = 64251.0... → 64251
+    // 65536 / 1.02 = 64250.98... → truncates to 64250 (or 64251 on some platforms)
     assert!(
-        c_ffi::M_ZOOMOUT == 64251 || c_ffi::M_ZOOMOUT == 64250,
-        "M_ZOOMOUT = {} (expected 64251 or 64250)",
+        c_ffi::M_ZOOMOUT == 64250 || c_ffi::M_ZOOMOUT == 64251,
+        "M_ZOOMOUT = {} (expected 64250 or 64251)",
         c_ffi::M_ZOOMOUT
     );
 }

@@ -130,6 +130,20 @@ fn show_endoom_default_one() {
 }
 
 // ---------------------------------------------------------------------------
+// Starting episode / map
+// ---------------------------------------------------------------------------
+
+/// `startepisode` and `startmap` are zero before any `-episode` or `-warp`
+/// argument has been processed.
+#[test]
+fn start_episode_and_map_default_zero() {
+    unsafe {
+        assert_eq!(c_ffi::startepisode, 0, "startepisode should be 0 before command-line parse");
+        assert_eq!(c_ffi::startmap, 0, "startmap should be 0 before command-line parse");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Type-width checks
 // ---------------------------------------------------------------------------
 

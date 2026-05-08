@@ -30,6 +30,8 @@ fn stopspeed_is_0x1000() {
 
 /// `FRICTION = 0xe800` is the per-tic velocity multiplier applied while the
 /// object is on the floor.  Being less than FRACUNIT causes deceleration.
+/// The cast via u32 matches the C declaration, which treats the hex literal as
+/// unsigned before storing it in the signed `int` global.
 #[test]
 fn friction_is_0xe800() {
     // The C constant is defined as 0xe800 which fits in a signed 32-bit int.
