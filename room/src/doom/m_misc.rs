@@ -509,7 +509,9 @@ mod tests {
     /// BUG: M_StringStartsWith uses `s_len > prefix_len` (strictly greater
     /// than) instead of `>=`, so an exact-length match incorrectly returns 0.
     /// The correct return value for `M_StringStartsWith("hello", "hello")`
-    /// would be 1 (true). This test pins the current broken behaviour.
+    /// would be 1 (true).  The same bug exists in the original C source; this
+    /// test pins the current behaviour so that any future fix is immediately
+    /// visible as a test failure that needs updating.
     #[test]
     fn test_string_starts_with_exact_match_broken() {
         let s = CString::new("hello").unwrap();
@@ -758,9 +760,10 @@ mod tests {
         let r = m_snprintf_clamp(buf.as_mut_ptr(), buf.len(), (fmt.len() - 1) as c_int);
         assert_eq!(r, (fmt.len() - 1) as c_int);
         let s = unsafe { CStr::from_ptr(buf.as_ptr()).to_str().unwrap() };
-        // BUG (limitation): the format specifier %s is NOT substituted —
-        // m_snprintf_clamp has no variadic support and cannot capture the
-        // second argument.  The raw format string is returned as-is.
+        // LIMITATION: the format specifier %s is NOT substituted —
+        // m_snprintf_clamp is a clamping-only helper with no variadic support
+        // and cannot capture format arguments.  The raw format string is
+        // returned as-is.  snprintf must always be called first.
         assert_eq!(s, "say %s");
     }
 
