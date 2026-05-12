@@ -433,6 +433,20 @@ mod tests {
     use super::*;
     use std::ffi::CString;
 
+    // -----------------------------------------------------------------------
+    // M_StringCopy
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_string_copy_fits() {
+        let src = CString::new("Hello").unwrap();
+        let mut dest: Vec<c_char> = vec![0; 10];
+        let result = unsafe { M_StringCopy(dest.as_mut_ptr(), src.as_ptr(), dest.len()) };
+        assert_eq!(result, 1);
+        let cstr = unsafe { CStr::from_ptr(dest.as_ptr()) };
+        assert_eq!(cstr.to_str().unwrap(), "Hello");
+    }
+
     #[test]
     fn test_string_copy_truncation() {
         let src = CString::new("Hello, World!").unwrap();
@@ -441,6 +455,26 @@ mod tests {
         assert_eq!(result, 0);
         let cstr = unsafe { CStr::from_ptr(dest.as_ptr()) };
         assert_eq!(cstr.to_str().unwrap(), "Hello");
+    }
+
+    // -----------------------------------------------------------------------
+    // M_StringConcat
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_string_concat_fits() {
+        let mut buf: Vec<c_char> = CString::new("Hello, ")
+            .unwrap()
+            .into_bytes_with_nul()
+            .into_iter()
+            .map(|b| b as c_char)
+            .collect();
+        buf.resize(20, 0);
+        let suffix = CString::new("World!").unwrap();
+        let result = unsafe { M_StringConcat(buf.as_mut_ptr(), suffix.as_ptr(), buf.len()) };
+        assert_eq!(result, 1);
+        let cstr = unsafe { CStr::from_ptr(buf.as_ptr()) };
+        assert_eq!(cstr.to_str().unwrap(), "Hello, World!");
     }
 
     #[test]
@@ -458,5 +492,295 @@ mod tests {
         assert_eq!(result, 0);
         let cstr = unsafe { CStr::from_ptr(buf.as_ptr()) };
         assert_eq!(cstr.to_str().unwrap(), "Hello, Wor");
+    }
+
+    // -----------------------------------------------------------------------
+    // M_StringStartsWith
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_string_starts_with_basic() {
+        let s = CString::new("hello world").unwrap();
+        let prefix = CString::new("hello").unwrap();
+        let result = unsafe { M_StringStartsWith(s.as_ptr(), prefix.as_ptr()) };
+        assert_eq!(result, 1);
+    }
+
+    /// BUG: M_StringStartsWith uses `s_len > prefix_len` (strictly greater
+    /// than) instead of `>=`, so an exact-length match incorrectly returns 0.
+    /// The correct return value for `M_StringStartsWith("hello", "hello")`
+    /// would be 1 (true). This test pins the current broken behaviour.
+    #[test]
+    fn test_string_starts_with_exact_match_broken() {
+        let s = CString::new("hello").unwrap();
+        let prefix = CString::new("hello").unwrap();
+        let result = unsafe { M_StringStartsWith(s.as_ptr(), prefix.as_ptr()) };
+        // BUG: should be 1 — a string starts with itself.
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_string_starts_with_no_match() {
+        let s = CString::new("world").unwrap();
+        let prefix = CString::new("hello").unwrap();
+        let result = unsafe { M_StringStartsWith(s.as_ptr(), prefix.as_ptr()) };
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_string_starts_with_prefix_longer_than_string() {
+        let s = CString::new("hi").unwrap();
+        let prefix = CString::new("hello").unwrap();
+        let result = unsafe { M_StringStartsWith(s.as_ptr(), prefix.as_ptr()) };
+        assert_eq!(result, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // M_StringEndsWith
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_string_ends_with_basic() {
+        let s = CString::new("hello world").unwrap();
+        let suffix = CString::new("world").unwrap();
+        let result = unsafe { M_StringEndsWith(s.as_ptr(), suffix.as_ptr()) };
+        assert_eq!(result, 1);
+    }
+
+    #[test]
+    fn test_string_ends_with_exact_match() {
+        let s = CString::new("hello").unwrap();
+        let suffix = CString::new("hello").unwrap();
+        let result = unsafe { M_StringEndsWith(s.as_ptr(), suffix.as_ptr()) };
+        assert_eq!(result, 1);
+    }
+
+    #[test]
+    fn test_string_ends_with_no_match() {
+        let s = CString::new("hello").unwrap();
+        let suffix = CString::new("world").unwrap();
+        let result = unsafe { M_StringEndsWith(s.as_ptr(), suffix.as_ptr()) };
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_string_ends_with_suffix_longer_than_string() {
+        let s = CString::new("hi").unwrap();
+        let suffix = CString::new("hello world").unwrap();
+        let result = unsafe { M_StringEndsWith(s.as_ptr(), suffix.as_ptr()) };
+        assert_eq!(result, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // M_StringReplace
+    // -----------------------------------------------------------------------
+
+    unsafe fn free_cstring(p: *mut c_char) {
+        free(p as *mut c_void);
+    }
+
+    #[test]
+    fn test_string_replace_basic() {
+        let haystack = CString::new("hello world").unwrap();
+        let needle = CString::new("world").unwrap();
+        let replacement = CString::new("earth").unwrap();
+        let result = unsafe {
+            M_StringReplace(haystack.as_ptr(), needle.as_ptr(), replacement.as_ptr())
+        };
+        assert!(!result.is_null());
+        let s = unsafe { CStr::from_ptr(result).to_str().unwrap().to_owned() };
+        unsafe { free_cstring(result) };
+        assert_eq!(s, "hello earth");
+    }
+
+    #[test]
+    fn test_string_replace_not_found() {
+        let haystack = CString::new("hello").unwrap();
+        let needle = CString::new("world").unwrap();
+        let replacement = CString::new("earth").unwrap();
+        let result = unsafe {
+            M_StringReplace(haystack.as_ptr(), needle.as_ptr(), replacement.as_ptr())
+        };
+        assert!(!result.is_null());
+        let s = unsafe { CStr::from_ptr(result).to_str().unwrap().to_owned() };
+        unsafe { free_cstring(result) };
+        assert_eq!(s, "hello");
+    }
+
+    #[test]
+    fn test_string_replace_multiple_occurrences() {
+        let haystack = CString::new("aababab").unwrap();
+        let needle = CString::new("ab").unwrap();
+        let replacement = CString::new("cd").unwrap();
+        let result = unsafe {
+            M_StringReplace(haystack.as_ptr(), needle.as_ptr(), replacement.as_ptr())
+        };
+        assert!(!result.is_null());
+        let s = unsafe { CStr::from_ptr(result).to_str().unwrap().to_owned() };
+        unsafe { free_cstring(result) };
+        assert_eq!(s, "acdcdcd");
+    }
+
+    // -----------------------------------------------------------------------
+    // M_StringJoinA
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_string_join_a_single() {
+        let s = CString::new("hello").unwrap();
+        let strs: [*const c_char; 2] = [s.as_ptr(), std::ptr::null()];
+        let result = unsafe { M_StringJoinA(strs.as_ptr()) };
+        assert!(!result.is_null());
+        let out = unsafe { CStr::from_ptr(result).to_str().unwrap().to_owned() };
+        unsafe { free_cstring(result) };
+        assert_eq!(out, "hello");
+    }
+
+    #[test]
+    fn test_string_join_a_multiple() {
+        let a = CString::new("hello").unwrap();
+        let b = CString::new(", ").unwrap();
+        let c = CString::new("world").unwrap();
+        let strs: [*const c_char; 4] = [a.as_ptr(), b.as_ptr(), c.as_ptr(), std::ptr::null()];
+        let result = unsafe { M_StringJoinA(strs.as_ptr()) };
+        assert!(!result.is_null());
+        let out = unsafe { CStr::from_ptr(result).to_str().unwrap().to_owned() };
+        unsafe { free_cstring(result) };
+        assert_eq!(out, "hello, world");
+    }
+
+    #[test]
+    fn test_string_join_a_empty_list() {
+        let strs: [*const c_char; 1] = [std::ptr::null()];
+        let result = unsafe { M_StringJoinA(strs.as_ptr()) };
+        assert!(!result.is_null());
+        let out = unsafe { CStr::from_ptr(result).to_str().unwrap().to_owned() };
+        unsafe { free_cstring(result) };
+        assert_eq!(out, "");
+    }
+
+    // -----------------------------------------------------------------------
+    // M_ForceUppercase / M_ForceLowercase
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_force_uppercase() {
+        let mut buf: Vec<c_char> = b"Hello, World!\0"
+            .iter()
+            .map(|&b| b as c_char)
+            .collect();
+        unsafe { M_ForceUppercase(buf.as_mut_ptr()) };
+        let s = unsafe { CStr::from_ptr(buf.as_ptr()).to_str().unwrap() };
+        assert_eq!(s, "HELLO, WORLD!");
+    }
+
+    #[test]
+    fn test_force_lowercase() {
+        let mut buf: Vec<c_char> = b"Hello, World!\0"
+            .iter()
+            .map(|&b| b as c_char)
+            .collect();
+        unsafe { M_ForceLowercase(buf.as_mut_ptr()) };
+        let s = unsafe { CStr::from_ptr(buf.as_ptr()).to_str().unwrap() };
+        assert_eq!(s, "hello, world!");
+    }
+
+    // -----------------------------------------------------------------------
+    // m_snprintf_clamp / M_snprintf_clamp
+    //
+    // m_snprintf_clamp is a clamping-only helper — it null-terminates and
+    // clamps the return value of snprintf but does NOT perform any format-
+    // string substitution itself.  Callers must invoke snprintf (or equivalent)
+    // first to fill the buffer.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_snprintf_clamp_zero_len() {
+        let mut buf = [0i8; 16];
+        let r = m_snprintf_clamp(buf.as_mut_ptr(), 0, 5);
+        assert_eq!(r, 0);
+    }
+
+    #[test]
+    fn test_snprintf_clamp_no_truncation() {
+        // result < len: the value is returned unchanged.
+        let mut buf = [0i8; 16];
+        let r = m_snprintf_clamp(buf.as_mut_ptr(), buf.len(), 5);
+        assert_eq!(r, 5);
+    }
+
+    #[test]
+    fn test_snprintf_clamp_exact_fit() {
+        // result == len - 1: no truncation, value returned unchanged.
+        let mut buf = [0i8; 16];
+        let r = m_snprintf_clamp(buf.as_mut_ptr(), buf.len(), (buf.len() - 1) as c_int);
+        assert_eq!(r, (buf.len() - 1) as c_int);
+    }
+
+    #[test]
+    fn test_snprintf_clamp_truncation() {
+        // result >= len: buffer is null-terminated at len-1, clamped value returned.
+        let mut buf: Vec<i8> = b"ABCDEFGHIJKLMNOP"
+            .iter()
+            .map(|&b| b as i8)
+            .collect();
+        let len = buf.len();
+        let r = m_snprintf_clamp(buf.as_mut_ptr(), len, len as c_int);
+        assert_eq!(r, (len - 1) as c_int);
+        assert_eq!(buf[len - 1], 0);
+    }
+
+    #[test]
+    fn test_snprintf_clamp_error_result() {
+        // result < 0 (encoding error): buffer is null-terminated at len-1, clamped.
+        let mut buf = [b'X' as i8; 8];
+        let len = buf.len();
+        let r = m_snprintf_clamp(buf.as_mut_ptr(), len, -1);
+        assert_eq!(r, (len - 1) as c_int);
+        assert_eq!(buf[len - 1], 0);
+    }
+
+    /// Demonstrates that m_snprintf_clamp alone cannot substitute format
+    /// arguments.  If the buffer already contains a format string like
+    /// `"say %s"` and m_snprintf_clamp is called without a prior snprintf
+    /// call, the format specifier is returned literally.
+    ///
+    /// This pins the known limitation: snprintf must always be called first
+    /// to perform the actual substitution.
+    #[test]
+    fn test_snprintf_clamp_does_not_substitute_format_args() {
+        let fmt = b"say %s\0";
+        let mut buf = [0i8; 32];
+        buf[..fmt.len()].copy_from_slice(unsafe {
+            std::slice::from_raw_parts(fmt.as_ptr() as *const i8, fmt.len())
+        });
+        // Call m_snprintf_clamp without first calling snprintf.
+        let r = m_snprintf_clamp(buf.as_mut_ptr(), buf.len(), (fmt.len() - 1) as c_int);
+        assert_eq!(r, (fmt.len() - 1) as c_int);
+        let s = unsafe { CStr::from_ptr(buf.as_ptr()).to_str().unwrap() };
+        // BUG (limitation): the format specifier %s is NOT substituted —
+        // m_snprintf_clamp has no variadic support and cannot capture the
+        // second argument.  The raw format string is returned as-is.
+        assert_eq!(s, "say %s");
+    }
+
+    /// Demonstrates the correct two-step pattern that DOES substitute format
+    /// arguments: call snprintf first (which captures the variadic args), then
+    /// m_snprintf_clamp to clamp and null-terminate the result.
+    #[test]
+    fn test_snprintf_then_clamp_substitutes_format_args() {
+        let mut buf = [0i8; 32];
+        let result = unsafe {
+            libc::snprintf(
+                buf.as_mut_ptr(),
+                buf.len(),
+                b"say %s\0".as_ptr() as *const c_char,
+                b"hello\0".as_ptr() as *const c_char,
+            )
+        };
+        let r = m_snprintf_clamp(buf.as_mut_ptr(), buf.len(), result);
+        assert_eq!(r, 9); // "say hello" is 9 characters
+        let s = unsafe { CStr::from_ptr(buf.as_ptr()).to_str().unwrap() };
+        assert_eq!(s, "say hello");
     }
 }
