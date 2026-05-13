@@ -907,9 +907,9 @@ pub extern "C" fn D_DoomLoop() {
         I_GraphicsCheckCommandLine();
 
         // Cast the Rust callback to match the C signature
-                extern "C" fn grab_cb() -> Boolean {
-                    D_GrabMouseCallback()
-                }
+        extern "C" fn grab_cb() -> Boolean {
+            D_GrabMouseCallback()
+        }
         I_SetGrabMouseCallback(grab_cb);
 
         I_InitGraphics();
