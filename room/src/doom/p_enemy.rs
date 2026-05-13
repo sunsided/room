@@ -7,8 +7,9 @@
 use std::ffi::{c_char, c_void};
 use std::os::raw::{c_int, c_uint};
 
+use crate::doom::doom_bool::Boolean;
 use crate::doom::p_tick::actionf_t;
-type boolean = c_int;
+type boolean = Boolean;
 type size_t = usize;
 type angle_t = c_uint;
 type statenum_t = c_int;
@@ -225,30 +226,30 @@ pub unsafe extern "C" fn P_CheckMeleeRange(mut actor: *mut mobj_t) -> boolean {
     let mut pl: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
     let mut dist: fixed_t = 0;
     if (*actor).target.is_null() {
-        return 0;
+        return Boolean::FALSE;
     }
     pl = (*actor).target;
     dist = P_AproxDistance((*pl).x - (*actor).x, (*pl).y - (*actor).y);
     if dist >= MELEERANGE - 20 as c_int * FRACUNIT + (*((*pl).info as *mut MobjInfo)).radius {
-        return 0;
+        return Boolean::FALSE;
     }
     if P_CheckSight(actor, (*actor).target) == 0 {
-        return 0;
+        return Boolean::FALSE;
     }
-    return 1;
+    return Boolean::TRUE;
 }
 #[no_mangle]
 pub unsafe extern "C" fn P_CheckMissileRange(mut actor: *mut mobj_t) -> boolean {
     let mut dist: fixed_t = 0;
     if P_CheckSight(actor, (*actor).target) == 0 {
-        return 0;
+        return Boolean::FALSE;
     }
     if (*actor).flags & MF_JUSTHIT as c_int != 0 {
         (*actor).flags &= !(MF_JUSTHIT as c_int);
-        return 1;
+        return Boolean::TRUE;
     }
     if (*actor).reactiontime != 0 {
-        return 0;
+        return Boolean::FALSE;
     }
     dist = (P_AproxDistance(
         (*actor).x - (*(*actor).target).x,
@@ -261,12 +262,12 @@ pub unsafe extern "C" fn P_CheckMissileRange(mut actor: *mut mobj_t) -> boolean 
     dist >>= 16 as c_int;
     if (*actor).mobjtype as c_uint == MT_VILE as c_int as c_uint {
         if dist > 14 as c_int * 64 as c_int {
-            return 0;
+            return Boolean::FALSE;
         }
     }
     if (*actor).mobjtype as c_uint == MT_UNDEAD as c_int as c_uint {
         if dist < 196 as c_int {
-            return 0;
+            return Boolean::FALSE;
         }
         dist >>= 1 as c_int;
     }
@@ -283,9 +284,9 @@ pub unsafe extern "C" fn P_CheckMissileRange(mut actor: *mut mobj_t) -> boolean 
         dist = 160 as c_int as fixed_t;
     }
     if P_Random() < dist {
-        return 0;
+        return Boolean::FALSE;
     }
-    return 1;
+    return Boolean::TRUE;
 }
 #[no_mangle]
 pub static mut xspeed: [fixed_t; 8] = [
@@ -314,10 +315,10 @@ pub unsafe extern "C" fn P_Move(mut actor: *mut mobj_t) -> boolean {
     let mut tryx: fixed_t = 0;
     let mut tryy: fixed_t = 0;
     let mut ld: *mut line_t = std::ptr::null_mut::<line_t>();
-    let mut try_ok: boolean = 0;
-    let mut good: boolean = 0;
+    let mut try_ok: boolean = Boolean::FALSE;
+    let mut good: boolean = Boolean::FALSE;
     if (*actor).movedir == DI_NODIR as c_int {
-        return 0;
+        return Boolean::FALSE;
     }
     if (*actor).movedir as c_uint >= 8 as c_uint {
         I_Error(b"Weird actor->movedir!\0".as_ptr() as *const c_char);
@@ -326,8 +327,8 @@ pub unsafe extern "C" fn P_Move(mut actor: *mut mobj_t) -> boolean {
         + (*((*actor).info as *mut MobjInfo)).speed as fixed_t * xspeed[(*actor).movedir as usize];
     tryy = (*actor).y
         + (*((*actor).info as *mut MobjInfo)).speed as fixed_t * yspeed[(*actor).movedir as usize];
-    try_ok = P_TryMove(actor as *mut CffiMobj, tryx, tryy) as boolean;
-    if try_ok == 0 {
+    try_ok = Boolean::from_raw(P_TryMove(actor as *mut CffiMobj, tryx, tryy));
+    if try_ok.is_false() {
         if (*actor).flags & MF_FLOAT as c_int != 0 && floatok != 0 {
             if (*actor).z < tmfloorz {
                 (*actor).z += FLOATSPEED;
@@ -335,13 +336,13 @@ pub unsafe extern "C" fn P_Move(mut actor: *mut mobj_t) -> boolean {
                 (*actor).z -= FLOATSPEED;
             }
             (*actor).flags |= MF_INFLOAT as c_int;
-            return 1;
+            return Boolean::TRUE;
         }
         if numspechit == 0 {
-            return 0;
+            return Boolean::FALSE;
         }
         (*actor).movedir = DI_NODIR as c_int;
-        good = 0;
+        good = Boolean::FALSE;
         loop {
             let c2rust_fresh0 = numspechit;
             numspechit = numspechit - 1;
@@ -355,7 +356,7 @@ pub unsafe extern "C" fn P_Move(mut actor: *mut mobj_t) -> boolean {
                 0 as c_int,
             ) != 0
             {
-                good = 1;
+                good = Boolean::TRUE;
             }
         }
         return good;
@@ -365,15 +366,15 @@ pub unsafe extern "C" fn P_Move(mut actor: *mut mobj_t) -> boolean {
     if (*actor).flags & MF_FLOAT as c_int == 0 {
         (*actor).z = (*actor).floorz;
     }
-    return 1;
+    return Boolean::TRUE;
 }
 #[no_mangle]
 pub unsafe extern "C" fn P_TryWalk(mut actor: *mut mobj_t) -> boolean {
-    if P_Move(actor) == 0 {
-        return 0;
+    if P_Move(actor).is_false() {
+        return Boolean::FALSE;
     }
     (*actor).movecount = P_Random() & 15 as c_int;
-    return 1;
+    return Boolean::TRUE;
 }
 #[no_mangle]
 pub unsafe extern "C" fn P_NewChaseDir(mut actor: *mut mobj_t) {
@@ -409,7 +410,7 @@ pub unsafe extern "C" fn P_NewChaseDir(mut actor: *mut mobj_t) {
     {
         (*actor).movedir = diags[((((deltay < 0 as c_int) as c_int) << 1 as c_int)
             + (deltax > 0 as c_int) as c_int) as usize] as c_int;
-        if (*actor).movedir != turnaround as c_int && P_TryWalk(actor) != 0 {
+        if (*actor).movedir != turnaround as c_int && P_TryWalk(actor).is_truthy() {
             return;
         }
     }
@@ -426,19 +427,19 @@ pub unsafe extern "C" fn P_NewChaseDir(mut actor: *mut mobj_t) {
     }
     if d[1 as c_int as usize] as c_uint != DI_NODIR as c_int as c_uint {
         (*actor).movedir = d[1 as c_int as usize] as c_int;
-        if P_TryWalk(actor) != 0 {
+        if P_TryWalk(actor).is_truthy() {
             return;
         }
     }
     if d[2 as c_int as usize] as c_uint != DI_NODIR as c_int as c_uint {
         (*actor).movedir = d[2 as c_int as usize] as c_int;
-        if P_TryWalk(actor) != 0 {
+        if P_TryWalk(actor).is_truthy() {
             return;
         }
     }
     if olddir as c_uint != DI_NODIR as c_int as c_uint {
         (*actor).movedir = olddir as c_int;
-        if P_TryWalk(actor) != 0 {
+        if P_TryWalk(actor).is_truthy() {
             return;
         }
     }
@@ -447,7 +448,7 @@ pub unsafe extern "C" fn P_NewChaseDir(mut actor: *mut mobj_t) {
         while tdir <= DI_SOUTHEAST as c_int {
             if tdir != turnaround as c_int {
                 (*actor).movedir = tdir;
-                if P_TryWalk(actor) != 0 {
+                if P_TryWalk(actor).is_truthy() {
                     return;
                 }
             }
@@ -458,7 +459,7 @@ pub unsafe extern "C" fn P_NewChaseDir(mut actor: *mut mobj_t) {
         while tdir != DI_EAST as c_int - 1 as c_int {
             if tdir != turnaround as c_int {
                 (*actor).movedir = tdir;
-                if P_TryWalk(actor) != 0 {
+                if P_TryWalk(actor).is_truthy() {
                     return;
                 }
             }
@@ -467,7 +468,7 @@ pub unsafe extern "C" fn P_NewChaseDir(mut actor: *mut mobj_t) {
     }
     if turnaround as c_uint != DI_NODIR as c_int as c_uint {
         (*actor).movedir = turnaround as c_int;
-        if P_TryWalk(actor) != 0 {
+        if P_TryWalk(actor).is_truthy() {
             return;
         }
     }
@@ -491,13 +492,13 @@ pub unsafe extern "C" fn P_LookForPlayers(
                 let c2rust_fresh1 = c;
                 c = c + 1;
                 if c2rust_fresh1 == 2 as c_int || (*actor).lastlook == stop {
-                    return 0;
+                    return Boolean::FALSE;
                 }
                 player = (&raw mut players as *mut PlayerT).offset((*actor).lastlook as isize)
                     as *mut PlayerT;
                 if !((*player).health <= 0 as c_int) {
                     if !(P_CheckSight(actor, (*player).mo as *mut mobj_t) == 0) {
-                        if allaround == 0 {
+                        if allaround.is_false() {
                             an = R_PointToAngle2(
                                 (*actor).x,
                                 (*actor).y,
@@ -516,7 +517,7 @@ pub unsafe extern "C" fn P_LookForPlayers(
                             }
                         }
                         (*actor).target = (*player).mo as *mut mobj_t;
-                        return 1;
+                        return Boolean::TRUE;
                     }
                 }
             }
@@ -584,7 +585,7 @@ pub unsafe extern "C" fn A_Look(mut actor: *mut mobj_t) {
                 break '_seeyou;
             }
         }
-        if P_LookForPlayers(actor, 0) == 0 {
+        if P_LookForPlayers(actor, Boolean::FALSE).is_false() {
             return;
         }
     }
@@ -639,7 +640,7 @@ pub unsafe extern "C" fn A_Chase(mut actor: *mut mobj_t) {
         }
     }
     if (*actor).target.is_null() || (*(*actor).target).flags & MF_SHOOTABLE as c_int == 0 {
-        if P_LookForPlayers(actor, 1) != 0 {
+        if P_LookForPlayers(actor, Boolean::TRUE).is_truthy() {
             return;
         }
         P_SetMobjState(
@@ -655,7 +656,7 @@ pub unsafe extern "C" fn A_Chase(mut actor: *mut mobj_t) {
         }
         return;
     }
-    if (*((*actor).info as *mut MobjInfo)).meleestate != 0 && P_CheckMeleeRange(actor) != 0 {
+    if (*((*actor).info as *mut MobjInfo)).meleestate != 0 && P_CheckMeleeRange(actor).is_truthy() {
         if (*((*actor).info as *mut MobjInfo)).attacksound != 0 {
             S_StartSound(
                 actor as *mut c_void,
@@ -673,7 +674,7 @@ pub unsafe extern "C" fn A_Chase(mut actor: *mut mobj_t) {
             && fastparm == 0
             && (*actor).movecount != 0)
         {
-            if !(P_CheckMissileRange(actor) == 0) {
+            if P_CheckMissileRange(actor).is_truthy() {
                 P_SetMobjState(
                     actor,
                     (*((*actor).info as *mut MobjInfo)).missilestate as statenum_t,
@@ -684,12 +685,12 @@ pub unsafe extern "C" fn A_Chase(mut actor: *mut mobj_t) {
         }
     }
     if netgame != 0 && (*actor).threshold == 0 && P_CheckSight(actor, (*actor).target) == 0 {
-        if P_LookForPlayers(actor, 1) != 0 {
+        if P_LookForPlayers(actor, Boolean::TRUE).is_truthy() {
             return;
         }
     }
     (*actor).movecount -= 1;
-    if (*actor).movecount < 0 as c_int || P_Move(actor) == 0 {
+    if (*actor).movecount < 0 as c_int || P_Move(actor).is_false() {
         P_NewChaseDir(actor);
     }
     if (*((*actor).info as *mut MobjInfo)).activesound != 0 && P_Random() < 3 as c_int {
@@ -837,7 +838,7 @@ pub unsafe extern "C" fn A_TroopAttack(mut actor: *mut mobj_t) {
         return;
     }
     A_FaceTarget(actor);
-    if P_CheckMeleeRange(actor) != 0 {
+    if P_CheckMeleeRange(actor).is_truthy() {
         S_StartSound(actor as *mut c_void, sfx_claw as c_int);
         damage = (P_Random() % 8 as c_int + 1 as c_int) * 3 as c_int;
         P_DamageMobj((*actor).target, actor, actor, damage);
@@ -852,7 +853,7 @@ pub unsafe extern "C" fn A_SargAttack(mut actor: *mut mobj_t) {
         return;
     }
     A_FaceTarget(actor);
-    if P_CheckMeleeRange(actor) != 0 {
+    if P_CheckMeleeRange(actor).is_truthy() {
         damage = (P_Random() % 10 as c_int + 1 as c_int) * 4 as c_int;
         P_DamageMobj((*actor).target, actor, actor, damage);
     }
@@ -864,7 +865,7 @@ pub unsafe extern "C" fn A_HeadAttack(mut actor: *mut mobj_t) {
         return;
     }
     A_FaceTarget(actor);
-    if P_CheckMeleeRange(actor) != 0 {
+    if P_CheckMeleeRange(actor).is_truthy() {
         damage = (P_Random() % 6 as c_int + 1 as c_int) * 10 as c_int;
         P_DamageMobj((*actor).target, actor, actor, damage);
         return;
@@ -885,7 +886,7 @@ pub unsafe extern "C" fn A_BruisAttack(mut actor: *mut mobj_t) {
     if (*actor).target.is_null() {
         return;
     }
-    if P_CheckMeleeRange(actor) != 0 {
+    if P_CheckMeleeRange(actor).is_truthy() {
         S_StartSound(actor as *mut c_void, sfx_claw as c_int);
         damage = (P_Random() % 8 as c_int + 1 as c_int) * 10 as c_int;
         P_DamageMobj((*actor).target, actor, actor, damage);
@@ -985,7 +986,7 @@ pub unsafe extern "C" fn A_SkelFist(mut actor: *mut mobj_t) {
         return;
     }
     A_FaceTarget(actor);
-    if P_CheckMeleeRange(actor) != 0 {
+    if P_CheckMeleeRange(actor).is_truthy() {
         damage = (P_Random() % 10 as c_int + 1 as c_int) * 6 as c_int;
         S_StartSound(actor as *mut c_void, sfx_skepch as c_int);
         P_DamageMobj((*actor).target, actor, actor, damage);
@@ -1002,33 +1003,33 @@ pub static mut viletryy: fixed_t = 0;
 #[no_mangle]
 pub unsafe extern "C" fn PIT_VileCheck(mut thing: *mut mobj_t) -> boolean {
     let mut maxdist: c_int = 0;
-    let mut check: boolean = 0;
+    let mut check: boolean = Boolean::FALSE;
     if (*thing).flags & MF_CORPSE as c_int == 0 {
-        return 1;
+        return Boolean::TRUE;
     }
     if (*thing).tics != -1 as c_int {
-        return 1;
+        return Boolean::TRUE;
     }
     if (*((*thing).info as *mut MobjInfo)).raisestate == S_NULL as c_int {
-        return 1;
+        return Boolean::TRUE;
     }
     maxdist =
         (*((*thing).info as *mut MobjInfo)).radius + mobjinfo[MT_VILE as c_int as usize].radius;
     if ((*thing).x as c_int - viletryx as c_int).abs() > maxdist
         || ((*thing).y as c_int - viletryy as c_int).abs() > maxdist
     {
-        return 1;
+        return Boolean::TRUE;
     }
     corpsehit = thing;
     (*corpsehit).momy = 0 as c_int as fixed_t;
     (*corpsehit).momx = (*corpsehit).momy;
     (*corpsehit).height <<= 2 as c_int;
-    check = P_CheckPosition(corpsehit as *mut CffiMobj, (*corpsehit).x, (*corpsehit).y) as boolean;
+    check = Boolean::from_raw(P_CheckPosition(corpsehit as *mut CffiMobj, (*corpsehit).x, (*corpsehit).y));
     (*corpsehit).height >>= 2 as c_int;
-    if check == 0 {
-        return 1;
+    if check.is_false() {
+        return Boolean::TRUE;
     }
-    return 0;
+    return Boolean::FALSE;
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_VileChase(mut actor: *mut mobj_t) {
@@ -1389,30 +1390,31 @@ pub unsafe extern "C" fn A_Explode(mut thingy: *mut mobj_t) {
 unsafe extern "C" fn CheckBossEnd(mut motype: mobjtype_t) -> boolean {
     if (gameversion as c_uint) < exe_ultimate as c_int as c_uint {
         if gamemap != 8 as c_int {
-            return 0;
+            return Boolean::FALSE;
         }
         if motype == MT_BRUISER && gameepisode != 1 as c_int {
-            return 0;
+            return Boolean::FALSE;
         }
-        return 1;
+        return Boolean::TRUE;
     } else {
         match gameepisode {
             1 => {
-                return (gamemap == 8 as c_int && motype == MT_BRUISER) as c_int as c_int;
+                return Boolean::from(gamemap == 8 as c_int && motype == MT_BRUISER);
             }
             2 => {
-                return (gamemap == 8 as c_int && motype == MT_CYBORG) as c_int as c_int;
+                return Boolean::from(gamemap == 8 as c_int && motype == MT_CYBORG);
             }
             3 => {
-                return (gamemap == 8 as c_int && motype == MT_SPIDER) as c_int as c_int;
+                return Boolean::from(gamemap == 8 as c_int && motype == MT_SPIDER);
             }
             4 => {
-                return (gamemap == 6 as c_int && motype == MT_CYBORG
-                    || gamemap == 8 as c_int && motype == MT_SPIDER) as c_int
-                    as c_int;
+                return Boolean::from(
+                    gamemap == 6 as c_int && motype == MT_CYBORG
+                        || gamemap == 8 as c_int && motype == MT_SPIDER,
+                );
             }
             _ => {
-                return (gamemap == 8 as c_int) as c_int as c_int;
+                return Boolean::from(gamemap == 8 as c_int);
             }
         }
     };
@@ -1447,7 +1449,7 @@ pub unsafe extern "C" fn A_BossDeath(mut mo: *mut mobj_t) {
         {
             return;
         }
-    } else if CheckBossEnd((*mo).mobjtype) == 0 {
+    } else if CheckBossEnd((*mo).mobjtype).is_false() {
         return;
     }
     let mut i: usize = 0;
@@ -1687,7 +1689,7 @@ pub unsafe extern "C" fn A_SpawnFly(mut mo: *mut mobj_t) {
         type_0 = MT_BRUISER;
     }
     newmobj = P_SpawnMobj((*targ).x, (*targ).y, (*targ).z, type_0);
-    if P_LookForPlayers(newmobj, 1) != 0 {
+    if P_LookForPlayers(newmobj, Boolean::TRUE).is_truthy() {
         P_SetMobjState(
             newmobj,
             (*((*newmobj).info as *mut MobjInfo)).seestate as statenum_t,

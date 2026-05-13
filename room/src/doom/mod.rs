@@ -6,6 +6,7 @@
 
 pub mod am_map;
 pub mod c_ffi;
+pub mod doom_bool;
 
 pub mod d_event;
 pub mod d_items;

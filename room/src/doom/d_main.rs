@@ -13,6 +13,7 @@ use crate::doom::c_ffi::{SCREENHEIGHT, SCREENWIDTH, TICRATE};
 use crate::doom::d_event::event_t;
 use crate::doom::d_mode;
 use crate::doom::d_player::{consoleplayer, players, PlayerT, MAXPLAYERS};
+use crate::doom::doom_bool::Boolean;
 use crate::doom::doomstat::{gamedescription, gamemission, gamemode, gameversion, modifiedgame};
 use crate::doom::i_video::I_StartFrame;
 use crate::doom::m_config::M_SaveDefaults;
@@ -37,7 +38,7 @@ const HUSTR_KEYRED: c_char = b'r' as c_char;
 type gamestate_t = c_int;
 type gameaction_t = c_int;
 type skill_t = c_int;
-type boolean = c_int;
+type boolean = Boolean;
 type byte = u8;
 
 const GS_LEVEL: gamestate_t = 0;
@@ -550,7 +551,7 @@ pub extern "C" fn D_ProcessEvents() {
             if ev.is_null() {
                 false
             } else {
-                if M_Responder(ev) == 0 {
+                if M_Responder(ev).is_false() {
                     G_Responder(ev);
                 }
                 true
@@ -603,7 +604,7 @@ pub extern "C" fn D_Display() {
                 if D_DISP_INHELPSCREENS != 0 && inhelpscreens == 0 {
                     redrawsbar = true;
                 }
-                ST_Drawer((viewheight == 200) as c_int, redrawsbar as c_int);
+                ST_Drawer(Boolean::from(viewheight == 200), Boolean::from(redrawsbar));
                 D_DISP_FULLSCREEN = (viewheight == 200) as c_int;
             }
         } else if gamestate == GS_INTERMISSION {
@@ -823,18 +824,18 @@ extern "C" fn D_GrabMouseCallback() -> boolean {
     unsafe {
         // Drone players don't need mouse focus
         if drone != 0 {
-            return 0;
+            return Boolean::FALSE;
         }
 
         // When menu is active or game is paused, release the mouse
         if menuactive != 0 || paused != 0 {
-            return 0;
+            return Boolean::FALSE;
         }
 
         // Only grab mouse when playing levels (but not demos)
         let demoplayback_val: c_int = demoplayback;
         let advancedemo_val: c_int = advancedemo;
-        (gamestate == GS_LEVEL && demoplayback_val == 0 && advancedemo_val == 0) as c_int
+        Boolean::from(gamestate == GS_LEVEL && demoplayback_val == 0 && advancedemo_val == 0)
     }
 }
 
@@ -906,10 +907,9 @@ pub extern "C" fn D_DoomLoop() {
         I_GraphicsCheckCommandLine();
 
         // Cast the Rust callback to match the C signature
-        #[allow(improper_ctypes_definitions)]
-        extern "C" fn grab_cb() -> c_int {
-            D_GrabMouseCallback()
-        }
+                extern "C" fn grab_cb() -> Boolean {
+                    D_GrabMouseCallback()
+                }
         I_SetGrabMouseCallback(grab_cb);
 
         I_InitGraphics();
@@ -1468,7 +1468,7 @@ pub extern "C" fn D_DoomMain() {
         let mut file: [c_char; 256] = [0; 256];
         let mut demolumpname: [c_char; 9] = [0; 9];
 
-        I_AtExit(D_Endoom, 0);
+        I_AtExit(D_Endoom, Boolean::FALSE);
 
         // Print banner
         I_PrintBanner(b"Chocolate Doom\0".as_ptr() as *mut c_char);
@@ -1483,7 +1483,7 @@ pub extern "C" fn D_DoomMain() {
         fastparm = (M_CheckParm(b"-fast\0".as_ptr() as *const c_char) != 0) as c_int;
         devparm = (M_CheckParm(b"-devparm\0".as_ptr() as *const c_char) != 0) as c_int;
 
-        I_DisplayFPSDots((devparm != 0) as c_int);
+        I_DisplayFPSDots(Boolean::from(devparm != 0));
 
         if M_CheckParm(b"-deathmatch\0".as_ptr() as *const c_char) != 0 {
             deathmatch = 1;
@@ -1544,7 +1544,7 @@ pub extern "C" fn D_DoomMain() {
         D_BindVariables();
         M_LoadDefaults();
 
-        I_AtExit(M_SaveDefaults, 0);
+        I_AtExit(M_SaveDefaults, Boolean::FALSE);
 
         // Find main IWAD
         iwadfile = D_FindIWAD(1, &mut gamemission); // IWAD_MASK_DOOM = 1
@@ -1557,7 +1557,7 @@ pub extern "C" fn D_DoomMain() {
             );
         }
 
-        modifiedgame = 0;
+        modifiedgame = Boolean::FALSE;
 
         println!("W_Init: Init WADfiles.");
         D_AddFile(iwadfile);
@@ -1644,7 +1644,7 @@ pub extern "C" fn D_DoomMain() {
         savegamedir = M_GetSaveGameDir(D_SaveGameIWADName(gamemission));
 
         // Check for -file in shareware
-        if modifiedgame != 0 {
+        if modifiedgame.is_truthy() {
             extern "C" {
                 static mut gamemode: c_int;
             }
@@ -1703,7 +1703,7 @@ pub extern "C" fn D_DoomMain() {
         I_CheckIsScreensaver();
         I_InitTimer();
         I_InitJoystick();
-        I_InitSound(1);
+        I_InitSound(Boolean::TRUE);
         I_InitMusic();
 
         // Initial netgame startup
