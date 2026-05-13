@@ -7,6 +7,8 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
+use crate::doom::doom_bool::Boolean;
+
 use super::d_event::event_t;
 use super::d_mode;
 use super::d_player::M_Menu_SetPlayerMessage;
@@ -1251,7 +1253,7 @@ static mut RESP_mousex: c_int = 0;
 static mut RESP_lastx: c_int = 0;
 
 #[no_mangle]
-pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
+pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
     use super::m_controls::{
         joybmenu, key_menu_abort, key_menu_activate, key_menu_back, key_menu_confirm,
         key_menu_decscreen, key_menu_detail, key_menu_down, key_menu_endgame, key_menu_forward,
@@ -1270,9 +1272,9 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
                     && (ev.data1 == key_menu_activate || ev.data1 == key_menu_quit))
             {
                 I_Quit();
-                return 1;
+                return Boolean::TRUE;
             }
-            return 0;
+            return Boolean::FALSE;
         }
 
         // window close button
@@ -1287,7 +1289,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
                 M_QuitDOOM(0);
             }
-            return 1;
+            return Boolean::TRUE;
         }
 
         let mut ch: c_int = 0;
@@ -1361,7 +1363,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
         }
 
         if key == -1 {
-            return 0;
+            return Boolean::FALSE;
         }
 
         // Save Game string input
@@ -1392,7 +1394,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
                 if ch != b' ' as c_int
                     && (ch - HU_FONTSTART < 0 || ch - HU_FONTSTART >= HU_FONTSIZE as c_int)
                 {
-                    return 1;
+                    return Boolean::TRUE;
                 }
 
                 if (32..=127).contains(&ch)
@@ -1405,7 +1407,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
                     savegamestrings[saveSlot as usize][saveCharIndex as usize] = 0;
                 }
             }
-            return 1;
+            return Boolean::TRUE;
         }
 
         // Messages that need input
@@ -1416,7 +1418,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
                 && key != key_menu_confirm
                 && key != key_menu_abort
             {
-                return 0;
+                return Boolean::FALSE;
             }
 
             menuactive = messageLastMenuActive;
@@ -1426,31 +1428,31 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
             }
             menuactive = 0;
             S_StartSound(ptr::null_mut(), SFX_SWTCHX);
-            return 1;
+            return Boolean::TRUE;
         }
 
         // Screenshot
         if (devparm != 0 && key == key_menu_help) || (key != 0 && key == key_menu_screenshot) {
             G_ScreenShot();
-            return 1;
+            return Boolean::TRUE;
         }
 
         // F-Keys (when menu not active)
         if menuactive == 0 {
             if key == key_menu_decscreen {
                 if automapactive != 0 || chat_on != 0 {
-                    return 0;
+                    return Boolean::FALSE;
                 }
                 M_SizeDisplay(0);
                 S_StartSound(ptr::null_mut(), SFX_STNMOV);
-                return 1;
+                return Boolean::TRUE;
             } else if key == key_menu_incscreen {
                 if automapactive != 0 || chat_on != 0 {
-                    return 0;
+                    return Boolean::FALSE;
                 }
                 M_SizeDisplay(1);
                 S_StartSound(ptr::null_mut(), SFX_STNMOV);
-                return 1;
+                return Boolean::TRUE;
             } else if key == key_menu_help {
                 M_StartControlPanel();
                 if gamemode == d_mode::retail {
@@ -1460,47 +1462,47 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
                 }
                 itemOn = 0;
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
-                return 1;
+                return Boolean::TRUE;
             } else if key == key_menu_save {
                 M_StartControlPanel();
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
                 M_SaveGame(0);
-                return 1;
+                return Boolean::TRUE;
             } else if key == key_menu_load {
                 M_StartControlPanel();
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
                 M_LoadGame(0);
-                return 1;
+                return Boolean::TRUE;
             } else if key == key_menu_volume {
                 M_StartControlPanel();
                 currentMenu = &mut SoundDef;
                 itemOn = sfx_vol as i16;
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
-                return 1;
+                return Boolean::TRUE;
             } else if key == key_menu_detail {
                 M_ChangeDetail(0);
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
-                return 1;
+                return Boolean::TRUE;
             } else if key == key_menu_qsave {
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
                 M_QuickSave();
-                return 1;
+                return Boolean::TRUE;
             } else if key == key_menu_endgame {
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
                 M_EndGame(0);
-                return 1;
+                return Boolean::TRUE;
             } else if key == key_menu_messages {
                 M_ChangeMessages(0);
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
-                return 1;
+                return Boolean::TRUE;
             } else if key == key_menu_qload {
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
                 M_QuickLoad();
-                return 1;
+                return Boolean::TRUE;
             } else if key == key_menu_quit {
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
                 M_QuitDOOM(0);
-                return 1;
+                return Boolean::TRUE;
             } else if key == key_menu_gamma {
                 usegamma += 1;
                 if usegamma > 4 {
@@ -1508,7 +1510,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
                 }
                 M_Menu_SetPlayerMessage(gammamsg[usegamma as usize].as_ptr());
                 I_SetPalette(W_CacheLumpName(b"PLAYPAL\0".as_ptr() as *const c_char, 0));
-                return 1;
+                return Boolean::TRUE;
             }
         }
 
@@ -1517,9 +1519,9 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
             if key == key_menu_activate {
                 M_StartControlPanel();
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
-                return 1;
+                return Boolean::TRUE;
             }
-            return 0;
+            return Boolean::FALSE;
         }
 
         // Keys usable within menu
@@ -1535,7 +1537,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
                     break;
                 }
             }
-            return 1;
+            return Boolean::TRUE;
         } else if key == key_menu_up {
             loop {
                 if itemOn == 0 {
@@ -1548,21 +1550,21 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
                     break;
                 }
             }
-            return 1;
+            return Boolean::TRUE;
         } else if key == key_menu_left {
             let item = &*(*currentMenu).menuitems.offset(itemOn as isize);
             if item.routine.is_some() && item.status == 2 {
                 S_StartSound(ptr::null_mut(), SFX_STNMOV);
                 item.routine.unwrap()(0);
             }
-            return 1;
+            return Boolean::TRUE;
         } else if key == key_menu_right {
             let item = &*(*currentMenu).menuitems.offset(itemOn as isize);
             if item.routine.is_some() && item.status == 2 {
                 S_StartSound(ptr::null_mut(), SFX_STNMOV);
                 item.routine.unwrap()(1);
             }
-            return 1;
+            return Boolean::TRUE;
         } else if key == key_menu_forward {
             let item = &*(*currentMenu).menuitems.offset(itemOn as isize);
             if item.routine.is_some() && item.status != 0 {
@@ -1575,12 +1577,12 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
                     S_StartSound(ptr::null_mut(), SFX_PISTOL);
                 }
             }
-            return 1;
+            return Boolean::TRUE;
         } else if key == key_menu_activate {
             (*currentMenu).lastOn = itemOn;
             M_ClearMenus();
             S_StartSound(ptr::null_mut(), SFX_SWTCHX);
-            return 1;
+            return Boolean::TRUE;
         } else if key == key_menu_back {
             (*currentMenu).lastOn = itemOn;
             if !(*currentMenu).prevMenu.is_null() {
@@ -1588,7 +1590,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
                 itemOn = (*currentMenu).lastOn;
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
             }
-            return 1;
+            return Boolean::TRUE;
         }
 
         // Keyboard shortcut
@@ -1598,19 +1600,19 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> c_int {
                 if (*(*currentMenu).menuitems.offset(i as isize)).alphaKey == ch_u {
                     itemOn = i;
                     S_StartSound(ptr::null_mut(), SFX_PSTOP);
-                    return 1;
+                    return Boolean::TRUE;
                 }
             }
             for i in 0..=itemOn {
                 if (*(*currentMenu).menuitems.offset(i as isize)).alphaKey == ch_u {
                     itemOn = i;
                     S_StartSound(ptr::null_mut(), SFX_PSTOP);
-                    return 1;
+                    return Boolean::TRUE;
                 }
             }
         }
 
-        0
+        Boolean::FALSE
     }
 }
 

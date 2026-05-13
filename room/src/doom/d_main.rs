@@ -321,7 +321,7 @@ extern "C" {
     static mut snd_channels: c_int;
     static mut vanilla_savegame_limit: c_int;
     static mut vanilla_demo_limit: c_int;
-    static mut setsizeneeded: c_int;
+    static mut setsizeneeded: Boolean;
     static mut showMessages: c_int;
     static mut viewheight: c_int;
     static mut scaledviewwidth: c_int;
@@ -575,7 +575,7 @@ pub extern "C" fn D_Display() {
         let mut redrawsbar = false;
 
         // Change the view size if needed
-        if setsizeneeded != 0 {
+        if setsizeneeded.is_truthy() {
             R_ExecuteSetViewSize();
             D_DISP_OLD_GAMESTATE = -1; // force background redraw
             D_DISP_BORDERDRAWCOUNT = 3;

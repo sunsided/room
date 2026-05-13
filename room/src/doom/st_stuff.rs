@@ -13,6 +13,7 @@ use crate::doom::d_event::event_t;
 use crate::doom::d_items::weaponinfo;
 use crate::doom::d_mode;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS, NUMAMMO, NUMCARDS, NUMWEAPONS};
+use crate::doom::doom_bool::Boolean;
 use crate::doom::doomstat::{gamemission, gamemode, gameversion};
 use crate::doom::m_cheat::{cheatseq_t, cht_CheckCheat, cht_GetParam};
 use crate::doom::p_telept::mobj_t;
@@ -842,13 +843,13 @@ pub unsafe extern "C" fn ST_diffDraw() {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn ST_Drawer(fullscreen: c_int, refresh: c_int) {
-    st_statusbaron = if fullscreen == 0 || automapactive != 0 {
+pub unsafe extern "C" fn ST_Drawer(fullscreen: Boolean, refresh: Boolean) {
+    st_statusbaron = if fullscreen.is_false() || automapactive != 0 {
         1
     } else {
         0
     };
-    st_firsttime = if st_firsttime != 0 || refresh != 0 {
+    st_firsttime = if st_firsttime != 0 || refresh.is_truthy() {
         1
     } else {
         0

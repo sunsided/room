@@ -1024,7 +1024,11 @@ pub unsafe extern "C" fn PIT_VileCheck(mut thing: *mut mobj_t) -> boolean {
     (*corpsehit).momy = 0 as c_int as fixed_t;
     (*corpsehit).momx = (*corpsehit).momy;
     (*corpsehit).height <<= 2 as c_int;
-    check = Boolean::from_raw(P_CheckPosition(corpsehit as *mut CffiMobj, (*corpsehit).x, (*corpsehit).y));
+    check = Boolean::from_raw(P_CheckPosition(
+        corpsehit as *mut CffiMobj,
+        (*corpsehit).x,
+        (*corpsehit).y,
+    ));
     (*corpsehit).height >>= 2 as c_int;
     if check.is_false() {
         return Boolean::TRUE;
