@@ -565,10 +565,6 @@ extern "C" {
     fn W_ReleaseLumpName(name: *const c_char);
     fn W_CheckNumForName(name: *const c_char) -> c_int;
 
-    // info.rs
-    static mut states: [u8; 0]; // accessed via byte-offset arithmetic
-    static mut mobjinfo: [u8; 0]; // accessed via byte-offset arithmetic
-
     // m_controls.rs
     static mut key_right: c_int;
     static mut key_left: c_int;
@@ -2017,47 +2013,29 @@ extern "C" {
 // G_SetFastMonsters — adjusts state tics and monster shot speeds
 // ---------------------------------------------------------------------------
 
-const STATE_T_SIZEOF: usize = 40; // from AGENTS.md: state_t is 40 bytes on x86_64
-                                  // state.tics is at offset 8 (sprite=0..3, frame=4..7, tics=8..11)
-const STATE_TICS_OFFSET: usize = 8;
-// S_SARG_RUN1 .. S_SARG_PAIN2 correspond to states[134]..states[159]
-const S_SARG_RUN1: usize = 134;
-const S_SARG_PAIN2: usize = 159;
-// mobjinfo entry size and speed offset
-const MOBJINFO_T_SIZEOF: usize = 56; // from c2rust reference
-const MOBJINFO_SPEED_OFFSET: usize = 12; // speed field in mobjinfo_t
-const MT_BRUISERSHOT: usize = 50;
-const MT_HEADSHOT: usize = 54;
-const MT_TROOPSHOT: usize = 55;
-
 #[no_mangle]
 pub unsafe extern "C" fn G_SetFastMonsters(fast: c_int) {
-    let states_ptr = states.as_ptr();
-    for i in S_SARG_RUN1..=S_SARG_PAIN2 {
-        let tics_ptr = states_ptr.add(i * STATE_T_SIZEOF + STATE_TICS_OFFSET) as *mut c_int;
+    use crate::doom::info::{
+        mobjinfo, states, MT_BRUISERSHOT, MT_HEADSHOT, MT_TROOPSHOT, S_SARG_PAIN2, S_SARG_RUN1,
+    };
+
+    for i in S_SARG_RUN1 as usize..=S_SARG_PAIN2 as usize {
         if fast != 0 {
-            *tics_ptr >>= 1;
+            states[i].tics >>= 1;
         } else {
-            *tics_ptr <<= 1;
+            states[i].tics <<= 1;
         }
     }
 
-    let mobjinfo_ptr = mobjinfo.as_ptr();
     let (bruiser_spd, head_spd, troop_spd): (fixed_t, fixed_t, fixed_t) = if fast != 0 {
         (20 * 65536, 20 * 65536, 20 * 65536)
     } else {
         (15 * 65536, 10 * 65536, 10 * 65536)
     };
 
-    for (mt, spd) in [
-        (MT_BRUISERSHOT, bruiser_spd),
-        (MT_HEADSHOT, head_spd),
-        (MT_TROOPSHOT, troop_spd),
-    ] {
-        let spd_ptr =
-            mobjinfo_ptr.add(mt * MOBJINFO_T_SIZEOF + MOBJINFO_SPEED_OFFSET) as *mut fixed_t;
-        *spd_ptr = spd;
-    }
+    mobjinfo[MT_BRUISERSHOT as usize].speed = bruiser_spd;
+    mobjinfo[MT_HEADSHOT as usize].speed = head_spd;
+    mobjinfo[MT_TROOPSHOT as usize].speed = troop_spd;
 }
 
 // ---------------------------------------------------------------------------
