@@ -53,7 +53,7 @@ const pw_infrared: usize = 5;
 
 // Cheat flags (from d_player.h)
 const CF_NOCLIP: c_int = 1;
-const CF_NOMOMENTUM: c_int = 2;
+const CF_NOMOMENTUM: c_int = 4;
 
 // Player states (from d_player.h)
 const PST_LIVE: c_int = 0;

@@ -39,7 +39,7 @@ const MELEERANGE: c_int = 64 * FRACUNIT;
 const TICRATE: c_int = 35;
 const PU_LEVEL: c_int = 5;
 
-const CF_NOMOMENTUM: c_int = 0x00000002;
+const CF_NOMOMENTUM: c_int = 0x00000004;
 
 const MTF_AMBUSH: c_int = 8;
 
