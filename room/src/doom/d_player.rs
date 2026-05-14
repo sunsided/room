@@ -15,6 +15,11 @@ pub const NUMAMMO: usize = 4;
 pub const NUMPSPRITES: usize = 2;
 pub const MAXPLAYERS: usize = 4;
 
+// Cheat flags (d_player.h)
+pub const CF_NOCLIP: c_int = 1;
+pub const CF_GODMODE: c_int = 2;
+pub const CF_NOMOMENTUM: c_int = 4;
+
 pub enum mobj_t {}
 pub enum state_t {}
 

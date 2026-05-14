@@ -7,7 +7,7 @@
 use std::ffi::c_int;
 
 use crate::doom::d_mode::{commercial, shareware};
-use crate::doom::d_player::PlayerT;
+use crate::doom::d_player::{PlayerT, CF_NOCLIP, CF_NOMOMENTUM};
 use crate::doom::doomstat::gamemode;
 use crate::doom::info::*;
 use crate::doom::m_fixed::{fixed_t, FixedMul};
@@ -50,10 +50,6 @@ const pw_invisibility: usize = 2;
 const pw_ironfeet: usize = 3;
 const pw_allmap: usize = 4;
 const pw_infrared: usize = 5;
-
-// Cheat flags (from d_player.h)
-const CF_NOCLIP: c_int = 1;
-const CF_NOMOMENTUM: c_int = 4;
 
 // Player states (from d_player.h)
 const PST_LIVE: c_int = 0;

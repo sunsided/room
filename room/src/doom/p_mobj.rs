@@ -9,7 +9,7 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::doom::c_ffi::ITEMQUESIZE;
-use crate::doom::d_player::{PlayerT, MAXPLAYERS};
+use crate::doom::d_player::{PlayerT, CF_NOMOMENTUM, MAXPLAYERS};
 use crate::doom::hu_stuff::HU_Start;
 use crate::doom::info::{self, *};
 use crate::doom::m_fixed::{fixed_t, FixedMul};
@@ -38,8 +38,6 @@ const VIEWHEIGHT: c_int = 41 * FRACUNIT;
 const MELEERANGE: c_int = 64 * FRACUNIT;
 const TICRATE: c_int = 35;
 const PU_LEVEL: c_int = 5;
-
-const CF_NOMOMENTUM: c_int = 0x00000004;
 
 const MTF_AMBUSH: c_int = 8;
 

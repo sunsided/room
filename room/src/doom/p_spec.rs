@@ -14,7 +14,7 @@ use std::ptr;
 use crate::doom::c_ffi::{
     line_t, mobj_t, sector_t, side_t, FLOORSPEED, FRACUNIT, ML_TWOSIDED, TICRATE,
 };
-use crate::doom::d_player::PlayerT;
+use crate::doom::d_player::{PlayerT, CF_GODMODE};
 use crate::doom::i_system::I_ErrorV;
 use crate::doom::info::{MT_BFG, MT_BRUISERSHOT, MT_HEADSHOT, MT_PLASMA, MT_ROCKET, MT_TROOPSHOT};
 use crate::doom::m_argv::{myargv, M_CheckParmWithArgs};
@@ -94,9 +94,6 @@ const sfx_swtchn: c_int = 23;
 
 // powers
 const pw_ironfeet: usize = 3;
-
-// cheats
-const CF_GODMODE: c_int = 2;
 
 // ---------------------------------------------------------------------------
 // Types

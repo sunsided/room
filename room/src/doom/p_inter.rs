@@ -9,7 +9,7 @@ use std::ffi::{c_char, c_void};
 use std::os::raw::c_int;
 
 use crate::doom::d_items::weaponinfo;
-use crate::doom::d_player::{consoleplayer, players, PlayerT};
+use crate::doom::d_player::{consoleplayer, players, PlayerT, CF_GODMODE};
 use crate::doom::doomstat::{gamemode, gameversion};
 use crate::doom::info::{self, *};
 use crate::doom::m_fixed::{fixed_t, FixedMul};
@@ -30,7 +30,6 @@ const FRACUNIT: fixed_t = 65536;
 const ANG180: u32 = 0x80000000;
 const ANGLETOFINESHIFT: u32 = 19;
 const BASETHRESHOLD: c_int = 100;
-const CF_GODMODE: c_int = 2;
 
 // Skill levels
 const sk_baby: c_int = 0;
