@@ -131,6 +131,169 @@ fn aproxdist_mixed_sign() {
 }
 
 // ---------------------------------------------------------------------------
+// P_PointOnLineSide
+//
+// Expected values derived from the identical c2rust-intermediate implementation.
+//
+// C semantics (return 0 = front, 1 = back / on-line):
+//   Vertical   (dx == 0): x <= v1.x → (dy > 0),  x > v1.x → (dy < 0)
+//   Horizontal (dy == 0): y <= v1.y → (dx < 0),  y > v1.y → (dx > 0)
+//   General:  left = FixedMul(dy>>FRACBITS, dx_val)
+//             right = FixedMul(dy_val, dx>>FRACBITS)
+//             right < left → 0,  else → 1
+// ---------------------------------------------------------------------------
+
+fn make_pols_line(v1: *mut vertex_t, dx: c_int, dy: c_int) -> line_t {
+    let mut line: line_t = unsafe { std::mem::zeroed() };
+    line.v1 = v1;
+    line.dx = dx;
+    line.dy = dy;
+    line
+}
+
+#[test]
+fn point_on_line_side_vertical_pos_dy_left() {
+    // dx=0, dy>0, x < v1.x → back (1)
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, 0, c_ffi::FRACUNIT);
+    unsafe {
+        assert_eq!(p_maputl::P_PointOnLineSide(-1, 0, &mut line), 1);
+    }
+}
+
+#[test]
+fn point_on_line_side_vertical_pos_dy_right() {
+    // dx=0, dy>0, x > v1.x → front (0)
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, 0, c_ffi::FRACUNIT);
+    unsafe {
+        assert_eq!(p_maputl::P_PointOnLineSide(1, 0, &mut line), 0);
+    }
+}
+
+#[test]
+fn point_on_line_side_vertical_pos_dy_on_line() {
+    // dx=0, dy>0, x == v1.x (takes x <= v1.x branch) → back (1)
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, 0, c_ffi::FRACUNIT);
+    unsafe {
+        assert_eq!(p_maputl::P_PointOnLineSide(0, 0, &mut line), 1);
+    }
+}
+
+#[test]
+fn point_on_line_side_vertical_neg_dy_left() {
+    // dx=0, dy<0, x <= v1.x → front (0)
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, 0, -c_ffi::FRACUNIT);
+    unsafe {
+        assert_eq!(p_maputl::P_PointOnLineSide(-1, 0, &mut line), 0);
+    }
+}
+
+#[test]
+fn point_on_line_side_vertical_neg_dy_right() {
+    // dx=0, dy<0, x > v1.x → back (1)
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, 0, -c_ffi::FRACUNIT);
+    unsafe {
+        assert_eq!(p_maputl::P_PointOnLineSide(1, 0, &mut line), 1);
+    }
+}
+
+#[test]
+fn point_on_line_side_horizontal_pos_dx_below() {
+    // dy=0, dx>0, y < v1.y → front (0)
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, c_ffi::FRACUNIT, 0);
+    unsafe {
+        assert_eq!(p_maputl::P_PointOnLineSide(0, -1, &mut line), 0);
+    }
+}
+
+#[test]
+fn point_on_line_side_horizontal_pos_dx_above() {
+    // dy=0, dx>0, y > v1.y → back (1)
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, c_ffi::FRACUNIT, 0);
+    unsafe {
+        assert_eq!(p_maputl::P_PointOnLineSide(0, 1, &mut line), 1);
+    }
+}
+
+#[test]
+fn point_on_line_side_horizontal_pos_dx_on_line() {
+    // dy=0, dx>0, y == v1.y (takes y <= v1.y branch) → front (0)
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, c_ffi::FRACUNIT, 0);
+    unsafe {
+        assert_eq!(p_maputl::P_PointOnLineSide(0, 0, &mut line), 0);
+    }
+}
+
+#[test]
+fn point_on_line_side_horizontal_neg_dx_below() {
+    // dy=0, dx<0, y <= v1.y → back (1)
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, -c_ffi::FRACUNIT, 0);
+    unsafe {
+        assert_eq!(p_maputl::P_PointOnLineSide(0, -1, &mut line), 1);
+    }
+}
+
+#[test]
+fn point_on_line_side_horizontal_neg_dx_above() {
+    // dy=0, dx<0, y > v1.y → front (0)
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, -c_ffi::FRACUNIT, 0);
+    unsafe {
+        assert_eq!(p_maputl::P_PointOnLineSide(0, 1, &mut line), 0);
+    }
+}
+
+#[test]
+fn point_on_line_side_diagonal_above_left() {
+    // NE diagonal (dx=dy=FRACUNIT), point at (0, FRACUNIT) — above-left → back (1)
+    // left=FixedMul(1,0)=0, right=FixedMul(FRACUNIT,1)=1, 1>=0 → 1
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, c_ffi::FRACUNIT, c_ffi::FRACUNIT);
+    unsafe {
+        assert_eq!(
+            p_maputl::P_PointOnLineSide(0, c_ffi::FRACUNIT, &mut line),
+            1
+        );
+    }
+}
+
+#[test]
+fn point_on_line_side_diagonal_below_right() {
+    // NE diagonal (dx=dy=FRACUNIT), point at (FRACUNIT, 0) — below-right → front (0)
+    // left=FixedMul(1,FRACUNIT)=1, right=FixedMul(0,1)=0, 0<1 → 0
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, c_ffi::FRACUNIT, c_ffi::FRACUNIT);
+    unsafe {
+        assert_eq!(
+            p_maputl::P_PointOnLineSide(c_ffi::FRACUNIT, 0, &mut line),
+            0
+        );
+    }
+}
+
+#[test]
+fn point_on_line_side_diagonal_on_line_is_back() {
+    // Point exactly on NE diagonal: right==left → back (1)
+    // left=FixedMul(1,FRACUNIT)=1, right=FixedMul(FRACUNIT,1)=1, 1>=1 → 1
+    let mut v1 = vertex_t { x: 0, y: 0 };
+    let mut line = make_pols_line(&mut v1, c_ffi::FRACUNIT, c_ffi::FRACUNIT);
+    unsafe {
+        assert_eq!(
+            p_maputl::P_PointOnLineSide(c_ffi::FRACUNIT, c_ffi::FRACUNIT, &mut line),
+            1
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // P_PointOnDivlineSide
 //
 // C semantics:
