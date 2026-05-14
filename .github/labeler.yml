@@ -1,3 +1,21 @@
+area-am_map:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'vendor/doomgeneric/am_map.c'
+      - 'vendor/doomgeneric/am_map.h'
+      - 'room/src/doom/am_map.rs'
+      - 'c2rust-intermediate/src/am_map.rs'
+      - 'room/src/doom/c_tests/am_map_c.rs'
+
+area-d_loop:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'vendor/doomgeneric/d_loop.c'
+      - 'vendor/doomgeneric/d_loop.h'
+      - 'room/src/doom/d_loop.rs'
+      - 'c2rust-intermediate/src/d_loop.rs'
+      - 'room/src/doom/c_tests/d_loop_c.rs'
+
 area-d_main:
   - changed-files:
     - any-glob-to-any-file:
@@ -48,6 +66,15 @@ area-g_game:
       - 'room/src/doom/g_game.rs'
       - 'c2rust-intermediate/src/g_game.rs'
       - 'room/src/doom/c_tests/g_game_c.rs'
+
+area-hu_stuff:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'vendor/doomgeneric/hu_stuff.c'
+      - 'vendor/doomgeneric/hu_stuff.h'
+      - 'room/src/doom/hu_stuff.rs'
+      - 'c2rust-intermediate/src/hu_stuff.rs'
+      - 'room/src/doom/c_tests/hu_stuff_c.rs'
 
 area-i_scale:
   - changed-files:
@@ -191,6 +218,14 @@ area-p_map:
       - 'c2rust-intermediate/src/p_map.rs'
       - 'room/src/doom/c_tests/p_map_c.rs'
 
+area-p_maputl:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'vendor/doomgeneric/p_maputl.c'
+      - 'room/src/doom/p_maputl.rs'
+      - 'c2rust-intermediate/src/p_maputl.rs'
+      - 'room/src/doom/c_tests/p_maputl_c.rs'
+
 area-p_mobj:
   - changed-files:
     - any-glob-to-any-file:
@@ -295,6 +330,15 @@ area-r_data:
       - 'room/src/doom/r_data.rs'
       - 'c2rust-intermediate/src/r_data.rs'
       - 'room/src/doom/c_tests/r_data_c.rs'
+
+area-r_draw:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'vendor/doomgeneric/r_draw.c'
+      - 'vendor/doomgeneric/r_draw.h'
+      - 'room/src/doom/r_draw.rs'
+      - 'c2rust-intermediate/src/r_draw.rs'
+      - 'room/src/doom/c_tests/r_draw_c.rs'
 
 area-r_main:
   - changed-files:
