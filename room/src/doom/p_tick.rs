@@ -127,37 +127,15 @@ pub extern "C" fn P_Ticker() {
             return;
         }
 
-        let _lt_pre = leveltime;
-        let _prnd_pre = crate::doom::m_random::prndindex;
-
         for i in 0..MAXPLAYERS {
             if playeringame[i] != 0 {
                 P_PlayerThink(&mut players[i]);
             }
         }
-        let _prnd_after_player = crate::doom::m_random::prndindex;
 
-        if _lt_pre == 2780 {
-            crate::doom::m_random::set_prnd_trace(true);
-        }
         P_RunThinkers();
-        if _lt_pre == 2780 {
-            crate::doom::m_random::set_prnd_trace(false);
-        }
-        let _prnd_after_thinkers = crate::doom::m_random::prndindex;
-
         P_UpdateSpecials();
-        let _prnd_after_specials = crate::doom::m_random::prndindex;
-
         P_RespawnSpecials();
-
-        if _lt_pre >= 2730 && _lt_pre <= 2780 {
-            let _prnd_final = crate::doom::m_random::prndindex;
-            eprintln!(
-                "PTICK lt={} prnd_start={} after_player={} after_thinkers={} after_specials={} final={}",
-                _lt_pre, _prnd_pre, _prnd_after_player, _prnd_after_thinkers, _prnd_after_specials, _prnd_final
-            );
-        }
 
         leveltime += 1;
     }

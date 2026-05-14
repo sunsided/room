@@ -734,17 +734,6 @@ fn find_wad() -> PathBuf {
 }
 
 // ---------------------------------------------------------------------------
-// Intermediate checkpoints for debugging divergence between tic 2750-3000
-// ---------------------------------------------------------------------------
-// These are inserted between the original checkpoints 12 (tic 2750) and
-// 13 (tic 3000) to narrow down exactly where the prndindex divergence starts.
-// They have empty expected values — only used with BLESS or DIAGNOSTIC mode.
-
-// ---------------------------------------------------------------------------
-// Intermediate checkpoints for debugging divergence between tic 2750-3000
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // The one-and-only test
 // ---------------------------------------------------------------------------
 
@@ -885,46 +874,9 @@ fn demo_playthrough() {
         CHECKPOINTS.len(),
         TOTAL_TICS
     );
-    let trace_prnd = std::env::var("TRACE_PRND").is_ok();
-    let trace_sites = std::env::var("TRACE_PRND_SITES").is_ok();
-    let mut last_prndindex: c_int = 0;
-
     for tic in 0..TOTAL_TICS {
-        // Enable per-call-site tracing for the specific failing tic
-        if trace_sites {
-            let enable = (tic + 1) == 2950;
-            room::doom::m_random::set_prnd_trace(enable);
-            if enable {
-                eprintln!("--- tic {} (prndindex before tick) ---", tic + 1);
-                unsafe {
-                    eprintln!("  prndindex={}", prndindex);
-                }
-            }
-        }
-
         unsafe {
             doomgeneric_sys::doomgeneric_Tick();
-        }
-
-        if trace_sites && (tic + 1) == 2950 {
-            room::doom::m_random::set_prnd_trace(false);
-        }
-
-        // Tic-by-tic prndindex trace for the critical window
-        if trace_prnd {
-            let current_prndindex;
-            unsafe {
-                current_prndindex = prndindex;
-            }
-            if current_prndindex != last_prndindex {
-                eprintln!(
-                    "  tic {}: prndindex {} (delta {})",
-                    tic + 1,
-                    current_prndindex,
-                    current_prndindex - last_prndindex
-                );
-                last_prndindex = current_prndindex;
-            }
         }
 
         if is_checkpoint(tic + 1) {
@@ -950,80 +902,6 @@ fn demo_playthrough() {
                     checkpoint_idx + 1,
                     BASELINE.len(),
                 );
-                if std::env::var("DIAGNOSTIC").is_ok() {
-                    let expected = &BASELINE[checkpoint_idx];
-                    if snap.rndindex != expected.rndindex
-                        || snap.prndindex != expected.prndindex
-                        || snap.health != expected.health
-                        || snap.armorpoints != expected.armorpoints
-                        || snap.killcount != expected.killcount
-                        || snap.itemcount != expected.itemcount
-                        || snap.ammo != expected.ammo
-                        || snap.mo_x != expected.mo_x
-                        || snap.mo_y != expected.mo_y
-                        || snap.mo_z != expected.mo_z
-                        || snap.mo_angle != expected.mo_angle
-                    {
-                        eprintln!("  DIAGNOSTIC checkpoint {} mismatch:", checkpoint_idx + 1);
-                        if snap.rndindex != expected.rndindex {
-                            eprintln!(
-                                "    rndindex: got {}, expected {}",
-                                snap.rndindex, expected.rndindex
-                            );
-                        }
-                        if snap.prndindex != expected.prndindex {
-                            eprintln!(
-                                "    prndindex: got {}, expected {}",
-                                snap.prndindex, expected.prndindex
-                            );
-                        }
-                        if snap.health != expected.health {
-                            eprintln!(
-                                "    health: got {}, expected {}",
-                                snap.health, expected.health
-                            );
-                        }
-                        if snap.armorpoints != expected.armorpoints {
-                            eprintln!(
-                                "    armorpoints: got {}, expected {}",
-                                snap.armorpoints, expected.armorpoints
-                            );
-                        }
-                        if snap.killcount != expected.killcount {
-                            eprintln!(
-                                "    killcount: got {}, expected {}",
-                                snap.killcount, expected.killcount
-                            );
-                        }
-                        if snap.itemcount != expected.itemcount {
-                            eprintln!(
-                                "    itemcount: got {}, expected {}",
-                                snap.itemcount, expected.itemcount
-                            );
-                        }
-                        if snap.ammo != expected.ammo {
-                            eprintln!(
-                                "    ammo: got {:?}, expected {:?}",
-                                snap.ammo, expected.ammo
-                            );
-                        }
-                        if snap.mo_x != expected.mo_x {
-                            eprintln!("    mo_x: got {}, expected {}", snap.mo_x, expected.mo_x);
-                        }
-                        if snap.mo_y != expected.mo_y {
-                            eprintln!("    mo_y: got {}, expected {}", snap.mo_y, expected.mo_y);
-                        }
-                        if snap.mo_z != expected.mo_z {
-                            eprintln!("    mo_z: got {}, expected {}", snap.mo_z, expected.mo_z);
-                        }
-                        if snap.mo_angle != expected.mo_angle {
-                            eprintln!(
-                                "    mo_angle: got {}, expected {}",
-                                snap.mo_angle, expected.mo_angle
-                            );
-                        }
-                    }
-                }
                 validate_snapshot(checkpoint_idx, &snap, &BASELINE[checkpoint_idx]);
             }
             snapshots.push(snap);

@@ -123,12 +123,6 @@ pub unsafe extern "C" fn T_FireFlicker(flick: *mut fireflicker_t) {
         return;
     }
 
-    {
-        let lt = crate::doom::p_tick::leveltime;
-        if lt >= 2778 && lt <= 2782 {
-            eprintln!("FIREFLICKER lt={} sec={:p}", lt, (*flick).sector);
-        }
-    }
     let amount = (P_Random() & 3) * 16;
     let sec = &mut *(*flick).sector;
 
@@ -174,12 +168,6 @@ pub unsafe extern "C" fn T_LightFlash(flash: *mut lightflash_t) {
 
     let sec = &mut *(*flash).sector;
 
-    {
-        let lt = crate::doom::p_tick::leveltime;
-        if lt >= 2778 && lt <= 2782 {
-            eprintln!("LIGHTFLASH lt={} sec={:p}", lt, (*flash).sector);
-        }
-    }
     if sec.lightlevel as c_int == (*flash).maxlight {
         sec.lightlevel = (*flash).minlight as i16;
         (*flash).count = (P_Random() & (*flash).mintime) + 1;

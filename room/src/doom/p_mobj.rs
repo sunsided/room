@@ -394,40 +394,6 @@ pub unsafe extern "C" fn P_NightmareRespawn(mobj: *mut mobj_t) {
 #[no_mangle]
 pub unsafe extern "C" fn P_MobjThinker(mobj: *mut mobj_t) {
     let mobj = &mut *mobj;
-    if crate::doom::m_random::PRND_TRACE.load(std::sync::atomic::Ordering::Relaxed) {
-        let state_ptr = mobj.state as *const State;
-        let (sprite, action_fn) = if state_ptr.is_null() {
-            (-1i32, 0usize)
-        } else {
-            (
-                (*state_ptr).sprite,
-                (*state_ptr).action.map(|f| f as usize).unwrap_or(0),
-            )
-        };
-        eprintln!(
-            "P_MobjThinker type={} addr={:p} tics={} sprite={} action=0x{:x} flags=0x{:x}",
-            mobj.mobjtype, mobj as *const mobj_t, mobj.tics, sprite, action_fn, mobj.flags,
-        );
-    }
-    // Track ALL alive monsters (MF_COUNTKILL) near the failing tic (lt≈2749).
-    if mobj.flags & 0x400000 != 0 {
-        // MF_COUNTKILL
-        let lt = leveltime;
-        if lt >= 2775 && lt <= 2785 {
-            let state_ptr = mobj.state as *const State;
-            let (state_idx, action_fn) = if state_ptr.is_null() {
-                (0i32, 0usize)
-            } else {
-                let base = &crate::doom::info::states[0] as *const State;
-                let idx = state_ptr.offset_from(base) as i32;
-                (idx, (*state_ptr).action.map(|f| f as usize).unwrap_or(0))
-            };
-            eprintln!(
-                "TRACK lt={} type={} addr={:p} tics={} state={} action=0x{:x}",
-                lt, mobj.mobjtype, mobj as *const mobj_t, mobj.tics, state_idx, action_fn,
-            );
-        }
-    }
     if mobj.momx != 0 || mobj.momy != 0 || mobj.flags & MF_SKULLFLY != 0 {
         P_XYMovement(mobj as *mut mobj_t);
         if is_sentinel(mobj.thinker.function) {

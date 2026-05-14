@@ -35,23 +35,11 @@ pub static mut rndindex: c_int = 0;
 #[no_mangle]
 pub static mut prndindex: c_int = 0;
 
-pub(crate) static PRND_TRACE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-pub fn set_prnd_trace(enabled: bool) {
-    PRND_TRACE.store(enabled, std::sync::atomic::Ordering::Relaxed);
-}
-
 #[no_mangle]
 pub extern "C" fn P_Random() -> c_int {
     unsafe {
         prndindex = (prndindex + 1) & 0xff;
-        let val = RNDTABLE[prndindex as usize] as c_int;
-        if PRND_TRACE.load(std::sync::atomic::Ordering::Relaxed) {
-            let bt = std::backtrace::Backtrace::force_capture();
-            eprintln!("  P_RANDOM[{}]={}\n{}", prndindex, val, bt);
-        }
-        val
+        RNDTABLE[prndindex as usize] as c_int
     }
 }
 

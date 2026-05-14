@@ -458,7 +458,6 @@ extern "C" {
     // p_setup.rs
     fn P_SetupLevel(episode: c_int, map: c_int, playermask: c_int, skill: c_int);
     fn P_SpawnPlayer(mthing: *mut mapthing_t);
-    fn G_DeathMatchSpawnPlayer_inner(playernum: c_int); // placeholder — defined below
 
     // p_map.rs
     fn P_CheckPosition(mo: *mut mobj_t, x: fixed_t, y: fixed_t) -> boolean;
@@ -493,7 +492,6 @@ extern "C" {
     static mut leveltime: c_int;
 
     // p_saveg.rs
-    fn P_SetupLevel_for_load(); // not real — handled inside G_DoLoadGame
 
     // st_stuff.rs
     fn ST_Ticker();
@@ -750,7 +748,7 @@ pub unsafe extern "C" fn G_BuildTiccmd(cmd: *mut TiccmdT, maketic: c_int) {
     *cmd = std::mem::zeroed();
 
     cmd.consistancy =
-        consistancy[consoleplayer as usize][(maketic as usize) % BACKUPTICS] as i8 as u8;
+        consistancy[consoleplayer as usize][(maketic as usize) % BACKUPTICS];
 
     let strafe = (GAMEKEYDOWN[key_strafe as usize] != 0)
         || (mousebutton(mousebstrafe) != 0)
@@ -867,15 +865,12 @@ pub unsafe extern "C" fn G_BuildTiccmd(cmd: *mut TiccmdT, maketic: c_int) {
             key_weapon7,
             key_weapon8,
         ];
-        let mut found = false;
         for (i, &key) in weapon_keys_vals.iter().enumerate() {
             if GAMEKEYDOWN[key as usize] != 0 {
                 cmd.buttons |= BT_CHANGE;
                 cmd.buttons |= (i as u8) << BT_WEAPONSHIFT;
-                found = true;
                 break;
             }
-            let _ = found;
         }
     }
     NEXT_WEAPON = 0;
@@ -1348,7 +1343,7 @@ pub unsafe extern "C" fn G_PlayerFinishLevel(player: c_int) {
     let p = &mut players[player as usize];
     p.powers = [0; 6];
     p.cards = [0; 6];
-    (*(p.mo as *mut mobj_t)).flags &= !(0x40); // MF_SHADOW = 0x40
+    (*(p.mo as *mut mobj_t)).flags &= !crate::doom::info::MF_SHADOW;
     p.extralight = 0;
     p.fixedcolormap = 0;
     p.damagecount = 0;
@@ -2194,10 +2189,9 @@ pub unsafe extern "C" fn G_VanillaVersionCode() -> c_int {
 /// Pure helper for G_VanillaVersionCode, testable without globals.
 fn g_vanilla_version_code_for(gv: c_int) -> c_int {
     match gv {
-        v if v == exe_doom_1_2 => {
-            // No version code for 1.2 — replicate C I_Error path as panic
-            panic!("Doom 1.2 does not have a version code!")
-        }
+        v if v == exe_doom_1_2 => unsafe {
+            I_Error(b"Doom 1.2 does not have a version code!\0".as_ptr() as *const c_char)
+        },
         v if v == exe_doom_1_666 => 106,
         v if v == exe_doom_1_7 => 107,
         v if v == exe_doom_1_8 => 108,
@@ -2329,6 +2323,12 @@ pub unsafe extern "C" fn G_DoPlayDemo() {
     demo_p = demo_p.add(1);
     consoleplayer = *demo_p as c_int;
     demo_p = demo_p.add(1);
+    if consoleplayer < 0 || consoleplayer >= MAXPLAYERS as c_int {
+        I_Error(
+            b"G_DoPlayDemo: consoleplayer %d out of range\n\0".as_ptr() as *const c_char,
+            consoleplayer,
+        );
+    }
 
     for i in 0..MAXPLAYERS {
         playeringame[i] = *demo_p as boolean;
