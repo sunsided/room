@@ -9,8 +9,7 @@ use std::ptr;
 
 use crate::doom::w_file::{wad_file_t, W_OpenFile, W_Read};
 
-const PU_STATIC: c_int = 1;
-const PU_CACHE: c_int = 8;
+use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
 
 #[repr(C)]
 pub struct lumpinfo_t {

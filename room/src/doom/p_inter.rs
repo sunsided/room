@@ -12,11 +12,11 @@ use crate::doom::d_items::weaponinfo;
 use crate::doom::d_player::{consoleplayer, players, PlayerT, CF_GODMODE};
 use crate::doom::doomstat::{gamemode, gameversion};
 use crate::doom::info::{self, *};
-use crate::doom::m_fixed::{fixed_t, FixedMul};
+use crate::doom::m_fixed::{fixed_t, FixedMul, FRACUNIT};
 use crate::doom::m_random::P_Random;
 use crate::doom::p_pspr::P_DropWeapon;
 use crate::doom::p_telept::mobj_t;
-use crate::doom::tables::{finecosine, finesine};
+use crate::doom::tables::{finecosine, finesine, ANG180, ANGLETOFINESHIFT};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -26,9 +26,6 @@ const BONUSADD: c_int = 6;
 const NUMAMMO: usize = 4;
 const MAXHEALTH: c_int = 100;
 const ONFLOORZ: c_int = i32::MIN;
-const FRACUNIT: fixed_t = 65536;
-const ANG180: u32 = 0x80000000;
-const ANGLETOFINESHIFT: u32 = 19;
 const BASETHRESHOLD: c_int = 100;
 
 // Skill levels

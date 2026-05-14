@@ -9,9 +9,10 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::doom::c_ffi::{FRACUNIT, TICRATE};
 use crate::doom::d_net::{LoopInterfaceT, NetConnectDataT, NetGameSettingsT};
 use crate::doom::d_player::TiccmdT;
+use crate::doom::i_timer::TICRATE;
+use crate::doom::m_fixed::FRACUNIT;
 
 const NET_MAXPLAYERS: usize = 8;
 pub const BACKUPTICS: usize = 128;

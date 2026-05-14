@@ -8,9 +8,10 @@ use std::os::raw::c_int;
 
 use crate::doom::m_fixed::{FixedDiv, FixedMul};
 
+use crate::doom::m_fixed::FRACBITS;
+
 const NF_SUBSECTOR: u32 = 0x8000;
 const ML_TWOSIDED: i16 = 4;
-const FRACBITS: u32 = 16;
 
 #[repr(C)]
 #[derive(Clone, Copy)]

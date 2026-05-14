@@ -8,12 +8,12 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
-use crate::doom::c_ffi::{ANG180, ANG45, TICRATE};
 use crate::doom::d_event::event_t;
 use crate::doom::d_items::weaponinfo;
 use crate::doom::d_mode;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS, NUMAMMO, NUMCARDS, NUMWEAPONS};
 use crate::doom::doomstat::{gamemission, gamemode, gameversion};
+use crate::doom::i_timer::TICRATE;
 use crate::doom::m_cheat::{cheatseq_t, cht_CheckCheat, cht_GetParam};
 use crate::doom::p_telept::mobj_t;
 use crate::doom::st_lib::{
@@ -21,6 +21,7 @@ use crate::doom::st_lib::{
     STlib_initMultIcon, STlib_initNum, STlib_initPercent, STlib_updateBinIcon,
     STlib_updateMultIcon, STlib_updateNum, STlib_updatePercent,
 };
+use crate::doom::tables::{ANG180, ANG45};
 use crate::doom::v_video::patch_t;
 use crate::doom::v_video::{V_CopyRect, V_DrawPatch, V_RestoreBuffer, V_UseBuffer};
 
@@ -28,8 +29,7 @@ use crate::doom::v_video::{V_CopyRect, V_DrawPatch, V_RestoreBuffer, V_UseBuffer
 // Constants
 // ---------------------------------------------------------------------------
 
-const PU_STATIC: c_int = 1;
-const PU_CACHE: c_int = 8;
+use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
 
 const ST_HEIGHT: c_int = 32;
 const ST_WIDTH: c_int = 320;

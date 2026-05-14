@@ -30,10 +30,9 @@ use crate::doom::v_video::V_DrawPatch;
 // Constants
 // ---------------------------------------------------------------------------
 
-const PU_STATIC: c_int = 1;
-const TICRATE: c_int = 35;
-const SCREENWIDTH: c_int = 320;
-const SCREENHEIGHT: c_int = 200;
+use crate::doom::i_timer::TICRATE;
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
+use crate::doom::z_zone::PU_STATIC;
 
 const NUMEPISODES: usize = 4;
 const NUMMAPS: usize = 9;

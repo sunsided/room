@@ -25,10 +25,7 @@ fn abs(x: c_int) -> c_int {
     }
 }
 
-use crate::doom::c_ffi::{
-    line_t, sector_t, side_t, vertex_t, ANG180, ANG270, ANG90, ANGLETOFINESHIFT, FRACUNIT,
-    MAPBLOCKSHIFT,
-};
+use crate::doom::c_ffi::{line_t, sector_t, side_t, vertex_t, MAPBLOCKSHIFT};
 use crate::doom::d_loop::gametic;
 use crate::doom::d_player::{players, PlayerT, PspdefT, MAXPLAYERS};
 use crate::doom::doomstat::{gamemode, gameversion};
@@ -42,6 +39,7 @@ use crate::doom::info::{
     MT_SPIDER, MT_TELEPORTMAN, MT_TRACER, MT_TROOP, MT_TROOPSHOT, MT_UNDEAD, MT_VILE, MT_WOLFSS,
     S_BRAINEXPLODE1, S_NULL, S_VILE_HEAL1,
 };
+use crate::doom::m_fixed::FRACUNIT;
 use crate::doom::m_fixed::{fixed_t, FixedMul};
 use crate::doom::m_random::P_Random;
 use crate::doom::p_inter::P_DamageMobj;
@@ -61,6 +59,7 @@ use crate::doom::p_setup::{bmaporgx, bmaporgy, numsectors, sectors, sides};
 use crate::doom::p_sight::P_CheckSight;
 use crate::doom::p_switch::P_UseSpecialLine;
 use crate::doom::p_telept::{mobj_t, subsector_t};
+use crate::doom::tables::{ANG180, ANG270, ANG90, ANGLETOFINESHIFT};
 type CffiMobj = crate::doom::c_ffi::mobj_t;
 use crate::doom::p_tick::{thinker_t, thinkercap};
 use crate::doom::r_main::{validcount, R_PointToAngle2};

@@ -9,15 +9,14 @@ use std::os::raw::c_int;
 
 use crate::doom::c_ffi::mobj_t;
 use crate::doom::d_player::PlayerT;
-use crate::doom::m_fixed::fixed_t;
+use crate::doom::i_timer::TICRATE;
+use crate::doom::m_fixed::{fixed_t, FRACUNIT};
 use crate::doom::p_floor::side_t;
 use crate::doom::p_lights::{line_t, sector_t};
 use crate::doom::p_plats::plat_t;
 use crate::doom::p_tick::{thinker_t, P_AddThinker, P_RemoveThinker};
+use crate::doom::z_zone::PU_LEVSPEC;
 
-const PU_LEVSPEC: c_int = 5;
-const TICRATE: c_int = 35;
-const FRACUNIT: fixed_t = 1 << 16;
 const VDOORSPEED: fixed_t = FRACUNIT * 2;
 const VDOORWAIT: c_int = 150;
 

@@ -9,9 +9,11 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
-use crate::doom::c_ffi::{FRACBITS, FUZZOFF, FUZZTABLE, SBARHEIGHT, SCREENHEIGHT, SCREENWIDTH};
+use crate::doom::c_ffi::{FUZZOFF, FUZZTABLE, SBARHEIGHT};
 use crate::doom::d_mode::commercial;
 use crate::doom::doomstat::gamemode;
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
+use crate::doom::m_fixed::FRACBITS;
 use crate::doom::v_video::{patch_t, V_DrawPatch, V_MarkRect, V_RestoreBuffer, V_UseBuffer};
 
 // ---------------------------------------------------------------------------

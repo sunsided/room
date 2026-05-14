@@ -8,9 +8,10 @@ use std::ffi::{c_char, c_int, c_uint, c_void};
 
 use crate::doom::v_video::patch_t;
 
+use crate::doom::i_video::SCREENWIDTH;
+
 const HU_MAXLINES: usize = 4;
 const HU_MAXLINELENGTH: usize = 80;
-const SCREENWIDTH: c_int = 320;
 
 #[repr(C)]
 #[derive(Clone, Copy)]

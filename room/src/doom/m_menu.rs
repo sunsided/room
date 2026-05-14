@@ -32,10 +32,10 @@ const HU_FONTSTART: c_int = b'!' as c_int;
 const HU_FONTEND: c_int = b'_' as c_int;
 const HU_FONTSIZE: usize = (HU_FONTEND - HU_FONTSTART + 1) as usize;
 
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
+
 const SAVESTRINGSIZE: usize = 24;
 const MAXPLAYERS: usize = 4;
-const SCREENWIDTH: c_int = 320;
-const SCREENHEIGHT: c_int = 200;
 
 const EV_KEYDOWN: c_int = 0;
 const EV_KEYUP: c_int = 1;

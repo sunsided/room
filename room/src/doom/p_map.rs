@@ -8,13 +8,13 @@ use std::ffi::{c_char, c_int, c_uint, c_void};
 use std::ptr;
 
 use crate::doom::c_ffi::{
-    intercept_t, line_t, mobj_t, sector_t, subsector_t, ANG180, ANGLETOFINESHIFT, BOXBOTTOM,
-    BOXLEFT, BOXRIGHT, BOXTOP, DEFAULT_SPECHIT_MAGIC, FRACBITS, FRACUNIT, MAPBLOCKSHIFT,
+    intercept_t, line_t, mobj_t, sector_t, subsector_t, DEFAULT_SPECHIT_MAGIC, MAPBLOCKSHIFT,
     ML_BLOCKING, ML_BLOCKMONSTERS, ML_TWOSIDED,
 };
 use crate::doom::i_system::I_ErrorV;
 use crate::doom::info::MobjInfo;
-use crate::doom::m_fixed::{fixed_t, FixedDiv, FixedMul};
+use crate::doom::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
+use crate::doom::m_fixed::{fixed_t, FixedDiv, FixedMul, FRACBITS, FRACUNIT};
 use crate::doom::m_random::P_Random;
 use crate::doom::p_maputl::{
     lowfloor, openbottom, openrange, opentop, P_AproxDistance, P_BlockLinesIterator,
@@ -24,7 +24,7 @@ use crate::doom::p_maputl::{
 use crate::doom::p_setup::{bmaporgx, bmaporgy, lines};
 use crate::doom::p_sight::{bottomslope, topslope, P_CheckSight};
 use crate::doom::r_main::{validcount, R_PointInSubsector, R_PointToAngle2};
-use crate::doom::tables::{finecosine, finesine};
+use crate::doom::tables::{finecosine, finesine, ANG180, ANGLETOFINESHIFT};
 
 // ---------------------------------------------------------------------------
 // Constants

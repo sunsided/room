@@ -11,13 +11,13 @@
 use std::ffi::{c_char, c_int, c_short, c_void};
 use std::ptr;
 
-use crate::doom::c_ffi::{
-    line_t, mobj_t, sector_t, side_t, FLOORSPEED, FRACUNIT, ML_TWOSIDED, TICRATE,
-};
+use crate::doom::c_ffi::{line_t, mobj_t, sector_t, side_t, FLOORSPEED, ML_TWOSIDED};
 use crate::doom::d_player::{PlayerT, CF_GODMODE};
 use crate::doom::i_system::I_ErrorV;
+use crate::doom::i_timer::TICRATE;
 use crate::doom::info::{MT_BFG, MT_BRUISERSHOT, MT_HEADSHOT, MT_PLASMA, MT_ROCKET, MT_TROOPSHOT};
 use crate::doom::m_argv::{myargv, M_CheckParmWithArgs};
+use crate::doom::m_fixed::FRACUNIT;
 use crate::doom::m_misc::M_StrToInt;
 use crate::doom::m_random::P_Random;
 use crate::doom::p_floor::floormove_t;
@@ -29,6 +29,7 @@ use crate::doom::r_data::{
     R_TextureNumForName,
 };
 use crate::doom::s_sound::S_StartSound;
+use crate::doom::z_zone::PU_LEVSPEC;
 
 // ---------------------------------------------------------------------------
 // Macros
@@ -47,7 +48,6 @@ macro_rules! cstr {
 const MAXANIMS: usize = 32;
 const MAXLINEANIMS: usize = 64;
 const MAX_ADJOINING_SECTORS: usize = 20;
-const PU_LEVSPEC: c_int = 5;
 
 // vldoor_e
 const vld_normal: c_int = 0;
@@ -1197,7 +1197,7 @@ mod tests {
         assert_eq!(MAXANIMS, 32);
         assert_eq!(MAXLINEANIMS, 64);
         assert_eq!(MAX_ADJOINING_SECTORS, 20);
-        assert_eq!(PU_LEVSPEC, 5);
+        assert_eq!(PU_LEVSPEC, 6);
         assert_eq!(sfx_swtchn, 23);
         assert_eq!(CF_GODMODE, 2);
         assert_eq!(pw_ironfeet, 3);

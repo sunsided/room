@@ -11,8 +11,9 @@ use std::ptr;
 use crate::doom::c_ffi::ITEMQUESIZE;
 use crate::doom::d_player::{PlayerT, CF_NOMOMENTUM, MAXPLAYERS};
 use crate::doom::hu_stuff::HU_Start;
+use crate::doom::i_timer::TICRATE;
 use crate::doom::info::{self, *};
-use crate::doom::m_fixed::{fixed_t, FixedMul};
+use crate::doom::m_fixed::{fixed_t, FixedMul, FRACBITS, FRACUNIT};
 use crate::doom::m_random::P_Random;
 use crate::doom::p_maputl::{P_AproxDistance, P_SetThingPosition, P_UnsetThingPosition};
 use crate::doom::p_pspr::P_SetupPsprites;
@@ -23,10 +24,9 @@ use crate::doom::p_telept::{line_t, mapthing_t, mobj_t, subsector_t};
 use crate::doom::p_tick::{actionf_t, thinker_t, P_AddThinker, P_RemoveThinker};
 use crate::doom::r_main::{R_PointInSubsector, R_PointToAngle2};
 use crate::doom::s_sound::{MobjStub, S_StartSound, S_StopSound};
-use crate::doom::tables::{finecosine, finesine};
+use crate::doom::tables::{finecosine, finesine, ANG45, ANGLETOFINESHIFT};
+use crate::doom::z_zone::PU_LEVEL;
 
-const FRACBITS: u32 = 16;
-const FRACUNIT: c_int = 1 << FRACBITS;
 const STOPSPEED: c_int = 0x1000;
 const FRICTION: c_int = 0xe800;
 const MAXMOVE: c_int = 30 * FRACUNIT;
@@ -36,8 +36,6 @@ const ONFLOORZ: c_int = i32::MIN;
 const ONCEILINGZ: c_int = i32::MAX;
 const VIEWHEIGHT: c_int = 41 * FRACUNIT;
 const MELEERANGE: c_int = 64 * FRACUNIT;
-const TICRATE: c_int = 35;
-const PU_LEVEL: c_int = 5;
 
 const MTF_AMBUSH: c_int = 8;
 
@@ -47,9 +45,6 @@ const sfx_itmbk: c_int = 90;
 
 const PST_LIVE: c_int = 0;
 const PST_REBORN: c_int = 2;
-
-const ANGLETOFINESHIFT: c_int = 19;
-const ANG45: u32 = 1 << 29;
 
 const exe_ultimate: c_int = 6;
 

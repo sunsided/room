@@ -7,7 +7,7 @@ enum FILE {}
 const DIR_SEPARATOR: c_char = b'/' as c_char;
 const DIR_SEPARATOR_S: &[u8] = b"/\0";
 
-const PU_STATIC: c_int = 0;
+use crate::doom::z_zone::PU_STATIC;
 
 const SEEK_END: c_int = 2;
 const SEEK_SET: c_int = 0;

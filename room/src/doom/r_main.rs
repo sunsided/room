@@ -8,20 +8,23 @@
 use std::ffi::{c_char, c_int, c_short, c_uint};
 use std::ptr;
 
-use crate::doom::c_ffi::{ANG180, ANG270, ANG90, ANGLETOFINESHIFT, FRACBITS, FRACUNIT};
 use crate::doom::d_player::PlayerT;
+use crate::doom::i_video::{SCREENHEIGHT as SCREENHEIGHT_IV, SCREENWIDTH as SCREENWIDTH_IV};
+use crate::doom::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
 use crate::doom::m_fixed::{angle_t, fixed_t, FixedDiv, FixedMul};
+use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::p_telept::mobj_t;
 use crate::doom::r_bsp::{node_t, seg_t, subsector_t};
 use crate::doom::tables::{self, SlopeDiv};
+use crate::doom::tables::{ANG180, ANG270, ANG90, ANGLETOFINESHIFT};
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const FIELDOFVIEW: c_int = 2048;
-const SCREENWIDTH: usize = 320;
-const SCREENHEIGHT: usize = 200;
+const SCREENWIDTH: usize = SCREENWIDTH_IV as usize;
+const SCREENHEIGHT: usize = SCREENHEIGHT_IV as usize;
 const LIGHTLEVELS: usize = 16;
 #[allow(dead_code)]
 const LIGHTSEGSHIFT: u32 = 4;
@@ -205,11 +208,6 @@ extern "C" {
 // ---------------------------------------------------------------------------
 // R_AddPointToBox
 // ---------------------------------------------------------------------------
-
-const BOXTOP: usize = 0;
-const BOXBOTTOM: usize = 1;
-const BOXLEFT: usize = 2;
-const BOXRIGHT: usize = 3;
 
 #[no_mangle]
 pub unsafe extern "C" fn R_AddPointToBox(x: c_int, y: c_int, box_: *mut fixed_t) {

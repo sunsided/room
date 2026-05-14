@@ -7,10 +7,8 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
-const SCREENWIDTH: c_int = 320;
-const SCREENHEIGHT: c_int = 200;
-const PU_STATIC: c_int = 1;
-const PU_CACHE: c_int = 8;
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
+use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]

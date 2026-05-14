@@ -9,6 +9,12 @@
 
 use std::ffi::{c_char, c_int, c_short, c_uint, c_ushort, c_void};
 
+pub use super::i_timer::TICRATE;
+pub use super::i_video::{SCREENHEIGHT, SCREENWIDTH};
+pub use super::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
+pub use super::m_fixed::{FRACBITS, FRACUNIT};
+pub use super::tables::{ANG180, ANG270, ANG45, ANG90, ANGLETOFINESHIFT, FINEMASK};
+
 // ---------------------------------------------------------------------------
 // Opaque types — we only need pointers to these for many FFI signatures.
 // ---------------------------------------------------------------------------
@@ -181,30 +187,13 @@ extern "C" {
 // Constants from C headers
 // ---------------------------------------------------------------------------
 
-pub const FRACBITS: u32 = 16;
-pub const FRACUNIT: c_int = 1 << FRACBITS;
-
 pub const MAPBLOCKUNITS: c_int = 128;
 pub const MAPBLOCKSIZE: c_int = MAPBLOCKUNITS * FRACUNIT;
 pub const MAPBLOCKSHIFT: c_int = FRACBITS as c_int + 7;
 pub const MAPBMASK: c_int = MAPBLOCKSIZE - 1;
 pub const MAPBTOFRAC: c_int = MAPBLOCKSHIFT - FRACBITS as c_int;
 
-pub const FINEANGLES: usize = 8192;
-pub const FINEMASK: c_int = FINEANGLES as c_int - 1;
-pub const ANGLETOFINESHIFT: c_int = 19;
-
-pub const ANG45: c_uint = 1 << 29;
-pub const ANG90: c_uint = 1 << 30;
-pub const ANG180: c_uint = 1 << 31;
-pub const ANG270: c_uint = 0xC000_0000;
-
 pub const ITEMQUESIZE: usize = 128;
-
-pub const BOXTOP: usize = 0;
-pub const BOXBOTTOM: usize = 1;
-pub const BOXLEFT: usize = 2;
-pub const BOXRIGHT: usize = 3;
 
 pub const ST_HORIZONTAL: c_int = 0;
 pub const ST_VERTICAL: c_int = 1;
@@ -248,8 +237,6 @@ pub const ML_MAPPED: u16 = 256; // Already revealed on automap
 // Screen constants (from i_video.h / st_stuff.h)
 // ---------------------------------------------------------------------------
 
-pub const SCREENWIDTH: c_int = 320;
-pub const SCREENHEIGHT: c_int = 200;
 /// Status-bar height (ST_HEIGHT from st_stuff.h).
 pub const SBARHEIGHT: c_int = 32;
 
@@ -445,9 +432,6 @@ pub use crate::doom::i_scale::{
 pub const SCREENWIDTH_4_3: c_int = 256;
 /// Screen height used by the "stretch" scale modes (SCREENHEIGHT_4_3 in i_video.h).
 pub const SCREENHEIGHT_4_3: c_int = 240;
-
-/// Ticks per second (TICRATE in i_timer.h).
-pub const TICRATE: c_int = 35;
 
 /// Size of the body-object circular queue (BODYQUESIZE in g_game.c).
 pub const BODYQUESIZE: usize = 32;

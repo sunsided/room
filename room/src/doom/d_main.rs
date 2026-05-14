@@ -9,12 +9,13 @@
 use std::ffi::{c_char, c_int, c_uint, c_void};
 use std::ptr;
 
-use crate::doom::c_ffi::{SCREENHEIGHT, SCREENWIDTH, TICRATE};
 use crate::doom::d_event::event_t;
 use crate::doom::d_mode;
 use crate::doom::d_player::{consoleplayer, players, PlayerT, MAXPLAYERS};
 use crate::doom::doomstat::{gamedescription, gamemission, gamemode, gameversion, modifiedgame};
+use crate::doom::i_timer::TICRATE;
 use crate::doom::i_video::I_StartFrame;
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 use crate::doom::m_config::M_SaveDefaults;
 use crate::doom::m_misc::M_snprintf_clamp;
 
@@ -63,8 +64,7 @@ const sk_hard: skill_t = 3;
 const sk_nightmare: skill_t = 4;
 const sk_noitems: skill_t = -1;
 
-const PU_STATIC: c_int = 0;
-const PU_CACHE: c_int = 8;
+use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
 
 // ---------------------------------------------------------------------------
 // Globals — these are #[no_mangle] so remaining C code (g_game.c etc.)

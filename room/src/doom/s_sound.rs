@@ -3,11 +3,11 @@
 use std::ffi::{c_char, c_int, c_void};
 
 use crate::doom::d_mode;
+use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::sounds::{MusicInfo, S_InitSfxLinks, S_music, S_sfx, SfxInfo, NUMMUSIC, NUMSFX};
-use crate::doom::tables::finesine;
+use crate::doom::tables::{finesine, ANGLETOFINESHIFT};
+use crate::doom::z_zone::PU_STATIC;
 
-const FRACBITS: u32 = 16;
-const FRACUNIT: c_int = 65536;
 const S_CLIPPING_DIST: c_int = 1200 * FRACUNIT;
 const S_CLOSE_DIST: c_int = 200 * FRACUNIT;
 const S_ATTENUATOR: c_int = (S_CLIPPING_DIST - S_CLOSE_DIST) >> FRACBITS;
@@ -15,7 +15,6 @@ const S_STEREO_SWING: c_int = 96 * FRACUNIT;
 const NORM_PITCH: c_int = 128;
 const NORM_PRIORITY: c_int = 64;
 const NORM_SEP: c_int = 128;
-const ANGLETOFINESHIFT: u32 = 19;
 
 const MAXPLAYERS: usize = 4;
 
@@ -90,8 +89,6 @@ const mus_dm2int: c_int = 67;
 
 const SNDDEVICE_ADLIB: c_int = 2;
 const SNDDEVICE_SB: c_int = 3;
-
-const PU_STATIC: c_int = 1;
 
 #[repr(C)]
 #[derive(Clone, Copy)]

@@ -613,9 +613,7 @@ extern "C" {
     // Zone memory tags (from z_zone.h)
 }
 
-// Zone memory tags (from z_zone.h)
-const PU_STATIC: c_int = 1;
-const PU_CACHE: c_int = 6;
+use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
 
 // ---------------------------------------------------------------------------
 // DEH_String identity (no dehacked support)
@@ -747,8 +745,7 @@ pub unsafe extern "C" fn G_BuildTiccmd(cmd: *mut TiccmdT, maketic: c_int) {
     let cmd = &mut *cmd;
     *cmd = std::mem::zeroed();
 
-    cmd.consistancy =
-        consistancy[consoleplayer as usize][(maketic as usize) % BACKUPTICS];
+    cmd.consistancy = consistancy[consoleplayer as usize][(maketic as usize) % BACKUPTICS];
 
     let strafe = (GAMEKEYDOWN[key_strafe as usize] != 0)
         || (mousebutton(mousebstrafe) != 0)

@@ -8,20 +8,20 @@
 use std::ffi::{c_char, c_int, c_short, c_void};
 use std::ptr;
 
-use crate::doom::c_ffi::{
-    spriteframe_t, vissprite_t, ANG45, ANGLETOFINESHIFT, BASEYCENTER, FRACBITS, FRACUNIT, MINZ,
-};
+use crate::doom::c_ffi::{spriteframe_t, vissprite_t, BASEYCENTER, MINZ};
 use crate::doom::d_player::{PlayerT, PspdefT, NUMPSPRITES};
 use crate::doom::info::*;
 use crate::doom::m_fixed::{fixed_t, FixedDiv, FixedMul};
+use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::r_bsp::{drawseg_t, sector_t, seg_t};
+use crate::doom::tables::{ANG45, ANGLETOFINESHIFT};
 use crate::doom::w_wad::lumpinfo_t;
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const SCREENWIDTH: usize = 320;
+const SCREENWIDTH: usize = crate::doom::i_video::SCREENWIDTH as usize;
 const MAXVISSPRITES: usize = 128;
 
 const LIGHTLEVELS: usize = 16;

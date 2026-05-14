@@ -9,7 +9,7 @@ use std::ffi::{c_char, c_int};
 pub const NUMSTATES: usize = 967;
 pub const NUMMOBJTYPES: usize = 137;
 
-const FRACUNIT: c_int = 65536;
+use crate::doom::m_fixed::FRACUNIT;
 
 // Sprite name indices
 

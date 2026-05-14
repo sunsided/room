@@ -10,18 +10,15 @@ use crate::doom::d_mode::{commercial, shareware};
 use crate::doom::d_player::{PlayerT, CF_NOCLIP, CF_NOMOMENTUM};
 use crate::doom::doomstat::gamemode;
 use crate::doom::info::*;
-use crate::doom::m_fixed::{fixed_t, FixedMul};
+use crate::doom::m_fixed::{fixed_t, FixedMul, FRACUNIT};
 use crate::doom::p_telept::mobj_t;
 use crate::doom::p_tick::leveltime;
-use crate::doom::tables::{finecosine, finesine, FINEANGLES};
+use crate::doom::tables::{
+    finecosine, finesine, ANG180, ANG270, ANG90, ANGLETOFINESHIFT, FINEANGLES,
+};
 
 const MAXBOB: c_int = 0x100000;
-const ANGLETOFINESHIFT: u32 = 19;
 const VIEWHEIGHT: fixed_t = 41 * FRACUNIT;
-const FRACUNIT: fixed_t = 1 << 16;
-const ANG90: u32 = 0x40000000;
-const ANG180: u32 = 0x80000000;
-const ANG270: u32 = 0xc0000000;
 const ANG5: u32 = ANG90 / 18;
 
 // Button constants (from d_event.h)

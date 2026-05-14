@@ -42,7 +42,7 @@ static mut captured_stats: [wbstartstruct_t; MAX_CAPTURES] = {
 
 static mut num_captured_stats: c_int = 0;
 
-const TICRATE: u32 = 35;
+use crate::doom::i_timer::TICRATE;
 
 extern "C" {
     fn M_ParmExists(check: *mut c_char) -> c_int;

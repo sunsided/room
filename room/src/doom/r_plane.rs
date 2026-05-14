@@ -8,17 +8,17 @@
 use std::ffi::{c_int, c_short, c_uchar, c_void};
 use std::ptr;
 
-use super::c_ffi::{ANG90, ANGLETOFINESHIFT, FINEMASK};
 use super::m_fixed::{angle_t, fixed_t, FixedDiv, FixedMul};
 use super::r_sky;
 use super::tables;
+use super::tables::{ANG90, ANGLETOFINESHIFT, FINEMASK};
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const SCREENWIDTH: usize = 320;
-const SCREENHEIGHT: usize = 200;
+const SCREENWIDTH: usize = crate::doom::i_video::SCREENWIDTH as usize;
+const SCREENHEIGHT: usize = crate::doom::i_video::SCREENHEIGHT as usize;
 
 const MAXVISPLANES: usize = 128;
 const MAXOPENINGS: usize = SCREENWIDTH * 64;
@@ -507,7 +507,7 @@ pub extern "C" fn R_MakeSpans(x: c_int, t1: c_int, b1: c_int, t2: c_int, b2: c_i
 // R_DrawPlanes — draw all visplanes at end of frame
 // ---------------------------------------------------------------------------
 
-const PU_STATIC: c_int = 1;
+use crate::doom::z_zone::PU_STATIC;
 
 #[no_mangle]
 pub extern "C" fn R_DrawPlanes() {

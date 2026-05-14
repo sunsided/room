@@ -7,7 +7,6 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
-use crate::doom::c_ffi::TICRATE;
 use crate::doom::d_event::event_t;
 use crate::doom::d_mode;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS};
@@ -19,6 +18,7 @@ use crate::doom::hu_lib::{
     HUlib_eraseTextLine, HUlib_initIText, HUlib_initSText, HUlib_initTextLine, HUlib_keyInIText,
     HUlib_resetIText,
 };
+use crate::doom::i_timer::TICRATE;
 use crate::doom::m_controls::{key_message_refresh, key_multi_msg, key_multi_msgplayer};
 use crate::doom::m_misc::M_StringCopy;
 use crate::doom::v_video::patch_t;
@@ -37,7 +37,7 @@ pub const HU_MSGWIDTH: c_int = 64;
 pub const HU_MSGHEIGHT: c_int = 1;
 pub const HU_MSGTIMEOUT: c_int = 4 * TICRATE;
 
-const PU_STATIC: c_int = 1;
+use crate::doom::z_zone::PU_STATIC;
 const QUEUESIZE: usize = 128;
 
 const sfx_radio: c_int = 108;

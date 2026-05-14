@@ -8,8 +8,7 @@ use std::ffi::c_void;
 use std::os::raw::c_int;
 
 use crate::doom::p_tick::{thinker_t, P_AddThinker};
-
-const PU_LEVSPEC: c_int = 5;
+use crate::doom::z_zone::PU_LEVSPEC;
 const GLOWSPEED: c_int = 8;
 const STROBEBRIGHT: c_int = 5;
 const FASTDARK: c_int = 15;

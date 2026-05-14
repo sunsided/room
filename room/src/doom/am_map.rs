@@ -9,30 +9,30 @@ use std::ffi::{c_char, c_int, c_void};
 use std::os::raw::c_uint;
 use std::ptr;
 
-use crate::doom::c_ffi::{
-    mobj_t, sector_t, ANGLETOFINESHIFT, FRACBITS, FRACUNIT, MAPBLOCKSHIFT, MAPBLOCKSIZE,
-    MAPBLOCKUNITS, SCREENHEIGHT, SCREENWIDTH,
-};
+use crate::doom::c_ffi::{mobj_t, sector_t, MAPBLOCKSHIFT, MAPBLOCKSIZE, MAPBLOCKUNITS};
 use crate::doom::d_event::event_t;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS};
 use crate::doom::i_video::I_VideoBuffer;
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 use crate::doom::m_cheat::{cheatseq_t, cht_CheckCheat};
 use crate::doom::m_controls::{
     key_map_clearmark, key_map_east, key_map_follow, key_map_grid, key_map_mark, key_map_maxzoom,
     key_map_north, key_map_south, key_map_toggle, key_map_west, key_map_zoomin, key_map_zoomout,
 };
 use crate::doom::m_fixed::{fixed_t, FixedDiv, FixedMul};
+use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::p_setup::{
     bmaporgx, bmaporgy, lines, numlines, numsectors, numvertexes, sectors, vertexes,
 };
+use crate::doom::tables::ANGLETOFINESHIFT;
 use crate::doom::tables::{finecosine, finesine};
 use crate::doom::v_video::patch_t;
+
+use crate::doom::z_zone::PU_STATIC;
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const PU_STATIC: c_int = 1;
 
 pub const AM_NUMMARKPOINTS: usize = 10;
 pub const INITSCALEMTOF: c_int = (0.2 * FRACUNIT as f64) as c_int;
