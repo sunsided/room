@@ -9,7 +9,8 @@ use std::ffi::c_int;
 use std::ffi::c_uint;
 
 use crate::doom::c_ffi;
-use crate::doom::m_fixed::{FixedDiv, FixedMul};
+use crate::doom::m_fixed::{FixedDiv, FixedMul, FRACUNIT};
+use crate::doom::tables::{ANG45, ANG90, ANG180, ANGLETOFINESHIFT, FINEMASK};
 
 // ---------------------------------------------------------------------------
 // Fixed-point multiplication wrapping
@@ -52,8 +53,8 @@ fn fixedmul_min_min() {
 fn fixedmul_neg_one_one() {
     // -1.0 * 1.0 = -1.0  →  -65536 in 16.16
     assert_eq!(
-        FixedMul(-c_ffi::FRACUNIT, c_ffi::FRACUNIT),
-        -c_ffi::FRACUNIT
+        FixedMul(-FRACUNIT, FRACUNIT),
+        -FRACUNIT
     );
 }
 
@@ -61,8 +62,8 @@ fn fixedmul_neg_one_one() {
 fn fixedmul_neg_one_neg_one() {
     // -1.0 * -1.0 = 1.0  →  65536 in 16.16
     assert_eq!(
-        FixedMul(-c_ffi::FRACUNIT, -c_ffi::FRACUNIT),
-        c_ffi::FRACUNIT
+        FixedMul(-FRACUNIT, -FRACUNIT),
+        FRACUNIT
     );
 }
 
@@ -73,13 +74,13 @@ fn fixedmul_neg_one_neg_one() {
 #[test]
 fn fixeddiv_by_zero_positive_saturates_max() {
     assert_eq!(FixedDiv(1, 0), i32::MAX);
-    assert_eq!(FixedDiv(c_ffi::FRACUNIT, 0), i32::MAX);
+    assert_eq!(FixedDiv(FRACUNIT, 0), i32::MAX);
 }
 
 #[test]
 fn fixeddiv_by_zero_negative_saturates_min() {
     assert_eq!(FixedDiv(-1, 0), i32::MIN);
-    assert_eq!(FixedDiv(-c_ffi::FRACUNIT, 0), i32::MIN);
+    assert_eq!(FixedDiv(-FRACUNIT, 0), i32::MIN);
 }
 
 #[test]
@@ -102,49 +103,49 @@ fn fixeddiv_min_by_one() {
 
 #[test]
 fn angle_to_fine_shift_value() {
-    assert_eq!(c_ffi::ANGLETOFINESHIFT, 19);
+    assert_eq!(ANGLETOFINESHIFT, 19);
 }
 
 #[test]
 fn fine_mask_value() {
-    assert_eq!(c_ffi::FINEMASK, 8191);
+    assert_eq!(FINEMASK, 8191);
 }
 
 #[test]
 fn angle_wraps_at_360() {
     let angle: c_uint = 0xFFFFFFFF;
-    let fine = ((angle >> c_ffi::ANGLETOFINESHIFT) as c_int) & c_ffi::FINEMASK;
+    let fine = ((angle >> ANGLETOFINESHIFT) as c_int) & FINEMASK;
     assert_eq!(fine, 8191);
 }
 
 #[test]
 fn angle_zero_to_fine() {
     let angle: c_uint = 0;
-    let fine = ((angle >> c_ffi::ANGLETOFINESHIFT) as c_int) & c_ffi::FINEMASK;
+    let fine = ((angle >> ANGLETOFINESHIFT) as c_int) & FINEMASK;
     assert_eq!(fine, 0);
 }
 
 #[test]
 fn ang45_value() {
-    assert_eq!(c_ffi::ANG45, 1u32 << 29);
+    assert_eq!(ANG45, 1u32 << 29);
 }
 
 #[test]
 fn ang90_value() {
-    assert_eq!(c_ffi::ANG90, 1u32 << 30);
+    assert_eq!(ANG90, 1u32 << 30);
 }
 
 #[test]
 fn ang180_value() {
-    assert_eq!(c_ffi::ANG180, 1u32 << 31);
+    assert_eq!(ANG180, 1u32 << 31);
 }
 
 #[test]
 fn angle_addition_wraps() {
     let a: c_uint = 0xFFFFFFFF;
-    let b: c_uint = c_ffi::ANG45;
+    let b: c_uint = ANG45;
     let result = a.wrapping_add(b);
-    let fine = ((result >> c_ffi::ANGLETOFINESHIFT) as c_int) & c_ffi::FINEMASK;
+    let fine = ((result >> ANGLETOFINESHIFT) as c_int) & FINEMASK;
     // 0xFFFFFFFF + 0x20000000 = 0x1FFFFFFF (32-bit wrap)
     // 0x1FFFFFFF >> 19 = 0x3FF = 1023
     assert_eq!(fine, 1023);

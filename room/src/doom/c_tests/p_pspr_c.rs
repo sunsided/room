@@ -14,6 +14,7 @@
 #![allow(non_snake_case)]
 
 use crate::doom::c_ffi;
+use crate::doom::m_fixed::FRACUNIT;
 
 // ---------------------------------------------------------------------------
 // Weapon speed constants
@@ -24,7 +25,7 @@ use crate::doom::c_ffi;
 /// weapons).
 #[test]
 fn lowerspeed_is_6_fracunits() {
-    assert_eq!(c_ffi::LOWERSPEED, c_ffi::FRACUNIT * 6);
+    assert_eq!(c_ffi::LOWERSPEED, FRACUNIT * 6);
     assert_eq!(c_ffi::LOWERSPEED, 6 * 65536);
     assert_eq!(c_ffi::LOWERSPEED, 393216);
 }
@@ -33,7 +34,7 @@ fn lowerspeed_is_6_fracunits() {
 /// descends, producing symmetric raise/lower animations.
 #[test]
 fn raisespeed_is_6_fracunits() {
-    assert_eq!(c_ffi::RAISESPEED, c_ffi::FRACUNIT * 6);
+    assert_eq!(c_ffi::RAISESPEED, FRACUNIT * 6);
     assert_eq!(c_ffi::RAISESPEED, 6 * 65536);
     assert_eq!(c_ffi::RAISESPEED, 393216);
 }
@@ -53,7 +54,7 @@ fn lowerspeed_equals_raisespeed() {
 /// weapon-switch animations, `psy` starts at `WEAPONBOTTOM` and moves up.
 #[test]
 fn weaponbottom_is_128_fracunits() {
-    assert_eq!(c_ffi::WEAPONBOTTOM, 128 * c_ffi::FRACUNIT);
+    assert_eq!(c_ffi::WEAPONBOTTOM, 128 * FRACUNIT);
     assert_eq!(c_ffi::WEAPONBOTTOM, 128 * 65536);
     assert_eq!(c_ffi::WEAPONBOTTOM, 8388608);
 }
@@ -63,7 +64,7 @@ fn weaponbottom_is_128_fracunits() {
 /// normal gameplay.
 #[test]
 fn weapontop_is_32_fracunits() {
-    assert_eq!(c_ffi::WEAPONTOP, 32 * c_ffi::FRACUNIT);
+    assert_eq!(c_ffi::WEAPONTOP, 32 * FRACUNIT);
     assert_eq!(c_ffi::WEAPONTOP, 32 * 65536);
     assert_eq!(c_ffi::WEAPONTOP, 2097152);
 }
@@ -80,7 +81,7 @@ fn weaponbottom_is_4x_weapontop() {
 #[test]
 fn weapon_travel_range_is_96_fracunits() {
     let travel = c_ffi::WEAPONBOTTOM - c_ffi::WEAPONTOP;
-    assert_eq!(travel, 96 * c_ffi::FRACUNIT);
+    assert_eq!(travel, 96 * FRACUNIT);
 }
 
 // ---------------------------------------------------------------------------
@@ -124,8 +125,8 @@ fn swing_globals_are_c_int_width() {
 /// If `FRACBITS` or `FRACUNIT` ever changes, all these constants break.
 #[test]
 fn pspr_constants_are_whole_fracunit_multiples() {
-    assert_eq!(c_ffi::LOWERSPEED % c_ffi::FRACUNIT, 0, "LOWERSPEED");
-    assert_eq!(c_ffi::RAISESPEED % c_ffi::FRACUNIT, 0, "RAISESPEED");
-    assert_eq!(c_ffi::WEAPONBOTTOM % c_ffi::FRACUNIT, 0, "WEAPONBOTTOM");
-    assert_eq!(c_ffi::WEAPONTOP % c_ffi::FRACUNIT, 0, "WEAPONTOP");
+    assert_eq!(c_ffi::LOWERSPEED % FRACUNIT, 0, "LOWERSPEED");
+    assert_eq!(c_ffi::RAISESPEED % FRACUNIT, 0, "RAISESPEED");
+    assert_eq!(c_ffi::WEAPONBOTTOM % FRACUNIT, 0, "WEAPONBOTTOM");
+    assert_eq!(c_ffi::WEAPONTOP % FRACUNIT, 0, "WEAPONTOP");
 }

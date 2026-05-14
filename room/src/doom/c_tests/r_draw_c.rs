@@ -10,6 +10,7 @@
 use std::ffi::c_int;
 
 use crate::doom::c_ffi;
+use crate::doom::i_video::{SCREENWIDTH, SCREENHEIGHT};
 use crate::doom::c_tests::harness::C_GLOBAL_LOCK;
 
 // ---------------------------------------------------------------------------
@@ -18,12 +19,12 @@ use crate::doom::c_tests::harness::C_GLOBAL_LOCK;
 
 #[test]
 fn screenwidth_is_320() {
-    assert_eq!(c_ffi::SCREENWIDTH, 320);
+    assert_eq!(SCREENWIDTH, 320);
 }
 
 #[test]
 fn screenheight_is_200() {
-    assert_eq!(c_ffi::SCREENHEIGHT, 200);
+    assert_eq!(SCREENHEIGHT, 200);
 }
 
 #[test]
@@ -42,7 +43,7 @@ fn fuzztable_size() {
 
 #[test]
 fn fuzzoff_equals_screenwidth() {
-    assert_eq!(c_ffi::FUZZOFF, c_ffi::SCREENWIDTH);
+    assert_eq!(c_ffi::FUZZOFF, SCREENWIDTH);
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +128,7 @@ fn r_init_buffer_fullscreen_sets_zero_offsets() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
     // Full-screen view: width == SCREENWIDTH → both offsets must be 0.
     unsafe {
-        c_ffi::R_InitBuffer(c_ffi::SCREENWIDTH, 168);
+        c_ffi::R_InitBuffer(SCREENWIDTH, 168);
         assert_eq!(
             c_ffi::viewwindowx,
             0,
@@ -149,7 +150,7 @@ fn r_init_buffer_windowed_sets_correct_x_offset() {
         c_ffi::R_InitBuffer(256, 168);
         assert_eq!(
             c_ffi::viewwindowx,
-            (c_ffi::SCREENWIDTH - 256) >> 1,
+            (SCREENWIDTH - 256) >> 1,
             "viewwindowx mismatch for width=256"
         );
     }
@@ -161,7 +162,7 @@ fn r_init_buffer_windowed_height_sets_correct_y_offset() {
     // Small window (200×100): viewwindowy = (200 − 32 − 100) >> 1 = 34.
     unsafe {
         c_ffi::R_InitBuffer(200, 100);
-        let want_y = (c_ffi::SCREENHEIGHT - c_ffi::SBARHEIGHT - 100) >> 1;
+        let want_y = (SCREENHEIGHT - c_ffi::SBARHEIGHT - 100) >> 1;
         assert_eq!(
             c_ffi::viewwindowy,
             want_y,
@@ -176,7 +177,7 @@ fn r_init_buffer_various_widths_x_formula() {
     for &w in &[160_i32, 200, 256, 280, 304, 312] {
         unsafe {
             c_ffi::R_InitBuffer(w, 100);
-            let want = (c_ffi::SCREENWIDTH - w) >> 1;
+            let want = (SCREENWIDTH - w) >> 1;
             assert_eq!(
                 c_ffi::viewwindowx,
                 want,
@@ -192,7 +193,7 @@ fn r_init_buffer_various_heights_y_formula() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
     // For all heights with a sub-SCREENWIDTH width, verify the Y formula.
     let w = 256;
-    let playfield = c_ffi::SCREENHEIGHT - c_ffi::SBARHEIGHT; // 168
+    let playfield = SCREENHEIGHT - c_ffi::SBARHEIGHT; // 168
     for &h in &[50_i32, 80, 100, 120, 140, 160, 168] {
         unsafe {
             c_ffi::R_InitBuffer(w, h);

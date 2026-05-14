@@ -17,6 +17,7 @@
 
 use crate::doom::am_map;
 use crate::doom::c_ffi;
+use crate::doom::m_fixed::FRACUNIT;
 
 // ---------------------------------------------------------------------------
 // automapactive — whether the automap is currently open
@@ -88,7 +89,7 @@ fn m_zoomout_value() {
 #[test]
 fn zoomin_and_zoomout_are_near_reciprocals() {
     let product = (am_map::M_ZOOMIN as i64) * (am_map::M_ZOOMOUT as i64);
-    let fracunit_sq = (c_ffi::FRACUNIT as i64) * (c_ffi::FRACUNIT as i64);
+    let fracunit_sq = (FRACUNIT as i64) * (FRACUNIT as i64);
     // Within 1% of each other
     let diff = (product - fracunit_sq).unsigned_abs();
     assert!(
@@ -111,7 +112,7 @@ fn f_paninc_is_4() {
 #[test]
 fn zoomin_greater_than_fracunit() {
     assert!(
-        am_map::M_ZOOMIN > c_ffi::FRACUNIT,
+        am_map::M_ZOOMIN > FRACUNIT,
         "M_ZOOMIN should be > FRACUNIT to increase scale"
     );
 }
@@ -120,7 +121,7 @@ fn zoomin_greater_than_fracunit() {
 #[test]
 fn zoomout_less_than_fracunit() {
     assert!(
-        am_map::M_ZOOMOUT < c_ffi::FRACUNIT,
+        am_map::M_ZOOMOUT < FRACUNIT,
         "M_ZOOMOUT should be < FRACUNIT to decrease scale"
     );
 }
@@ -129,7 +130,7 @@ fn zoomout_less_than_fracunit() {
 #[test]
 fn initscalemtof_less_than_fracunit() {
     assert!(
-        am_map::INITSCALEMTOF < c_ffi::FRACUNIT,
+        am_map::INITSCALEMTOF < FRACUNIT,
         "INITSCALEMTOF ({}) should be < FRACUNIT — the map starts zoomed out",
         am_map::INITSCALEMTOF
     );

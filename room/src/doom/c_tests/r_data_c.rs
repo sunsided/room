@@ -11,7 +11,7 @@
 
 #![allow(non_snake_case)]
 
-use crate::doom::c_ffi;
+use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::r_data;
 
 // ---------------------------------------------------------------------------
@@ -63,11 +63,11 @@ fn r_data_globals_are_c_int_width() {
 /// `r_data.rs` as well as many other modules.  It must be exactly 16.
 #[test]
 fn fracbits_is_16() {
-    assert_eq!(c_ffi::FRACBITS, 16);
+    assert_eq!(FRACBITS, 16);
 }
 
 /// `FRACUNIT` = 1 << 16.  Encoded in the WAD and used in offset calculations.
 #[test]
 fn fracunit_is_65536() {
-    assert_eq!(c_ffi::FRACUNIT, 65536);
+    assert_eq!(FRACUNIT, 65536);
 }

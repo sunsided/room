@@ -13,6 +13,7 @@
 #![allow(non_snake_case)]
 
 use crate::doom::c_ffi;
+use crate::doom::i_video::SCREENHEIGHT;
 
 // ---------------------------------------------------------------------------
 // Episode / map count constants
@@ -74,7 +75,7 @@ fn sp_timex_is_16() {
 /// `SP_TIMEY = SCREENHEIGHT − 32 = 168` pixels from the top.
 #[test]
 fn sp_timey_is_screenheight_minus_32() {
-    assert_eq!(c_ffi::SP_TIMEY, c_ffi::SCREENHEIGHT - 32);
+    assert_eq!(c_ffi::SP_TIMEY, SCREENHEIGHT - 32);
     assert_eq!(c_ffi::SP_TIMEY, 168);
 }
 
