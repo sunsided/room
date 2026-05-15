@@ -107,11 +107,6 @@ pub struct MobjStub {
     pub angle: u32,
 }
 
-#[repr(C)]
-struct PlayerStub {
-    mo: *mut MobjStub,
-}
-
 // doomstat.rs
 use crate::doom::doomstat::gamemode;
 

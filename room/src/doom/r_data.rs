@@ -797,12 +797,7 @@ pub unsafe extern "C" fn R_PrecacheLevel() {
 
     let mut th = thinkercap.next;
     while !std::ptr::eq(th, std::ptr::addr_of!(thinkercap)) {
-        if (*th).function.acp1
-            == Some(std::mem::transmute::<
-                unsafe extern "C" fn(*mut crate::doom::p_telept::mobj_t),
-                unsafe extern "C" fn(*mut c_void),
-            >(P_MobjThinker))
-        {
+        if (*th).function.acp1.map(|f| f as usize) == Some(P_MobjThinker as usize) {
             let mobj = th as *mut mobj_t;
             *spritepresent.add((*mobj).sprite as usize) = 1;
         }

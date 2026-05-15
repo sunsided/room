@@ -56,9 +56,7 @@ const PST_REBORN: c_int = 2;
 // Colormap index
 const INVERSECOLORMAP: c_int = 32;
 
-/// Size of state_t on x86_64 Linux (sprite+frame+tics=12 + 4 pad + action=8
-/// + nextstate+misc1+misc2=12 + 4 pad = 40 bytes).
-const STATE_T_SIZEOF: usize = 40;
+
 
 /// Whether the player is on ground (boolean → c_int for 4-byte ABI).
 /// Read by not-yet-ported C modules (e.g. p_pspr.c).
@@ -168,7 +166,7 @@ pub extern "C" fn P_MovePlayer(player: *mut PlayerT) {
         }
 
         // C: player->mo->state == &states[S_PLAY]
-        let p_play = (states.as_ptr() as *const u8).add(S_PLAY as usize * STATE_T_SIZEOF);
+        let p_play = std::ptr::addr_of!(states[S_PLAY as usize]) as *const u8;
         if (cmd.forwardmove != 0 || cmd.sidemove != 0) && (*mo).state as *const u8 == p_play {
             P_SetMobjState(mo, S_PLAY_RUN1);
         }
