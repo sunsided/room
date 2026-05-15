@@ -7,15 +7,19 @@
 use std::ffi::{c_char, c_void};
 use std::os::raw::c_int;
 
+use crate::doom::c_ffi as cffi;
 use crate::doom::c_ffi::mobj_t;
 use crate::doom::d_player::PlayerT;
 use crate::doom::i_timer::TICRATE;
 use crate::doom::m_fixed::{fixed_t, FRACUNIT};
-use crate::doom::p_floor::side_t;
+use crate::doom::p_floor::T_MovePlane;
 use crate::doom::p_lights::{line_t, sector_t};
-use crate::doom::p_plats::plat_t;
+use crate::doom::p_plats::{plat_t, T_PlatRaise};
+use crate::doom::p_setup::{sectors, sides};
+use crate::doom::p_spec::{P_FindLowestCeilingSurrounding, P_FindSectorFromLineTag};
 use crate::doom::p_tick::{thinker_t, P_AddThinker, P_RemoveThinker};
-use crate::doom::z_zone::PU_LEVSPEC;
+use crate::doom::s_sound::S_StartSound;
+use crate::doom::z_zone::{PU_LEVSPEC, Z_Malloc};
 
 const VDOORSPEED: fixed_t = FRACUNIT * 2;
 const VDOORWAIT: c_int = 150;
@@ -84,23 +88,6 @@ mod layout_checks {
     const _: () = assert!(std::mem::offset_of!(vldoor_t, topcountdown) == 56);
 }
 
-extern "C" {
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn P_FindSectorFromLineTag(line: *mut line_t, start: c_int) -> c_int;
-    fn P_FindLowestCeilingSurrounding(sec: *mut sector_t) -> fixed_t;
-    fn S_StartSound(origin: *mut c_void, sfxid: c_int);
-    fn T_MovePlane(
-        sector: *mut sector_t,
-        speed: fixed_t,
-        dest: fixed_t,
-        crush: c_int,
-        floorOrCeiling: c_int,
-        direction: c_int,
-    ) -> c_int;
-    fn T_PlatRaise(plat: *mut plat_t);
-    static mut sectors: *mut sector_t;
-    static mut sides: *mut side_t;
-}
 
 #[no_mangle]
 pub unsafe extern "C" fn T_VerticalDoor(door: *mut vldoor_t) {
@@ -274,7 +261,7 @@ pub unsafe extern "C" fn EV_DoDoor(line: *mut line_t, r#type: c_int) -> c_int {
     let mut rtn: c_int = 0;
 
     while {
-        secnum = P_FindSectorFromLineTag(line, secnum);
+        secnum = P_FindSectorFromLineTag(line as *mut cffi::line_t, secnum);
         secnum
     } >= 0
     {
@@ -296,7 +283,7 @@ pub unsafe extern "C" fn EV_DoDoor(line: *mut line_t, r#type: c_int) -> c_int {
             unsafe extern "C" fn(*mut vldoor_t),
             unsafe extern "C" fn(*mut c_void),
         >(T_VerticalDoor));
-        (*door).sector = sec;
+        (*door).sector = sec as *mut sector_t;
         (*door).r#type = r#type;
         (*door).topwait = VDOORWAIT;
         (*door).speed = VDOORSPEED;
@@ -469,7 +456,7 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
         unsafe extern "C" fn(*mut vldoor_t),
         unsafe extern "C" fn(*mut c_void),
     >(T_VerticalDoor));
-    (*door).sector = sec;
+    (*door).sector = sec as *mut sector_t;
     (*door).direction = 1;
     (*door).speed = VDOORSPEED;
     (*door).topwait = VDOORWAIT;
@@ -544,7 +531,7 @@ pub unsafe extern "C" fn P_SpawnDoorRaiseIn5Mins(sec: *mut sector_t, _secnum: c_
     (*door).direction = 2;
     (*door).r#type = vld_raiseIn5Mins;
     (*door).speed = VDOORSPEED;
-    (*door).topheight = P_FindLowestCeilingSurrounding(sec);
+    (*door).topheight = P_FindLowestCeilingSurrounding(sec as *mut cffi::sector_t);
     (*door).topheight -= 4 * FRACUNIT;
     (*door).topwait = VDOORWAIT;
     (*door).topcountdown = 5 * 60 * TICRATE;
