@@ -979,6 +979,7 @@ unsafe fn saveg_write_glow_t(str: *const glow_t) {
 // ---------------------------------------------------------------------------
 
 fn fill_save_filename(buf: &mut [u8], dir: &str, slot: c_int) -> usize {
+    assert!(!buf.is_empty(), "fill_save_filename: buffer must have at least 1 byte");
     let full = format!("{}{}{}.dsg\0", dir, SAVEGAMENAME, slot);
     let bytes = full.as_bytes();
     let len = std::cmp::min(bytes.len(), buf.len() - 1);
@@ -1020,9 +1021,12 @@ pub unsafe extern "C" fn P_SaveGameFile(slot: c_int) -> *mut c_char {
     let alloc_size = dir_len + 32;
 
     if SAVE_FILENAME.is_null() {
-        SAVE_FILENAME =
-            std::alloc::alloc(std::alloc::Layout::from_size_align(alloc_size, 1).unwrap())
-                as *mut c_char;
+        let layout = std::alloc::Layout::from_size_align(alloc_size, 1).unwrap();
+        let ptr = std::alloc::alloc(layout);
+        if ptr.is_null() {
+            std::alloc::handle_alloc_error(layout);
+        }
+        SAVE_FILENAME = ptr as *mut c_char;
     }
 
     let dir_str = std::ffi::CStr::from_ptr(savegamedir).to_str().unwrap();
