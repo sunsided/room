@@ -6,13 +6,9 @@ use libc::printf;
 
 use crate::types::Boolean;
 
-extern "C" {
-    fn M_CheckParmWithArgs(check: *mut c_char, num_args: c_int) -> c_int;
-    static mut myargc: c_int;
-    static mut myargv: *mut *mut c_char;
-    fn D_TryFindWADByName(name: *mut c_char) -> *mut c_char;
-    fn W_AddFile(filename: *mut c_char) -> *mut crate::doom::w_file::wad_file_t;
-}
+use crate::doom::m_argv::{myargc, myargv, M_CheckParmWithArgs};
+use crate::doom::d_iwad::D_TryFindWADByName;
+use crate::doom::w_wad::W_AddFile;
 
 #[no_mangle]
 pub extern "C" fn W_ParseCommandLine() -> Boolean {
