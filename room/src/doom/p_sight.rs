@@ -129,17 +129,11 @@ pub static mut t2y: c_int = 0;
 #[no_mangle]
 pub static mut sightcounts: [c_int; 2] = [0, 0];
 
-extern "C" {
-    static mut numsubsectors: c_int;
-    static mut subsectors: *mut subsector_t;
-    static mut segs: *mut seg_t;
-    static mut validcount: c_int;
-    static mut nodes: *mut node_t;
-    static mut numnodes: c_int;
-    static mut rejectmatrix: *mut u8;
-    static mut numsectors: c_int;
-    static mut sectors: *mut sector_t;
-}
+use crate::doom::p_setup::{
+    numsubsectors, subsectors as p_setup_subsectors, segs as p_setup_segs,
+    nodes as p_setup_nodes, numnodes, rejectmatrix, numsectors, sectors as p_setup_sectors,
+};
+use crate::doom::r_main::validcount;
 // Reuse the authoritative mobj_t mirror from p_telept.rs to guarantee
 // field offsets match the C layout (x=24, subsector=88, height=108).
 pub use crate::doom::p_telept::mobj_t;
@@ -209,10 +203,10 @@ fn P_CrossSubsector(num: c_int) -> bool {
             );
         }
 
-        let sub = &*subsectors.add(num as usize);
+        let sub = &*(p_setup_subsectors as *mut subsector_t).add(num as usize);
 
         let mut count = sub.numlines as c_int;
-        let mut seg_ptr = segs.add(sub.firstline as usize);
+        let mut seg_ptr = (p_setup_segs as *mut seg_t).add(sub.firstline as usize);
 
         while count > 0 {
             let seg = &*seg_ptr;
@@ -347,7 +341,7 @@ fn P_CrossBSPNode(bspnum: c_int) -> bool {
             }
         }
 
-        let bsp = &*nodes.add(bspnum as usize);
+        let bsp = &*(p_setup_nodes as *mut node_t).add(bspnum as usize);
         let bsp_div = node_as_divline(bsp);
 
         let side = P_DivlineSide(strace.x, strace.y, &bsp_div);
@@ -382,9 +376,9 @@ pub extern "C" fn P_CheckSight(t1: *mut mobj_t, t2: *mut mobj_t) -> c_int {
         // mobj_t (from p_telept) references a different sector_t type than
         // the one declared here. Sector size is the same in both.
         let sec_size = std::mem::size_of::<sector_t>() as isize;
-        let s1 = (((*(*t1).subsector).sector as *const u8).offset_from(sectors as *const u8)
+        let s1 = (((*(*t1).subsector).sector as *const u8).offset_from(p_setup_sectors as *const u8)
             / sec_size) as c_int;
-        let s2 = (((*(*t2).subsector).sector as *const u8).offset_from(sectors as *const u8)
+        let s2 = (((*(*t2).subsector).sector as *const u8).offset_from(p_setup_sectors as *const u8)
             / sec_size) as c_int;
         let pnum = s1 * numsectors + s2;
         let bytenum = pnum >> 3;
