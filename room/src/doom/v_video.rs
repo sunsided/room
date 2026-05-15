@@ -7,8 +7,14 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
-use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
-use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
+use crate::doom::i_video::{
+    I_GetPaletteIndex, I_VideoBuffer, SCREENHEIGHT, SCREENWIDTH,
+    mouse_acceleration, mouse_threshold, usemouse,
+};
+use crate::doom::m_bbox::M_AddToBox;
+use crate::doom::m_misc::{M_FileExists, M_WriteFile};
+use crate::doom::w_wad::W_CacheLumpName;
+use crate::doom::z_zone::{PU_CACHE, PU_STATIC, Z_Free, Z_Malloc};
 use crate::i_error;
 
 #[repr(C, packed)]
@@ -66,21 +72,6 @@ pub static mut dirtybox: [c_int; 4] = [0; 4];
 static mut dest_screen: *mut u8 = ptr::null_mut();
 static mut patchclip_callback: vpatchclipfunc_t = None;
 
-extern "C" {
-    fn M_AddToBox(bbox: *mut c_int, x: c_int, y: c_int);
-    fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void;
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn Z_Free(ptr: *mut c_void);
-    fn M_WriteFile(name: *mut c_char, source: *mut c_void, length: c_int) -> c_int;
-    fn M_FileExists(file: *mut c_char) -> c_int;
-
-    static mut I_VideoBuffer: *mut u8;
-    fn I_GetPaletteIndex(r: c_int, g: c_int, b: c_int) -> c_int;
-
-    static mut usemouse: c_int;
-    static mut mouse_acceleration: f32;
-    static mut mouse_threshold: c_int;
-}
 
 #[no_mangle]
 pub extern "C" fn V_MarkRect(x: c_int, y: c_int, width: c_int, height: c_int) {
@@ -382,14 +373,14 @@ pub extern "C" fn V_DrawShadowedPatch(x: c_int, y: c_int, patch: *mut patch_t) {
 #[no_mangle]
 pub extern "C" fn V_LoadTintTable() {
     unsafe {
-        tinttable = W_CacheLumpName(b"TINTTAB\0".as_ptr() as *const c_char, PU_STATIC) as *mut u8;
+        tinttable = W_CacheLumpName(b"TINTTAB\0".as_ptr() as *mut c_char, PU_STATIC) as *mut u8;
     }
 }
 
 #[no_mangle]
 pub extern "C" fn V_LoadXlaTable() {
     unsafe {
-        xlatab = W_CacheLumpName(b"XLATAB\0".as_ptr() as *const c_char, PU_STATIC) as *mut u8;
+        xlatab = W_CacheLumpName(b"XLATAB\0".as_ptr() as *mut c_char, PU_STATIC) as *mut u8;
     }
 }
 
@@ -591,7 +582,7 @@ pub extern "C" fn V_ScreenShot(format: *mut c_char) {
             I_VideoBuffer,
             SCREENWIDTH,
             SCREENHEIGHT,
-            W_CacheLumpName(b"PLAYPAL\0".as_ptr() as *const c_char, PU_CACHE) as *mut u8,
+            W_CacheLumpName(b"PLAYPAL\0".as_ptr() as *mut c_char, PU_CACHE) as *mut u8,
         );
     }
 }
