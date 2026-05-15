@@ -1,6 +1,6 @@
 #![allow(non_upper_case_globals, non_snake_case)]
 
-use std::ffi::{c_char, c_int, c_void};
+use std::ffi::{c_char, c_int, c_uint, c_void};
 
 use crate::types::Boolean;
 
@@ -112,40 +112,36 @@ struct PlayerStub {
     mo: *mut MobjStub,
 }
 
-extern "C" {
-    static mut gamemode: c_int;
-    static mut gameepisode: c_int;
-    static mut gamemap: c_int;
-    static mut consoleplayer: c_int;
-    static mut players: [PlayerStub; MAXPLAYERS];
-    static mut snd_musicdevice: c_int;
+// doomstat.rs
+use crate::doom::doomstat::gamemode;
 
-    fn I_PrecacheSounds(sounds: *mut SfxInfo, num_sounds: c_int);
-    fn I_ShutdownSound();
-    fn I_ShutdownMusic();
-    fn I_SoundIsPlaying(handle: c_int) -> c_int;
-    fn I_StopSound(handle: c_int);
-    fn I_GetSfxLumpNum(sfxinfo: *mut SfxInfo) -> c_int;
-    fn I_StartSound(sfxinfo: *mut SfxInfo, channel: c_int, vol: c_int, sep: c_int) -> c_int;
-    fn I_UpdateSound();
-    fn I_UpdateSoundParams(handle: c_int, vol: c_int, sep: c_int);
-    fn I_SetMusicVolume(volume: c_int);
-    fn I_PauseSong();
-    fn I_ResumeSong();
-    fn I_RegisterSong(data: *mut c_void, len: c_int) -> *mut c_void;
-    fn I_UnRegisterSong(handle: *mut c_void);
-    fn I_PlaySong(handle: *mut c_void, looping: c_int);
-    fn I_StopSong();
-    fn I_MusicIsPlaying() -> c_int;
-    fn I_AtExit(func: extern "C" fn(), run_on_error: Boolean);
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn R_PointToAngle2(x1: c_int, y1: c_int, x2: c_int, y2: c_int) -> u32;
-    fn FixedMul(a: c_int, b: c_int) -> c_int;
-    fn W_GetNumForName(name: *const c_char) -> c_int;
-    fn W_CacheLumpNum(num: c_int, tag: c_int) -> *mut c_void;
-    fn W_ReleaseLumpNum(num: c_int);
-    fn W_LumpLength(num: c_int) -> c_int;
-}
+// g_game.rs
+use crate::doom::g_game::{consoleplayer, gameepisode, gamemap, players};
+
+// i_sound.rs
+use crate::doom::i_sound::{
+    I_GetSfxLumpNum, I_MusicIsPlaying, I_PauseSong, I_PlaySong, I_PrecacheSounds, I_RegisterSong,
+    I_ResumeSong, I_ShutdownMusic, I_ShutdownSound, I_SoundIsPlaying, I_StartSound, I_StopSong,
+    I_StopSound, I_UnRegisterSong, I_UpdateSound, I_UpdateSoundParams, I_SetMusicVolume,
+};
+
+// i_system.rs
+use crate::doom::i_system::I_AtExit;
+
+// i_sound.rs
+use crate::doom::i_sound::snd_musicdevice;
+
+// z_zone.rs
+use crate::doom::z_zone::Z_Malloc;
+
+// r_main.rs
+use crate::doom::r_main::R_PointToAngle2;
+
+// m_fixed.rs
+use crate::doom::m_fixed::FixedMul;
+
+// w_wad.rs
+use crate::doom::w_wad::{W_CacheLumpNum, W_GetNumForName, W_LumpLength, W_ReleaseLumpNum};
 
 use crate::c_write;
 
@@ -176,7 +172,7 @@ pub extern "C" fn S_Init(sfx_volume: c_int, music_volume: c_int) {
     unsafe {
         S_InitSfxLinks();
 
-        I_PrecacheSounds(S_sfx.as_mut_ptr(), NUMSFX as c_int);
+        I_PrecacheSounds(S_sfx.as_mut_ptr() as *mut c_void, NUMSFX as c_int);
 
         S_SetSfxVolume(sfx_volume);
         S_SetMusicVolume(music_volume);
@@ -389,8 +385,9 @@ pub extern "C" fn S_StartSound(origin_p: *mut c_void, sfx_id: c_int) {
 
         let mut sep: c_int = NORM_SEP;
 
-        if !origin.is_null() && origin != (*players.as_ptr().offset(consoleplayer as isize)).mo {
-            let listener = (*players.as_ptr().offset(consoleplayer as isize)).mo;
+        let player_mo = (*players.as_ptr().offset(consoleplayer as isize)).mo as *mut MobjStub;
+        if !origin.is_null() && origin != player_mo {
+            let listener = player_mo;
             let rc = S_AdjustSoundParams(listener, origin, &mut volume, &mut sep);
 
             if (*origin).x == (*listener).x && (*origin).y == (*listener).y {
@@ -416,10 +413,11 @@ pub extern "C" fn S_StartSound(origin_p: *mut c_void, sfx_id: c_int) {
         sfx.usefulness += 1;
 
         if sfx.lumpnum < 0 {
-            sfx.lumpnum = I_GetSfxLumpNum(sfx);
+            sfx.lumpnum = I_GetSfxLumpNum(sfx as *mut SfxInfo as *mut c_void);
         }
 
-        (*channels.offset(cnum as isize)).handle = I_StartSound(sfx, cnum, volume, sep);
+        (*channels.offset(cnum as isize)).handle =
+            I_StartSound(sfx as *mut SfxInfo as *mut c_void, cnum, volume, sep);
     }
 }
 
@@ -539,12 +537,12 @@ pub extern "C" fn S_ChangeMusic(musicnum: c_int, looping: c_int) {
             let mut namebuf: [c_char; 9] = [0; 9];
             let name_str = std::ffi::CStr::from_ptr(music.name).to_string_lossy();
             c_write!(namebuf, "d_{}", name_str);
-            music.lumpnum = W_GetNumForName(namebuf.as_ptr());
+            music.lumpnum = W_GetNumForName(namebuf.as_ptr() as *mut c_char);
         }
 
         music.data = W_CacheLumpNum(music.lumpnum, PU_STATIC);
 
-        let len = W_LumpLength(music.lumpnum);
+        let len = W_LumpLength(music.lumpnum as c_uint);
         let handle = I_RegisterSong(music.data, len);
         music.handle = handle;
         I_PlaySong(handle, looping);
