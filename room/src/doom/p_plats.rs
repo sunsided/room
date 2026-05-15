@@ -7,12 +7,20 @@
 use std::ffi::c_void;
 use std::os::raw::c_int;
 
+use crate::doom::c_ffi as cffi;
 use crate::doom::i_timer::TICRATE;
 use crate::doom::m_fixed::{fixed_t, FRACUNIT};
-use crate::doom::p_floor::side_t;
+use crate::doom::m_random::P_Random;
+use crate::doom::p_floor::{side_t, T_MovePlane};
 use crate::doom::p_lights::{line_t, sector_t};
-use crate::doom::p_tick::{thinker_t, P_AddThinker, P_RemoveThinker};
-use crate::doom::z_zone::PU_LEVSPEC;
+use crate::doom::p_setup::{sectors, sides};
+use crate::doom::p_spec::{
+    P_FindHighestFloorSurrounding, P_FindLowestFloorSurrounding, P_FindNextHighestFloor,
+    P_FindSectorFromLineTag,
+};
+use crate::doom::p_tick::{leveltime, thinker_t, P_AddThinker, P_RemoveThinker};
+use crate::doom::s_sound::S_StartSound;
+use crate::doom::z_zone::{PU_LEVSPEC, Z_Malloc};
 use crate::i_error;
 
 const PLATSPEED: fixed_t = FRACUNIT;
@@ -80,26 +88,6 @@ mod layout_checks {
 #[no_mangle]
 pub static mut activeplats: [*mut plat_t; MAXPLATS] = [std::ptr::null_mut(); MAXPLATS];
 
-extern "C" {
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn P_FindSectorFromLineTag(line: *mut line_t, start: c_int) -> c_int;
-    fn P_FindLowestFloorSurrounding(sec: *mut sector_t) -> fixed_t;
-    fn P_FindHighestFloorSurrounding(sec: *mut sector_t) -> fixed_t;
-    fn P_FindNextHighestFloor(sec: *mut sector_t, currentheight: fixed_t) -> fixed_t;
-    fn S_StartSound(origin: *mut c_void, sfxid: c_int);
-    fn T_MovePlane(
-        sector: *mut sector_t,
-        speed: fixed_t,
-        dest: fixed_t,
-        crush: c_int,
-        floorOrCeiling: c_int,
-        direction: c_int,
-    ) -> c_int;
-    fn P_Random() -> c_int;
-    static mut sectors: *mut sector_t;
-    static mut sides: *mut side_t;
-    static mut leveltime: c_int;
-}
 
 #[no_mangle]
 pub unsafe extern "C" fn T_PlatRaise(plat: *mut plat_t) {
@@ -194,7 +182,7 @@ pub unsafe extern "C" fn EV_DoPlat(line: *mut line_t, plattype: c_int, amount: c
     }
 
     while {
-        secnum = P_FindSectorFromLineTag(line, secnum);
+        secnum = P_FindSectorFromLineTag(line as *mut cffi::line_t, secnum);
         secnum
     } >= 0
     {
@@ -213,7 +201,7 @@ pub unsafe extern "C" fn EV_DoPlat(line: *mut line_t, plattype: c_int, amount: c
         P_AddThinker(&mut (*plat).thinker);
 
         (*plat).r#type = plattype;
-        (*plat).sector = sec;
+        (*plat).sector = sec as *mut sector_t;
         (*plat).sector.as_mut().unwrap().specialdata = plat as *mut c_void;
         (*plat).thinker.function.acp1 = Some(core::mem::transmute::<
             unsafe extern "C" fn(*mut plat_t),
