@@ -39,7 +39,6 @@ const HUSTR_KEYRED: c_char = b'r' as c_char;
 type gamestate_t = c_int;
 type gameaction_t = c_int;
 type skill_t = c_int;
-type boolean = Boolean;
 type byte = u8;
 
 const GS_LEVEL: gamestate_t = 0;
@@ -291,8 +290,8 @@ extern "C" {
     fn G_RecordDemo(name: *mut c_char);
     fn G_BeginRecording();
     fn G_TimeDemo(name: *mut c_char);
-    fn G_CheckDemoStatus() -> boolean;
-    fn G_Responder(ev: *mut event_t) -> boolean;
+    fn G_CheckDemoStatus() -> Boolean;
+    fn G_Responder(ev: *mut event_t) -> Boolean;
     fn G_VanillaVersionCode() -> c_int;
 
     // Globals from g_game.c (still C):
@@ -353,7 +352,7 @@ extern "C" {
     fn I_GetTime() -> c_int;
     fn I_Sleep(ms: c_int);
     fn I_InitTimer();
-    fn I_InitSound(use_sfx_prefix: boolean);
+    fn I_InitSound(use_sfx_prefix: Boolean);
     fn I_InitMusic();
     fn I_BindSoundVariables();
     fn I_BindVideoVariables();
@@ -362,7 +361,7 @@ extern "C" {
     fn I_InitJoystick();
     fn I_Error(msg: *const c_char);
     fn I_ErrorV(msg: *const c_char);
-    fn I_AtExit(func: extern "C" fn(), run_if_error: boolean);
+    fn I_AtExit(func: extern "C" fn(), run_if_error: Boolean);
     fn I_PrintStartupBanner(gamedescription: *mut c_char);
     fn I_PrintBanner(text: *mut c_char);
     fn I_PrintDivider();
@@ -373,8 +372,8 @@ extern "C" {
     fn I_FinishUpdate();
     fn I_SetWindowTitle(title: *mut c_char);
     fn I_CheckIsScreensaver();
-    fn I_SetGrabMouseCallback(func: extern "C" fn() -> boolean);
-    fn I_DisplayFPSDots(dots_on: boolean);
+    fn I_SetGrabMouseCallback(func: extern "C" fn() -> Boolean);
+    fn I_DisplayFPSDots(dots_on: Boolean);
     fn I_EnableLoadingDisk();
 
     // From remaining C modules:
@@ -387,7 +386,7 @@ extern "C" {
     fn D_SaveGameIWADName(gamemission: c_int) -> *mut c_char;
     fn Z_Init();
     fn Z_Malloc(size: c_int, tag: c_int, ptr: *mut c_void) -> *mut c_void;
-    fn W_ParseCommandLine() -> boolean;
+    fn W_ParseCommandLine() -> Boolean;
     static mut lumpinfo: *mut c_void;
     static mut numlumps: c_uint;
     fn W_AddFile(filename: *mut c_char) -> *mut c_void;
@@ -428,9 +427,9 @@ extern "C" {
     fn M_BindMenuControls();
     fn M_BindChatControls(num_players: c_uint);
     fn M_ApplyPlatformDefaults();
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> boolean;
-    fn M_StringEndsWith(s: *const c_char, suffix: *const c_char) -> boolean;
-    fn M_Responder(ev: *mut event_t) -> boolean;
+    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean;
+    fn M_StringEndsWith(s: *const c_char, suffix: *const c_char) -> Boolean;
+    fn M_Responder(ev: *mut event_t) -> Boolean;
     fn M_Drawer();
     fn M_Init();
     fn P_SaveGameFile(slot: c_int) -> *mut c_char;
@@ -440,7 +439,7 @@ extern "C" {
     static mut chat_macros: [*mut c_char; 10];
     static mut key_multi_msgplayer: [c_int; 8];
     fn WI_Drawer();
-    fn ST_Drawer(fullscreen: boolean, refresh: boolean);
+    fn ST_Drawer(fullscreen: Boolean, refresh: Boolean);
     fn ST_Init();
     fn AM_Drawer();
     fn P_Init();
@@ -820,7 +819,7 @@ pub extern "C" fn D_BindVariables() {
 // D_GrabMouseCallback
 // ---------------------------------------------------------------------------
 
-extern "C" fn D_GrabMouseCallback() -> boolean {
+extern "C" fn D_GrabMouseCallback() -> Boolean {
     unsafe {
         // Drone players don't need mouse focus
         if drone != 0 {

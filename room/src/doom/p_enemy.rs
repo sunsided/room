@@ -9,7 +9,6 @@ use std::os::raw::{c_int, c_uint};
 
 use crate::doom::p_tick::actionf_t;
 use crate::types::Boolean;
-type boolean = Boolean;
 type size_t = usize;
 type angle_t = c_uint;
 type statenum_t = c_int;
@@ -221,7 +220,7 @@ pub unsafe extern "C" fn P_NoiseAlert(mut target: *mut mobj_t, mut emmiter: *mut
     P_RecursiveSound((*(*emmiter).subsector).sector as *mut sector_t, 0 as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn P_CheckMeleeRange(mut actor: *mut mobj_t) -> boolean {
+pub unsafe extern "C" fn P_CheckMeleeRange(mut actor: *mut mobj_t) -> Boolean {
     let mut pl: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
     let mut dist: fixed_t = 0;
     if (*actor).target.is_null() {
@@ -238,7 +237,7 @@ pub unsafe extern "C" fn P_CheckMeleeRange(mut actor: *mut mobj_t) -> boolean {
     return Boolean::TRUE;
 }
 #[no_mangle]
-pub unsafe extern "C" fn P_CheckMissileRange(mut actor: *mut mobj_t) -> boolean {
+pub unsafe extern "C" fn P_CheckMissileRange(mut actor: *mut mobj_t) -> Boolean {
     let mut dist: fixed_t = 0;
     if P_CheckSight(actor, (*actor).target) == 0 {
         return Boolean::FALSE;
@@ -310,12 +309,12 @@ pub static mut yspeed: [fixed_t; 8] = [
     -47000 as c_int,
 ];
 #[no_mangle]
-pub unsafe extern "C" fn P_Move(mut actor: *mut mobj_t) -> boolean {
+pub unsafe extern "C" fn P_Move(mut actor: *mut mobj_t) -> Boolean {
     let mut tryx: fixed_t = 0;
     let mut tryy: fixed_t = 0;
     let mut ld: *mut line_t = std::ptr::null_mut::<line_t>();
-    let mut try_ok: boolean = Boolean::FALSE;
-    let mut good: boolean = Boolean::FALSE;
+    let mut try_ok: Boolean = Boolean::FALSE;
+    let mut good: Boolean = Boolean::FALSE;
     if (*actor).movedir == DI_NODIR as c_int {
         return Boolean::FALSE;
     }
@@ -368,7 +367,7 @@ pub unsafe extern "C" fn P_Move(mut actor: *mut mobj_t) -> boolean {
     return Boolean::TRUE;
 }
 #[no_mangle]
-pub unsafe extern "C" fn P_TryWalk(mut actor: *mut mobj_t) -> boolean {
+pub unsafe extern "C" fn P_TryWalk(mut actor: *mut mobj_t) -> Boolean {
     if P_Move(actor).is_false() {
         return Boolean::FALSE;
     }
@@ -476,8 +475,8 @@ pub unsafe extern "C" fn P_NewChaseDir(mut actor: *mut mobj_t) {
 #[no_mangle]
 pub unsafe extern "C" fn P_LookForPlayers(
     mut actor: *mut mobj_t,
-    mut allaround: boolean,
-) -> boolean {
+    mut allaround: Boolean,
+) -> Boolean {
     let mut c: c_int = 0;
     let mut stop: c_int = 0;
     let mut player: *mut PlayerT = std::ptr::null_mut::<PlayerT>();
@@ -1001,9 +1000,9 @@ pub static mut viletryx: fixed_t = 0;
 #[no_mangle]
 pub static mut viletryy: fixed_t = 0;
 #[no_mangle]
-pub unsafe extern "C" fn PIT_VileCheck(mut thing: *mut mobj_t) -> boolean {
+pub unsafe extern "C" fn PIT_VileCheck(mut thing: *mut mobj_t) -> Boolean {
     let mut maxdist: c_int = 0;
-    let mut check: boolean = Boolean::FALSE;
+    let mut check: Boolean = Boolean::FALSE;
     if (*thing).flags & MF_CORPSE as c_int == 0 {
         return Boolean::TRUE;
     }
@@ -1069,7 +1068,7 @@ pub unsafe extern "C" fn A_VileChase(mut actor: *mut mobj_t) {
                     bx,
                     by,
                     Some(core::mem::transmute::<
-                        unsafe extern "C" fn(*mut mobj_t) -> boolean,
+                        unsafe extern "C" fn(*mut mobj_t) -> Boolean,
                         unsafe extern "C" fn(*mut CffiMobj) -> c_uint,
                     >(PIT_VileCheck)),
                 ) == 0
@@ -1391,7 +1390,7 @@ pub unsafe extern "C" fn A_Explode(mut thingy: *mut mobj_t) {
         128 as c_int,
     );
 }
-unsafe extern "C" fn CheckBossEnd(mut motype: mobjtype_t) -> boolean {
+unsafe extern "C" fn CheckBossEnd(mut motype: mobjtype_t) -> Boolean {
     if (gameversion as c_uint) < exe_ultimate as c_int as c_uint {
         if gamemap != 8 as c_int {
             return Boolean::FALSE;
