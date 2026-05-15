@@ -9,9 +9,12 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
-// const PU_STATIC: c_int = 1;
-const PU_FREE: c_int = 4;
-const PU_PURGELEVEL: c_int = 7;
+pub const PU_STATIC: c_int = 1;
+pub const PU_FREE: c_int = 4;
+pub const PU_LEVEL: c_int = 5;
+pub const PU_LEVSPEC: c_int = 6;
+pub const PU_PURGELEVEL: c_int = 7;
+pub const PU_CACHE: c_int = 8;
 
 const ZONEID: u32 = 0x1d4a11;
 const MINFRAGMENT: c_int = 64;

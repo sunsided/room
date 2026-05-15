@@ -3,3 +3,6 @@
 *.log
 *.savegame
 *.json
+session-*.md
+*.bak
+

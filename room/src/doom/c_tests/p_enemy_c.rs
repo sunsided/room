@@ -16,6 +16,8 @@
 use std::ffi::c_int;
 
 use crate::doom::c_ffi;
+use crate::doom::m_fixed::FRACUNIT;
+use crate::doom::tables::ANG90;
 
 // ---------------------------------------------------------------------------
 // xspeed / yspeed — 8-directional movement velocity tables
@@ -28,11 +30,11 @@ use crate::doom::c_ffi;
 #[test]
 fn xspeed_exact_values() {
     let expected: [c_int; 8] = [
-        c_ffi::FRACUNIT,
+        FRACUNIT,
         47000,
         0,
         -47000,
-        -c_ffi::FRACUNIT,
+        -FRACUNIT,
         -47000,
         0,
         47000,
@@ -51,11 +53,11 @@ fn yspeed_exact_values() {
     let expected: [c_int; 8] = [
         0,
         47000,
-        c_ffi::FRACUNIT,
+        FRACUNIT,
         47000,
         0,
         -47000,
-        -c_ffi::FRACUNIT,
+        -FRACUNIT,
         -47000,
     ];
     unsafe {
@@ -129,13 +131,13 @@ fn traceangle_value() {
 /// `FATSPREAD = ANG90 / 8`.  The angular spread between Mancubus fireballs.
 #[test]
 fn fatspread_is_ang90_over_8() {
-    assert_eq!(c_ffi::FATSPREAD, c_ffi::ANG90 / 8);
+    assert_eq!(c_ffi::FATSPREAD, ANG90 / 8);
 }
 
 /// `SKULLSPEED = 20 × FRACUNIT`.  The Lost Soul charges at 20 map units/tic.
 #[test]
 fn skullspeed_is_20_fracunits() {
-    assert_eq!(c_ffi::SKULLSPEED, 20 * c_ffi::FRACUNIT);
+    assert_eq!(c_ffi::SKULLSPEED, 20 * FRACUNIT);
     assert_eq!(c_ffi::SKULLSPEED, 20 * 65536);
 }
 

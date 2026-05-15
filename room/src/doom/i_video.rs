@@ -10,9 +10,10 @@ use std::ffi::{c_char, c_float, c_int, c_void};
 use std::mem;
 use std::ptr;
 
-const SCREENWIDTH: usize = 320;
-const SCREENHEIGHT: usize = 200;
-const PU_STATIC: c_int = 1;
+use super::z_zone::PU_STATIC;
+
+pub const SCREENWIDTH: c_int = 320;
+pub const SCREENHEIGHT: c_int = 200;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -236,11 +237,7 @@ pub unsafe extern "C" fn I_InitGraphics() {
     }
 
     // Allocate video buffer
-    I_VideoBuffer = Z_Malloc(
-        (SCREENWIDTH * SCREENHEIGHT) as c_int,
-        PU_STATIC,
-        ptr::null_mut(),
-    ) as *mut u8;
+    I_VideoBuffer = Z_Malloc(SCREENWIDTH * SCREENHEIGHT, PU_STATIC, ptr::null_mut()) as *mut u8;
 
     screenvisible = 1;
 
@@ -283,7 +280,7 @@ pub unsafe extern "C" fn I_FinishUpdate() {
     let screen_ptr = doomgeneric_sys::DG_ScreenBuffer as *mut u8;
     let mut line_out = screen_ptr.add(y_offset as usize + x_offset as usize);
 
-    for _ in 0..SCREENHEIGHT {
+    for _ in 0..SCREENHEIGHT as usize {
         for _i in 0..fb_scaling {
             line_out = line_out.add(x_offset as usize);
 
@@ -294,7 +291,7 @@ pub unsafe extern "C" fn I_FinishUpdate() {
                     + x_offset_end as usize,
             );
         }
-        line_in = line_in.add(SCREENWIDTH);
+        line_in = line_in.add(SCREENWIDTH as usize);
     }
 
     DG_DrawFrame();
@@ -302,7 +299,7 @@ pub unsafe extern "C" fn I_FinishUpdate() {
 
 #[no_mangle]
 pub unsafe extern "C" fn I_ReadScreen(scr: *mut u8) {
-    std::ptr::copy(I_VideoBuffer, scr, SCREENWIDTH * SCREENHEIGHT);
+    std::ptr::copy(I_VideoBuffer, scr, (SCREENWIDTH * SCREENHEIGHT) as usize);
 }
 
 #[no_mangle]

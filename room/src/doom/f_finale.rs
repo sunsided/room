@@ -19,10 +19,8 @@ use crate::doom::v_video::patch_t;
 // Constants
 // ---------------------------------------------------------------------------
 
-const SCREENWIDTH: c_int = 320;
-const SCREENHEIGHT: c_int = 200;
-const PU_CACHE: c_int = 8;
-const PU_LEVEL: c_int = 7;
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
+use crate::doom::z_zone::{PU_CACHE, PU_LEVEL};
 
 const TEXTSPEED: c_int = 3;
 const TEXTWAIT: c_int = 250;

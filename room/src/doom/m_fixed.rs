@@ -13,7 +13,8 @@ pub type fixed_t = c_int;
 /// `angle_t` — BAM angle, matches `typedef unsigned int angle_t;` in tables.h.
 pub type angle_t = u32;
 
-const FRACBITS: u32 = 16;
+pub const FRACBITS: u32 = 16;
+pub const FRACUNIT: fixed_t = 1 << FRACBITS;
 
 /// Exported to C as `FixedMul`. Consumed by ~20 vendored .c files.
 #[no_mangle]

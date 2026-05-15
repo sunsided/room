@@ -8,9 +8,10 @@ use std::os::raw::c_int;
 
 use crate::doom::m_fixed::{FixedDiv, FixedMul};
 
+use crate::doom::m_fixed::FRACBITS;
+
 const NF_SUBSECTOR: u32 = 0x8000;
 const ML_TWOSIDED: i16 = 4;
-const FRACBITS: u32 = 16;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -359,7 +360,8 @@ fn P_CrossBSPNode(bspnum: c_int) -> bool {
 
         // The partition plane is crossed here.
         let bsp_div2 = node_as_divline(bsp);
-        if side == P_DivlineSide(t2x, t2y, &bsp_div2) {
+        let t2_side = P_DivlineSide(t2x, t2y, &bsp_div2);
+        if side == t2_side {
             return true;
         }
 

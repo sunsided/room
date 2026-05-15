@@ -16,6 +16,7 @@
 #![allow(non_snake_case)]
 
 use crate::doom::c_ffi;
+use crate::doom::i_timer::TICRATE;
 
 // ---------------------------------------------------------------------------
 // Palette animation constants
@@ -124,34 +125,34 @@ fn st_numfaces_is_42() {
 /// `ST_EVILGRINCOUNT = 2 × TICRATE` = 70 tics (2 seconds).
 #[test]
 fn st_evilgrincount_is_2_seconds() {
-    assert_eq!(c_ffi::ST_EVILGRINCOUNT, 2 * c_ffi::TICRATE);
+    assert_eq!(c_ffi::ST_EVILGRINCOUNT, 2 * TICRATE);
     assert_eq!(c_ffi::ST_EVILGRINCOUNT, 70);
 }
 
 /// `ST_STRAIGHTFACECOUNT = TICRATE / 2` = 17 tics (half second).
 #[test]
 fn st_straightfacecount_is_half_second() {
-    assert_eq!(c_ffi::ST_STRAIGHTFACECOUNT, c_ffi::TICRATE / 2);
+    assert_eq!(c_ffi::ST_STRAIGHTFACECOUNT, TICRATE / 2);
     assert_eq!(c_ffi::ST_STRAIGHTFACECOUNT, 17);
 }
 
 /// `ST_TURNCOUNT = TICRATE` = 35 tics (1 second).
 #[test]
 fn st_turncount_is_one_second() {
-    assert_eq!(c_ffi::ST_TURNCOUNT, c_ffi::TICRATE);
+    assert_eq!(c_ffi::ST_TURNCOUNT, TICRATE);
     assert_eq!(c_ffi::ST_TURNCOUNT, 35);
 }
 
 /// `ST_OUCHCOUNT = TICRATE` = 35 tics (1 second).
 #[test]
 fn st_ouchcount_is_one_second() {
-    assert_eq!(c_ffi::ST_OUCHCOUNT, c_ffi::TICRATE);
+    assert_eq!(c_ffi::ST_OUCHCOUNT, TICRATE);
 }
 
 /// `ST_RAMPAGEDELAY = 2 × TICRATE` = 70 tics (2 seconds).
 #[test]
 fn st_rampagedelay_is_2_seconds() {
-    assert_eq!(c_ffi::ST_RAMPAGEDELAY, 2 * c_ffi::TICRATE);
+    assert_eq!(c_ffi::ST_RAMPAGEDELAY, 2 * TICRATE);
     assert_eq!(c_ffi::ST_RAMPAGEDELAY, 70);
 }
 

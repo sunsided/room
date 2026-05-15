@@ -66,8 +66,7 @@ fn main() {
         // "f_finale.c",
         // Screen wipe effect — ported to Rust (room/src/doom/f_wipe.rs)
         // "f_wipe.c",
-        // Core game logic
-        "g_game.c",
+        // g_game.c — ported to Rust (room/src/doom/g_game.rs)
         // HUD text library — ported to Rust (room/src/doom/hu_lib.rs)
         // "hu_lib.c",
         // Thing info tables
@@ -224,6 +223,15 @@ fn main() {
 
     for src in lib_sources {
         build.file(vendor.join(src));
+    }
+
+    // Small helper that exposes #define constants to Rust tests.
+    build.file("test_helpers.c");
+
+    // If all C sources have been ported to Rust, lib_sources is empty.
+    // Add a dummy source file so the cc crate produces a valid (empty) library.
+    if lib_sources.is_empty() {
+        build.file(vendor.join("dummy.c"));
     }
 
     build.compile("doomgeneric");

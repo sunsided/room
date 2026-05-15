@@ -7,9 +7,10 @@
 use std::ffi::{c_int, c_short, c_void};
 use std::ptr;
 
-use super::c_ffi::{ANG90, ANGLETOFINESHIFT};
+use super::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
 use super::m_fixed::{angle_t, fixed_t};
 use super::tables;
+use super::tables::{ANG90, ANGLETOFINESHIFT};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -753,11 +754,6 @@ unsafe fn R_AddLine(line: *mut seg_t) {
 // tests — far BSP subtrees were not pruned and rendering descended into the
 // wrong parts of the map, causing walls to "disappear" and a different room
 // to show through (classic Doom HOM variant).
-const BOXTOP: usize = 0;
-const BOXBOTTOM: usize = 1;
-const BOXLEFT: usize = 2;
-const BOXRIGHT: usize = 3;
-
 #[no_mangle]
 pub unsafe extern "C" fn R_CheckBBox(bspcoord: *mut fixed_t) -> c_int {
     let boxx = if viewx <= *bspcoord.add(BOXLEFT) {

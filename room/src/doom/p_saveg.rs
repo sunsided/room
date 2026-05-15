@@ -23,10 +23,7 @@ use crate::doom::p_plats::{plat_t, P_AddActivePlat, T_PlatRaise};
 use crate::doom::p_tick::{
     actionf_t, leveltime, thinker_t, thinkercap, P_AddThinker, P_InitThinkers,
 };
-use crate::doom::z_zone::{Z_Free, Z_Malloc};
-
-const PU_LEVEL: c_int = 5;
-const PU_LEVSPEC: c_int = 5;
+use crate::doom::z_zone::{Z_Free, Z_Malloc, PU_LEVEL, PU_LEVSPEC};
 
 // ---------------------------------------------------------------------------
 // Constants

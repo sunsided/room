@@ -15,6 +15,8 @@
 use std::ffi::{c_int, c_short};
 
 use crate::doom::c_ffi;
+use crate::doom::m_fixed::FRACUNIT;
+use crate::doom::i_video::SCREENWIDTH;
 
 // ---------------------------------------------------------------------------
 // Constants derived from r_things.c / r_defs.h
@@ -24,7 +26,7 @@ use crate::doom::c_ffi;
 /// C source: `#define MINZ (FRACUNIT*4)`.
 #[test]
 fn minz_is_four_fracunits() {
-    assert_eq!(c_ffi::MINZ, c_ffi::FRACUNIT * 4);
+    assert_eq!(c_ffi::MINZ, FRACUNIT * 4);
     assert_eq!(c_ffi::MINZ, 4 * 65536);
 }
 
@@ -162,7 +164,7 @@ fn spritename_initially_null() {
 #[test]
 fn negonearray_length_is_screenwidth() {
     unsafe {
-        assert_eq!(c_ffi::negonearray.len(), c_ffi::SCREENWIDTH as usize);
+        assert_eq!(c_ffi::negonearray.len(), SCREENWIDTH as usize);
     }
 }
 
@@ -171,7 +173,7 @@ fn negonearray_length_is_screenwidth() {
 #[test]
 fn screenheightarray_length_is_screenwidth() {
     unsafe {
-        assert_eq!(c_ffi::screenheightarray.len(), c_ffi::SCREENWIDTH as usize);
+        assert_eq!(c_ffi::screenheightarray.len(), SCREENWIDTH as usize);
     }
 }
 

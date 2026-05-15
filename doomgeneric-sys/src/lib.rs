@@ -84,4 +84,32 @@ extern "C" {
     ///
     /// Must be called only after [`doomgeneric_Create`] has returned.
     pub fn doomgeneric_Tick();
+
+    /// Return the C-side value of `DOOM_191_VERSION` (defined in `doomdef.h`).
+    ///
+    /// Used by integration tests to verify that a Rust-ported constant matches
+    /// the original `#define`.
+    pub fn room_test_get_doom_191_version() -> c_int;
+
+    /// `sizeof(state_t)` as the C compiler sees it.
+    pub fn room_test_get_state_t_sizeof() -> c_int;
+    /// `offsetof(state_t, tics)` as the C compiler sees it.
+    pub fn room_test_get_state_t_tics_offset() -> c_int;
+
+    /// `sizeof(mobjinfo_t)` as the C compiler sees it.
+    pub fn room_test_get_mobjinfo_t_sizeof() -> c_int;
+    /// `offsetof(mobjinfo_t, speed)` as the C compiler sees it.
+    pub fn room_test_get_mobjinfo_t_speed_offset() -> c_int;
+
+    /// `S_SARG_RUN1` enum value from `statenum_t`.
+    pub fn room_test_get_s_sarg_run1() -> c_int;
+    /// `S_SARG_PAIN2` enum value from `statenum_t`.
+    pub fn room_test_get_s_sarg_pain2() -> c_int;
+
+    /// `MT_BRUISERSHOT` enum value from `mobjtype_t`.
+    pub fn room_test_get_mt_bruisershot() -> c_int;
+    /// `MT_HEADSHOT` enum value from `mobjtype_t`.
+    pub fn room_test_get_mt_headshot() -> c_int;
+    /// `MT_TROOPSHOT` enum value from `mobjtype_t`.
+    pub fn room_test_get_mt_troopshot() -> c_int;
 }

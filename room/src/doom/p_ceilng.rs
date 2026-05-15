@@ -7,13 +7,12 @@
 use std::ffi::c_void;
 use std::os::raw::c_int;
 
-use crate::doom::m_fixed::fixed_t;
+use crate::doom::m_fixed::{fixed_t, FRACUNIT};
 use crate::doom::p_lights::{line_t, sector_t};
 use crate::doom::p_tick::{thinker_t, P_AddThinker, P_RemoveThinker};
+use crate::doom::z_zone::PU_LEVSPEC;
 
-const PU_LEVSPEC: c_int = 5;
 const CEILSPEED: fixed_t = FRACUNIT;
-const FRACUNIT: fixed_t = 1 << 16;
 const MAXCEILINGS: usize = 30;
 
 // result_e enum values

@@ -8,10 +8,7 @@
 
 use std::ffi::c_int;
 
-/// `1 << FRACBITS` from `m_fixed.h`. Kept local to avoid a cross-module
-/// `use super::m_fixed::FRACUNIT;` that would force `m_fixed.rs` to
-/// expose the constant publicly.
-const FRACUNIT: c_int = 1 << 16;
+use crate::doom::m_fixed::FRACUNIT;
 
 /// Flat number of the sky flat (F_SKY1), filled in by `g_game.c`
 /// via `R_FlatNumForName(SKYFLATNAME)`.

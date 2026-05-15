@@ -16,9 +16,8 @@ extern "C" {
     fn M_CheckParm(check: *mut c_char) -> c_int;
 }
 
-const SCREENWIDTH: c_int = 320;
-const SCREENHEIGHT: c_int = 200;
-const PU_STATIC: c_int = 1;
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
+use crate::doom::z_zone::PU_STATIC;
 
 static mut src_buffer: *mut u8 = ptr::null_mut();
 static mut dest_buffer: *mut u8 = ptr::null_mut();

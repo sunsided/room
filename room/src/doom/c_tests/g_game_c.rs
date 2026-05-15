@@ -264,3 +264,97 @@ fn movement_tables_are_c_int_width() {
         let _: c_int = c_ffi::angleturn[2];
     }
 }
+
+// ---------------------------------------------------------------------------
+// G_SetFastMonsters — ABI layout guards
+//
+// These tests cross-check every constant used by G_SetFastMonsters against the
+// actual C compiler output.  If any value differs (wrong architecture, struct
+// reorder, header change) the test fails and points directly at the mismatch.
+// The compile-time `const _: ()` assertions in info.rs additionally prevent
+// compilation on any target where the Rust struct layout diverges from the C ABI.
+// ---------------------------------------------------------------------------
+
+/// state_t size must match between C compiler and the Rust `State` repr.
+#[test]
+fn state_t_sizeof_matches_c() {
+    use crate::doom::info::State;
+    let rust_size = std::mem::size_of::<State>() as i32;
+    let c_size = unsafe { doomgeneric_sys::room_test_get_state_t_sizeof() };
+    assert_eq!(
+        rust_size, c_size,
+        "Rust State size ({rust_size}) != C state_t size ({c_size})"
+    );
+}
+
+/// state_t::tics offset must match.
+#[test]
+fn state_t_tics_offset_matches_c() {
+    use crate::doom::info::State;
+    let rust_off = std::mem::offset_of!(State, tics) as i32;
+    let c_off = unsafe { doomgeneric_sys::room_test_get_state_t_tics_offset() };
+    assert_eq!(
+        rust_off, c_off,
+        "Rust State::tics offset ({rust_off}) != C state_t.tics offset ({c_off})"
+    );
+}
+
+/// mobjinfo_t size must match between C compiler and the Rust `MobjInfo` repr.
+#[test]
+fn mobjinfo_t_sizeof_matches_c() {
+    use crate::doom::info::MobjInfo;
+    let rust_size = std::mem::size_of::<MobjInfo>() as i32;
+    let c_size = unsafe { doomgeneric_sys::room_test_get_mobjinfo_t_sizeof() };
+    assert_eq!(
+        rust_size, c_size,
+        "Rust MobjInfo size ({rust_size}) != C mobjinfo_t size ({c_size})"
+    );
+}
+
+/// mobjinfo_t::speed offset must match.
+#[test]
+fn mobjinfo_t_speed_offset_matches_c() {
+    use crate::doom::info::MobjInfo;
+    let rust_off = std::mem::offset_of!(MobjInfo, speed) as i32;
+    let c_off = unsafe { doomgeneric_sys::room_test_get_mobjinfo_t_speed_offset() };
+    assert_eq!(
+        rust_off, c_off,
+        "Rust MobjInfo::speed offset ({rust_off}) != C mobjinfo_t.speed offset ({c_off})"
+    );
+}
+
+/// S_SARG_RUN1 enum value must match C.
+#[test]
+fn s_sarg_run1_matches_c() {
+    let rust_val = crate::doom::info::S_SARG_RUN1;
+    let c_val = unsafe { doomgeneric_sys::room_test_get_s_sarg_run1() };
+    assert_eq!(rust_val, c_val, "S_SARG_RUN1: Rust={rust_val} C={c_val}");
+}
+
+/// S_SARG_PAIN2 enum value must match C.
+#[test]
+fn s_sarg_pain2_matches_c() {
+    let rust_val = crate::doom::info::S_SARG_PAIN2;
+    let c_val = unsafe { doomgeneric_sys::room_test_get_s_sarg_pain2() };
+    assert_eq!(rust_val, c_val, "S_SARG_PAIN2: Rust={rust_val} C={c_val}");
+}
+
+/// MT_BRUISERSHOT, MT_HEADSHOT, MT_TROOPSHOT enum values must match C.
+#[test]
+fn mt_fast_monster_types_match_c() {
+    unsafe {
+        let (rb, rh, rt) = (
+            crate::doom::info::MT_BRUISERSHOT,
+            crate::doom::info::MT_HEADSHOT,
+            crate::doom::info::MT_TROOPSHOT,
+        );
+        let (cb, ch, ct) = (
+            doomgeneric_sys::room_test_get_mt_bruisershot(),
+            doomgeneric_sys::room_test_get_mt_headshot(),
+            doomgeneric_sys::room_test_get_mt_troopshot(),
+        );
+        assert_eq!(rb, cb, "MT_BRUISERSHOT: Rust={rb} C={cb}");
+        assert_eq!(rh, ch, "MT_HEADSHOT: Rust={rh} C={ch}");
+        assert_eq!(rt, ct, "MT_TROOPSHOT: Rust={rt} C={ct}");
+    }
+}

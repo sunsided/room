@@ -8,15 +8,13 @@ use std::ffi::{c_char, c_int, c_short, c_uint, c_ushort, c_void};
 use std::ptr;
 
 use crate::doom::c_ffi::{mobj_t, sector_t, side_t};
+use crate::doom::m_fixed::FRACBITS;
 use crate::doom::p_tick::thinker_t;
+use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
 // ---------------------------------------------------------------------------
-
-const PU_STATIC: c_int = 1;
-const PU_CACHE: c_int = 8;
-const FRACBITS: u32 = 16;
 
 #[inline]
 fn SHORT(x: i16) -> i16 {

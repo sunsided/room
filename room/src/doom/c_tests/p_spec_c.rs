@@ -15,6 +15,8 @@
 #![allow(non_snake_case)]
 
 use crate::doom::c_ffi;
+use crate::doom::m_fixed::FRACUNIT;
+use crate::doom::i_timer::TICRATE;
 
 // ---------------------------------------------------------------------------
 // leveltime — current game tic within the level
@@ -57,7 +59,7 @@ fn maxlineanims_is_64() {
 /// speed.  Any deviation changes the tempo of every door in the game.
 #[test]
 fn vdoorspeed_is_2_fracunits() {
-    assert_eq!(c_ffi::VDOORSPEED, c_ffi::FRACUNIT * 2);
+    assert_eq!(c_ffi::VDOORSPEED, FRACUNIT * 2);
     assert_eq!(c_ffi::VDOORSPEED, 2 * 65536);
 }
 
@@ -74,7 +76,7 @@ fn vdoorwait_is_150() {
 /// `CEILSPEED = FRACUNIT`.  All standard ceiling crushers move 1 map unit/tic.
 #[test]
 fn ceilspeed_is_one_fracunit() {
-    assert_eq!(c_ffi::CEILSPEED, c_ffi::FRACUNIT);
+    assert_eq!(c_ffi::CEILSPEED, FRACUNIT);
     assert_eq!(c_ffi::CEILSPEED, 65536);
 }
 
@@ -97,7 +99,7 @@ fn maxceilings_is_30() {
 /// `PLATSPEED = FRACUNIT`.  All standard platforms move 1 map unit/tic.
 #[test]
 fn platspeed_is_one_fracunit() {
-    assert_eq!(c_ffi::PLATSPEED, c_ffi::FRACUNIT);
+    assert_eq!(c_ffi::PLATSPEED, FRACUNIT);
     assert_eq!(c_ffi::PLATSPEED, 65536);
 }
 
@@ -120,7 +122,7 @@ fn maxplats_is_30() {
 /// `FLOORSPEED = FRACUNIT`.  Standard floor movements advance 1 map unit/tic.
 #[test]
 fn floorspeed_is_one_fracunit() {
-    assert_eq!(c_ffi::FLOORSPEED, c_ffi::FRACUNIT);
+    assert_eq!(c_ffi::FLOORSPEED, FRACUNIT);
     assert_eq!(c_ffi::FLOORSPEED, 65536);
 }
 
@@ -151,7 +153,7 @@ fn fastdark_is_15() {
 #[test]
 fn slowdark_is_35() {
     assert_eq!(c_ffi::SLOWDARK, 35);
-    assert_eq!(c_ffi::SLOWDARK, c_ffi::TICRATE);
+    assert_eq!(c_ffi::SLOWDARK, TICRATE);
 }
 
 // ---------------------------------------------------------------------------
@@ -162,10 +164,10 @@ fn slowdark_is_35() {
 /// FRACUNIT (no fractional component), ensuring whole-unit movement per tic.
 #[test]
 fn movement_speeds_are_fracunit_multiples() {
-    assert_eq!(c_ffi::VDOORSPEED % c_ffi::FRACUNIT, 0, "VDOORSPEED");
-    assert_eq!(c_ffi::CEILSPEED % c_ffi::FRACUNIT, 0, "CEILSPEED");
-    assert_eq!(c_ffi::PLATSPEED % c_ffi::FRACUNIT, 0, "PLATSPEED");
-    assert_eq!(c_ffi::FLOORSPEED % c_ffi::FRACUNIT, 0, "FLOORSPEED");
+    assert_eq!(c_ffi::VDOORSPEED % FRACUNIT, 0, "VDOORSPEED");
+    assert_eq!(c_ffi::CEILSPEED % FRACUNIT, 0, "CEILSPEED");
+    assert_eq!(c_ffi::PLATSPEED % FRACUNIT, 0, "PLATSPEED");
+    assert_eq!(c_ffi::FLOORSPEED % FRACUNIT, 0, "FLOORSPEED");
 }
 
 /// Door speed is exactly 2× platform/floor/ceiling speed.

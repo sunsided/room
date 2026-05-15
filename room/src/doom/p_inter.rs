@@ -9,14 +9,14 @@ use std::ffi::{c_char, c_void};
 use std::os::raw::c_int;
 
 use crate::doom::d_items::weaponinfo;
-use crate::doom::d_player::{consoleplayer, players, PlayerT};
+use crate::doom::d_player::{consoleplayer, players, PlayerT, CF_GODMODE};
 use crate::doom::doomstat::{gamemode, gameversion};
 use crate::doom::info::{self, *};
-use crate::doom::m_fixed::{fixed_t, FixedMul};
+use crate::doom::m_fixed::{fixed_t, FixedMul, FRACUNIT};
 use crate::doom::m_random::P_Random;
 use crate::doom::p_pspr::P_DropWeapon;
 use crate::doom::p_telept::mobj_t;
-use crate::doom::tables::{finecosine, finesine};
+use crate::doom::tables::{finecosine, finesine, ANG180, ANGLETOFINESHIFT};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -26,11 +26,7 @@ const BONUSADD: c_int = 6;
 const NUMAMMO: usize = 4;
 const MAXHEALTH: c_int = 100;
 const ONFLOORZ: c_int = i32::MIN;
-const FRACUNIT: fixed_t = 65536;
-const ANG180: u32 = 0x80000000;
-const ANGLETOFINESHIFT: u32 = 19;
 const BASETHRESHOLD: c_int = 100;
-const CF_GODMODE: c_int = 2;
 
 // Skill levels
 const sk_baby: c_int = 0;
@@ -805,13 +801,13 @@ pub unsafe extern "C" fn P_DamageMobj(
     source: *mut mobj_t,
     mut damage: c_int,
 ) {
-    if (*target).flags & MF_SHOOTABLE == 0 {
+    if ((*target).flags & MF_SHOOTABLE) == 0 {
         return;
     }
     if (*target).health <= 0 {
         return;
     }
-    if (*target).flags & MF_SKULLFLY != 0 {
+    if ((*target).flags & MF_SKULLFLY) != 0 {
         (*target).momx = 0;
         (*target).momy = 0;
         (*target).momz = 0;
@@ -823,7 +819,7 @@ pub unsafe extern "C" fn P_DamageMobj(
     }
 
     if !inflictor.is_null()
-        && (*target).flags & MF_NOCLIP == 0
+        && ((*target).flags & MF_NOCLIP) == 0
         && (source.is_null()
             || (*source).player.is_null()
             || (*((*source).player as *mut PlayerT)).readyweapon != wp_chainsaw)
@@ -894,7 +890,7 @@ pub unsafe extern "C" fn P_DamageMobj(
     }
 
     let info = (*target).info as *mut MobjInfo;
-    if P_Random() < (*info).painchance && (*target).flags & MF_SKULLFLY == 0 {
+    if P_Random() < (*info).painchance && ((*target).flags & MF_SKULLFLY) == 0 {
         (*target).flags |= MF_JUSTHIT;
         P_SetMobjState(target, (*info).painstate);
     }
