@@ -184,11 +184,15 @@ static LNODESEPSD3: [point_t; NUMMAPS] = [point_t { x: 0, y: 0 }; NUMMAPS];
 static LNODES: [[point_t; NUMMAPS]; NUMEPISODES] =
     [LNODESEPSD0, LNODESEPSD1, LNODESEPSD2, LNODESEPSD3];
 
+pub(crate) const EPSD0_NANIM: usize = 10;
+pub(crate) const EPSD1_NANIM: usize = 9;
+pub(crate) const EPSD2_NANIM: usize = 6;
+
 // TODO: Consider splitting into immutable config fields (type_, period, nanims,
 // loc, data1, data2) and mutable runtime state (ctr, nexttic, lastdrawn, state,
 // p) using two separate arrays, or wrapping in UnsafeCell for explicit interior
 // mutability without static mut.
-static mut EPSD0ANIMINFO: [anim_t; 10] = [
+static mut EPSD0ANIMINFO: [anim_t; EPSD0_NANIM] = [
     anim_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
@@ -322,7 +326,7 @@ static mut EPSD0ANIMINFO: [anim_t; 10] = [
 ];
 
 // TODO: Same as EPSD0ANIMINFO — candidate for config/state split or UnsafeCell.
-static mut EPSD1ANIMINFO: [anim_t; 9] = [
+static mut EPSD1ANIMINFO: [anim_t; EPSD1_NANIM] = [
     anim_t {
         type_: animenum_t::ANIM_LEVEL,
         period: TICRATE / 3,
@@ -443,7 +447,7 @@ static mut EPSD1ANIMINFO: [anim_t; 9] = [
 ];
 
 // TODO: Same as EPSD0ANIMINFO — candidate for config/state split or UnsafeCell.
-static mut EPSD2ANIMINFO: [anim_t; 6] = [
+static mut EPSD2ANIMINFO: [anim_t; EPSD2_NANIM] = [
     anim_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
@@ -524,7 +528,7 @@ static mut EPSD2ANIMINFO: [anim_t; 6] = [
     },
 ];
 
-static NUMANIMS: [c_int; NUMEPISODES] = [10, 9, 6, 0];
+static NUMANIMS: [c_int; NUMEPISODES] = [EPSD0_NANIM as c_int, EPSD1_NANIM as c_int, EPSD2_NANIM as c_int, 0];
 
 static mut ANIMS: [*mut anim_t; NUMEPISODES] = [
     addr_of_mut!(EPSD0ANIMINFO) as *mut anim_t,
