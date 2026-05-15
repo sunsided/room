@@ -3,13 +3,7 @@
 use std::ffi::{c_int, c_void};
 
 #[cfg(not(test))]
-extern "C" {
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn Z_Free(ptr: *mut c_void);
-}
-
-#[cfg(not(test))]
-use crate::doom::z_zone::PU_STATIC;
+use crate::doom::z_zone::{PU_STATIC, Z_Free, Z_Malloc};
 
 #[repr(C)]
 pub enum memfile_mode_t {
