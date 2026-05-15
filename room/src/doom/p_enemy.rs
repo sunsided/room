@@ -144,19 +144,14 @@ const MT_PLAYER: c_int = 0;
 const FATSPREAD: c_int = ANG90 as c_int / 8;
 const SKULLSPEED: c_int = 20 * FRACUNIT;
 
-extern "C" {
-    fn G_ExitLevel();
-    fn A_ReFire(player: *mut c_void, psp: *mut c_void);
-    fn EV_DoDoor(line: *mut line_t, r#type: c_int) -> c_int;
-    fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_int;
+use crate::doom::d_main::fastparm;
+use crate::doom::g_game::{gameepisode, gamemap, gameskill, netgame, playeringame, G_ExitLevel};
+use crate::doom::p_doors::EV_DoDoor;
+use crate::doom::p_floor::EV_DoFloor;
+use crate::doom::p_pspr::A_ReFire;
 
-    static mut gameskill: c_int;
-    static mut gameepisode: c_int;
-    static mut gamemap: c_int;
-    static mut netgame: c_int;
-    static mut fastparm: c_int;
-    static mut playeringame: [c_int; MAXPLAYERS];
-}
+// Type alias for cross-module pointer cast (all #[repr(C)] identical layouts).
+type PLineThing = crate::doom::p_lights::line_t;
 
 #[no_mangle]
 pub static mut opposite: [dirtype_t; 9] = [
@@ -566,7 +561,7 @@ pub unsafe extern "C" fn A_KeenDie(mut mo: *mut mobj_t) {
         th = (*th).next;
     }
     junk.tag = 666 as c_short;
-    EV_DoDoor(&mut junk as *mut line_t, vld_open);
+    EV_DoDoor(&mut junk as *mut line_t as *mut PLineThing, vld_open);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_Look(mut actor: *mut mobj_t) {
@@ -1489,12 +1484,12 @@ pub unsafe extern "C" fn A_BossDeath(mut mo: *mut mobj_t) {
         if gamemap == 7 as c_int {
             if (*mo).mobjtype as c_uint == MT_FATSO as c_int as c_uint {
                 junk.tag = 666 as c_short;
-                EV_DoFloor(&mut junk as *mut line_t, lowerFloorToLowest);
+                EV_DoFloor(&mut junk as *mut line_t as *mut PLineThing, lowerFloorToLowest);
                 return;
             }
             if (*mo).mobjtype as c_uint == MT_BABY as c_int as c_uint {
                 junk.tag = 667 as c_short;
-                EV_DoFloor(&mut junk as *mut line_t, raiseToTexture);
+                EV_DoFloor(&mut junk as *mut line_t as *mut PLineThing, raiseToTexture);
                 return;
             }
         }
@@ -1502,18 +1497,18 @@ pub unsafe extern "C" fn A_BossDeath(mut mo: *mut mobj_t) {
         match gameepisode {
             1 => {
                 junk.tag = 666 as c_short;
-                EV_DoFloor(&mut junk as *mut line_t, lowerFloorToLowest);
+                EV_DoFloor(&mut junk as *mut line_t as *mut PLineThing, lowerFloorToLowest);
                 return;
             }
             4 => match gamemap {
                 6 => {
                     junk.tag = 666 as c_short;
-                    EV_DoDoor(&mut junk as *mut line_t, vld_blazeOpen);
+                    EV_DoDoor(&mut junk as *mut line_t as *mut PLineThing, vld_blazeOpen);
                     return;
                 }
                 8 => {
                     junk.tag = 666 as c_short;
-                    EV_DoFloor(&mut junk as *mut line_t, lowerFloorToLowest);
+                    EV_DoFloor(&mut junk as *mut line_t as *mut PLineThing, lowerFloorToLowest);
                     return;
                 }
                 _ => {}
@@ -1549,7 +1544,7 @@ pub unsafe extern "C" fn A_LoadShotgun2(mut player: *mut PlayerT, mut psp: *mut 
 #[no_mangle]
 pub unsafe extern "C" fn A_CloseShotgun2(mut player: *mut PlayerT, mut psp: *mut PspdefT) {
     S_StartSound((*player).mo as *mut c_void, sfx_dbcls as c_int);
-    A_ReFire(player as *mut c_void, psp as *mut c_void);
+    A_ReFire(player, psp);
 }
 #[no_mangle]
 pub static mut braintargets: [*mut mobj_t; 32] = [std::ptr::null_mut::<mobj_t>(); 32];
