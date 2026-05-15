@@ -25,17 +25,21 @@ use crate::doom::d_event::event_t;
 use crate::doom::d_mode;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS};
 use crate::doom::doomstat::gamemode;
+use crate::doom::g_game::{deathmatch, netgame, playeringame, players, G_WorldDone};
+use crate::doom::i_timer::TICRATE;
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
+use crate::doom::m_misc::M_StringCopy;
+use crate::doom::m_random::M_Random;
+use crate::doom::s_sound::{S_ChangeMusic, S_StartSound};
 use crate::doom::v_video::patch_t;
 use crate::doom::v_video::V_DrawPatch;
+use crate::doom::w_wad::{W_CacheLumpName, W_CheckNumForName, W_ReleaseLumpName};
+use crate::doom::z_zone::{PU_STATIC, Z_Malloc};
 use crate::{c_write, DEH_snprintf};
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-use crate::doom::i_timer::TICRATE;
-use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
-use crate::doom::z_zone::PU_STATIC;
 
 const NUMEPISODES: usize = 4;
 const NUMMAPS: usize = 9;
@@ -607,24 +611,6 @@ static mut snl_pointeron: bool = false;
 // Externs
 // ---------------------------------------------------------------------------
 
-extern "C" {
-    fn printf(fmt: *const c_char, ...) -> c_int;
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn M_Random() -> c_int;
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean;
-    fn W_CheckNumForName(name: *const c_char) -> c_int;
-    fn W_CacheLumpName(name: *mut c_char, tag: c_int) -> *mut c_void;
-    fn W_ReleaseLumpName(name: *mut c_char);
-    fn G_WorldDone();
-    fn S_StartSound(origin: *mut c_void, sound_id: c_int);
-    fn S_ChangeMusic(music_id: c_int, looping: c_int);
-
-    static mut netgame: c_int;
-    static mut deathmatch: c_int;
-    static mut playeringame: [c_int; MAXPLAYERS];
-    static mut players: [PlayerT; MAXPLAYERS];
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -746,7 +732,7 @@ unsafe fn WI_drawOnLnode(n: c_int, c: *mut *mut patch_t) {
             *c.offset(i as isize),
         );
     } else {
-        printf(
+        libc::printf(
             b"Could not place patch on level %d\0".as_ptr() as *const c_char,
             n + 1,
         );
