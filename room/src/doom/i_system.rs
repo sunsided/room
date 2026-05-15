@@ -5,6 +5,8 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::doom::m_argv::{myargc, myargv, M_CheckParmWithArgs, M_ParmExists};
+use crate::doom::m_misc::M_StrToInt;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr};
 use std::ptr;
 
@@ -25,14 +27,6 @@ struct atexit_listentry_t {
 
 static mut exit_funcs: *mut atexit_listentry_t = ptr::null_mut();
 
-extern "C" {
-    fn M_CheckParmWithArgs(check: *mut c_char, num_args: c_int) -> c_int;
-    fn M_ParmExists(check: *mut c_char) -> c_int;
-    fn M_StrToInt(str: *const c_char, result: *mut c_int) -> c_int;
-
-    static mut myargc: c_int;
-    static mut myargv: *mut *mut c_char;
-}
 
 unsafe fn AutoAllocMemory(size: *mut c_int, mut default_ram: c_int, min_ram: c_int) -> *mut u8 {
     let mut zonemem: *mut u8 = ptr::null_mut();
