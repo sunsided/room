@@ -23,6 +23,7 @@ use crate::doom::st_lib::{
 };
 use crate::doom::v_video::patch_t;
 use crate::doom::v_video::{V_CopyRect, V_DrawPatch, V_RestoreBuffer, V_UseBuffer};
+use crate::c_write;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -216,8 +217,6 @@ extern "C" {
     fn W_CacheLumpNum(lump: c_int, tag: c_int) -> *mut c_void;
     fn W_GetNumForName(name: *mut c_char) -> c_int;
     fn W_ReleaseLumpName(name: *mut c_char);
-    fn M_snprintf_clamp(buf: *mut c_char, len: usize, result: c_int) -> c_int;
-    fn snprintf(buf: *mut c_char, len: usize, fmt: *const c_char, ...) -> c_int;
 }
 
 // ---------------------------------------------------------------------------
@@ -306,26 +305,6 @@ static mut st_randomnumber: c_int = 0;
 
 static mut st_palette: c_int = 0;
 static mut st_stopped: c_int = 1;
-
-// ---------------------------------------------------------------------------
-// Helper: format a patch name into a 9-byte buffer.
-// ---------------------------------------------------------------------------
-
-unsafe fn fmt_name(buf: &mut [c_char; 9], fmt: *const c_char, arg: c_int) {
-    M_snprintf_clamp(
-        buf.as_mut_ptr(),
-        buf.len(),
-        snprintf(buf.as_mut_ptr(), buf.len(), fmt, arg),
-    );
-}
-
-unsafe fn fmt_name2(buf: &mut [c_char; 9], fmt: *const c_char, a: c_int, b: c_int) {
-    M_snprintf_clamp(
-        buf.as_mut_ptr(),
-        buf.len(),
-        snprintf(buf.as_mut_ptr(), buf.len(), fmt, a, b),
-    );
-}
 
 // ---------------------------------------------------------------------------
 // Background refresh
@@ -466,18 +445,8 @@ pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
                 (*plyr).message = DEH_String(STSTR_CHOPPERS);
             } else if cht_CheckCheat(&mut cheat_mypos, ev.data2 as c_char) != 0 {
                 static mut BUF: [c_char; 52] = [0; 52];
-                M_snprintf_clamp(
-                    BUF.as_mut_ptr(),
-                    BUF.len(),
-                    snprintf(
-                        BUF.as_mut_ptr(),
-                        BUF.len(),
-                        b"ang=0x%x;x,y=(0x%x,0x%x)\0".as_ptr() as *const c_char,
-                        (*((players[consoleplayer as usize].mo) as *mut mobj_t)).angle,
-                        (*((players[consoleplayer as usize].mo) as *mut mobj_t)).x,
-                        (*((players[consoleplayer as usize].mo) as *mut mobj_t)).y,
-                    ),
-                );
+                let mo = players[consoleplayer as usize].mo as *mut mobj_t;
+                c_write!(BUF, "ang=0x{:x};x,y=(0x{:x},0x{:x})", (*mo).angle, (*mo).x, (*mo).y);
                 (*plyr).message = BUF.as_mut_ptr();
             }
         }
@@ -870,33 +839,29 @@ type LoadCallback = unsafe extern "C" fn(*mut c_char, *mut *mut patch_t);
 unsafe fn ST_loadUnloadGraphics(callback: LoadCallback) {
     let mut namebuf = [0i8; 9];
 
-    for i in 0..10 {
-        fmt_name(&mut namebuf, b"STTNUM%d\0".as_ptr() as *const c_char, i);
+    for i in 0..10i32 {
+        c_write!(namebuf, "STTNUM{}", i);
         callback(namebuf.as_mut_ptr(), &mut tallnum[i as usize]);
-        fmt_name(&mut namebuf, b"STYSNUM%d\0".as_ptr() as *const c_char, i);
+        c_write!(namebuf, "STYSNUM{}", i);
         callback(namebuf.as_mut_ptr(), &mut shortnum[i as usize]);
     }
 
     callback(b"STTPRCNT\0".as_ptr() as *mut c_char, &mut tallpercent);
 
     for i in 0..NUMCARDS as c_int {
-        fmt_name(&mut namebuf, b"STKEYS%d\0".as_ptr() as *const c_char, i);
+        c_write!(namebuf, "STKEYS{}", i);
         callback(namebuf.as_mut_ptr(), &mut keys[i as usize]);
     }
 
     callback(b"STARMS\0".as_ptr() as *mut c_char, &mut armsbg);
 
-    for i in 0..6 {
-        fmt_name(&mut namebuf, b"STGNUM%d\0".as_ptr() as *const c_char, i + 2);
+    for i in 0..6i32 {
+        c_write!(namebuf, "STGNUM{}", i + 2);
         callback(namebuf.as_mut_ptr(), &mut arms[i as usize][0]);
         arms[i as usize][1] = shortnum[(i + 2) as usize];
     }
 
-    fmt_name(
-        &mut namebuf,
-        b"STFB%d\0".as_ptr() as *const c_char,
-        consoleplayer,
-    );
+    c_write!(namebuf, "STFB{}", consoleplayer);
     callback(namebuf.as_mut_ptr(), &mut faceback);
 
     callback(b"STBAR\0".as_ptr() as *mut c_char, &mut sbar);
@@ -904,23 +869,23 @@ unsafe fn ST_loadUnloadGraphics(callback: LoadCallback) {
     let mut facenum: c_int = 0;
     for i in 0..ST_NUMPAINFACES {
         for j in 0..ST_NUMSTRAIGHTFACES {
-            fmt_name2(&mut namebuf, b"STFST%d%d\0".as_ptr() as *const c_char, i, j);
+            c_write!(namebuf, "STFST{}{}", i, j);
             callback(namebuf.as_mut_ptr(), &mut faces[facenum as usize]);
             facenum += 1;
         }
-        fmt_name(&mut namebuf, b"STFTR%d0\0".as_ptr() as *const c_char, i);
+        c_write!(namebuf, "STFTR{}0", i);
         callback(namebuf.as_mut_ptr(), &mut faces[facenum as usize]);
         facenum += 1;
-        fmt_name(&mut namebuf, b"STFTL%d0\0".as_ptr() as *const c_char, i);
+        c_write!(namebuf, "STFTL{}0", i);
         callback(namebuf.as_mut_ptr(), &mut faces[facenum as usize]);
         facenum += 1;
-        fmt_name(&mut namebuf, b"STFOUCH%d\0".as_ptr() as *const c_char, i);
+        c_write!(namebuf, "STFOUCH{}", i);
         callback(namebuf.as_mut_ptr(), &mut faces[facenum as usize]);
         facenum += 1;
-        fmt_name(&mut namebuf, b"STFEVL%d\0".as_ptr() as *const c_char, i);
+        c_write!(namebuf, "STFEVL{}", i);
         callback(namebuf.as_mut_ptr(), &mut faces[facenum as usize]);
         facenum += 1;
-        fmt_name(&mut namebuf, b"STFKILL%d\0".as_ptr() as *const c_char, i);
+        c_write!(namebuf, "STFKILL{}", i);
         callback(namebuf.as_mut_ptr(), &mut faces[facenum as usize]);
         facenum += 1;
     }

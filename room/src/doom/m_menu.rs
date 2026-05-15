@@ -11,7 +11,7 @@ use super::d_event::event_t;
 use super::d_mode;
 use super::d_player::M_Menu_SetPlayerMessage;
 use super::doomstat::{gamemission, gamemode, gameversion};
-use super::m_misc::m_snprintf_clamp;
+use crate::{c_write, i_error};
 
 fn logical_gamemission() -> c_int {
     unsafe {
@@ -118,7 +118,6 @@ extern "C" {
     fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void;
     fn I_SetPalette(lump: *mut c_void);
     fn I_Quit();
-    fn I_Error(fmt: *const c_char, ...);
     fn I_WaitVBL(count: c_int);
     fn G_ScreenShot();
     fn G_DeferedInitNew(skill: c_int, episode: c_int, map: c_int);
@@ -141,7 +140,6 @@ extern "C" {
     fn S_SetSfxVolume(volume: c_int);
     fn S_SetMusicVolume(volume: c_int);
     fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> c_int;
-    fn snprintf(s: *mut c_char, n: usize, format: *const c_char, ...) -> c_int;
 }
 
 use crate::doom::hu_stuff::{chat_on, hu_font, message_dontfuckwithme};
@@ -629,15 +627,10 @@ fn M_QuickSave() {
             quickSaveSlot = -2;
             return;
         }
-        let mut tempstring: [c_char; 80] = [0; 80];
-        let result = snprintf(
-            tempstring.as_mut_ptr(),
-            80,
-            b"quicksave over your game named\n\n'%s'?\n\npress y or n.\0".as_ptr() as *const c_char,
-            savegamestrings[quickSaveSlot as usize].as_ptr(),
-        );
-        m_snprintf_clamp(tempstring.as_mut_ptr(), 80, result);
-        M_StartMessage(tempstring.as_mut_ptr(), Some(M_QuickSaveResponse), 1);
+        static mut QUICK_SAVE_MSG: [c_char; 80] = [0; 80];
+        let slot_str = std::ffi::CStr::from_ptr(savegamestrings[quickSaveSlot as usize].as_ptr()).to_string_lossy();
+        c_write!(QUICK_SAVE_MSG, "quicksave over your game named\n\n'{}'?\n\npress y or n.", slot_str);
+        M_StartMessage(QUICK_SAVE_MSG.as_mut_ptr(), Some(M_QuickSaveResponse), 1);
     }
 }
 
@@ -670,16 +663,10 @@ fn M_QuickLoad() {
             );
             return;
         }
-        let mut tempstring: [c_char; 80] = [0; 80];
-        let result = snprintf(
-            tempstring.as_mut_ptr(),
-            80,
-            b"do you want to quickload the game named\n\n'%s'?\n\npress y or n.\0".as_ptr()
-                as *const c_char,
-            savegamestrings[quickSaveSlot as usize].as_ptr(),
-        );
-        m_snprintf_clamp(tempstring.as_mut_ptr(), 80, result);
-        M_StartMessage(tempstring.as_mut_ptr(), Some(M_QuickLoadResponse), 1);
+        static mut QUICK_LOAD_MSG: [c_char; 80] = [0; 80];
+        let slot_str = std::ffi::CStr::from_ptr(savegamestrings[quickSaveSlot as usize].as_ptr()).to_string_lossy();
+        c_write!(QUICK_LOAD_MSG, "do you want to quickload the game named\n\n'{}'?\n\npress y or n.", slot_str);
+        M_StartMessage(QUICK_LOAD_MSG.as_mut_ptr(), Some(M_QuickLoadResponse), 1);
     }
 }
 
@@ -728,7 +715,7 @@ extern "C" fn M_DrawReadThis1() {
                 skully = 165;
             }
             _ => {
-                I_Error(b"Unhandled game version\0".as_ptr() as *const c_char);
+                i_error!("Unhandled game version");
                 return;
             }
         }
@@ -1066,13 +1053,8 @@ fn M_SelectEndMessage() -> *const c_char {
 extern "C" fn M_QuitDOOM(_choice: c_int) {
     unsafe {
         let msg = M_SelectEndMessage();
-        let result = snprintf(
-            endstring.as_mut_ptr(),
-            160,
-            b"%s\n\n(press y to quit to dos.)\0".as_ptr() as *const c_char,
-            msg,
-        );
-        m_snprintf_clamp(endstring.as_mut_ptr(), 160, result);
+        let msg_str = std::ffi::CStr::from_ptr(msg).to_string_lossy();
+        c_write!(endstring, "{}\n\n(press y to quit to dos.)", msg_str);
         M_StartMessage(endstring.as_mut_ptr(), Some(M_QuitResponse), 1);
     }
 }

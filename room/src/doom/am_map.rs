@@ -27,6 +27,7 @@ use crate::doom::p_setup::{
 };
 use crate::doom::tables::{finecosine, finesine};
 use crate::doom::v_video::patch_t;
+use crate::c_write;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -708,26 +709,16 @@ unsafe fn AM_initVariables() {
 
 unsafe fn AM_loadPics() {
     let mut namebuf: [c_char; 9] = [0; 9];
-    for i in 0..10 {
-        libc::snprintf(
-            namebuf.as_mut_ptr(),
-            namebuf.len(),
-            b"AMMNUM%d\0".as_ptr() as *const c_char,
-            i,
-        );
+    for i in 0..10i32 {
+        c_write!(namebuf, "AMMNUM{}", i);
         marknums[i as usize] = W_CacheLumpName(namebuf.as_mut_ptr(), PU_STATIC) as *mut patch_t;
     }
 }
 
 unsafe fn AM_unloadPics() {
     let mut namebuf: [c_char; 9] = [0; 9];
-    for i in 0..10 {
-        libc::snprintf(
-            namebuf.as_mut_ptr(),
-            namebuf.len(),
-            b"AMMNUM%d\0".as_ptr() as *const c_char,
-            i,
-        );
+    for i in 0..10i32 {
+        c_write!(namebuf, "AMMNUM{}", i);
         W_ReleaseLumpName(namebuf.as_mut_ptr());
     }
 }
@@ -810,7 +801,6 @@ unsafe fn AM_maxOutWindowScale() {
 pub unsafe extern "C" fn AM_Responder(ev: *mut event_t) -> c_int {
     let mut rc: c_int = 0;
     static mut bigstate: c_int = 0;
-    let mut buffer: [c_char; 20] = [0; 20];
 
     if automapactive == 0 {
         if (*ev).type_ == 0 && (*ev).data1 == key_map_toggle {
@@ -882,14 +872,9 @@ pub unsafe extern "C" fn AM_Responder(ev: *mut event_t) -> c_int {
                 (*plr).message = DEH_String(b"Grid OFF\0".as_ptr() as *mut c_char);
             }
         } else if key == key_map_mark {
-            libc::snprintf(
-                buffer.as_mut_ptr(),
-                buffer.len(),
-                b"%s %d\0".as_ptr() as *const c_char,
-                DEH_String(b"Marked Spot\0".as_ptr() as *mut c_char),
-                markpointnum,
-            );
-            (*plr).message = buffer.as_mut_ptr();
+            static mut AM_MARK_MSG: [c_char; 20] = [0; 20];
+            c_write!(AM_MARK_MSG, "Marked Spot {}", markpointnum);
+            (*plr).message = AM_MARK_MSG.as_mut_ptr();
             AM_addMark();
         } else if key == key_map_clearmark {
             AM_clearMarks();

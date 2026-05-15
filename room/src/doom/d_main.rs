@@ -17,6 +17,7 @@ use crate::doom::doomstat::{gamedescription, gamemission, gamemode, gameversion,
 use crate::doom::i_video::I_StartFrame;
 use crate::doom::m_config::M_SaveDefaults;
 use crate::doom::m_misc::M_snprintf_clamp;
+use crate::{c_write, i_error};
 
 // ---------------------------------------------------------------------------
 // String constants from d_englsh.h / dstrings.h
@@ -37,7 +38,7 @@ const HUSTR_KEYRED: c_char = b'r' as c_char;
 type gamestate_t = c_int;
 type gameaction_t = c_int;
 type skill_t = c_int;
-type boolean = c_int;
+type boolean = c_int; // TODO: Use Boolean type
 type byte = u8;
 
 const GS_LEVEL: gamestate_t = 0;
@@ -359,8 +360,6 @@ extern "C" {
     fn I_BindJoystickVariables();
     fn I_Endoom(data: *mut byte);
     fn I_InitJoystick();
-    fn I_Error(msg: *const c_char);
-    fn I_ErrorV(msg: *const c_char);
     fn I_AtExit(func: extern "C" fn(), run_if_error: boolean);
     fn I_PrintStartupBanner(gamedescription: *mut c_char);
     fn I_PrintBanner(text: *mut c_char);
@@ -799,16 +798,9 @@ pub extern "C" fn D_BindVariables() {
         // Multiplayer chat macros
         for i in 0..10 {
             let mut buf: [c_char; 12] = [0; 12];
-            let buf_ptr = buf.as_mut_ptr();
-            let fmt = b"chatmacro%i\0".as_ptr() as *const c_char;
-            // Use snprintf to format the string
-            extern "C" {
-                fn snprintf(s: *mut c_char, n: usize, format: *const c_char, ...) -> c_int;
-            }
-            let result = snprintf(buf_ptr, buf.len(), fmt, i);
-            M_snprintf_clamp(buf_ptr, buf.len(), result);
+            c_write!(buf, "chatmacro{}", i);
             M_BindVariable(
-                buf_ptr,
+                buf.as_mut_ptr(),
                 &mut chat_macros[i] as *mut *mut c_char as *mut c_void,
             );
         }
@@ -1083,6 +1075,7 @@ unsafe fn GetGameName(gamename: *mut c_char) -> *mut c_char {
                 Z_Malloc(gamename_size as c_int, PU_STATIC, ptr::null_mut()) as *mut c_char;
 
             let version = G_VanillaVersionCode();
+            // Dynamic format string from DEH_String — cannot use c_write! (not a literal).
             extern "C" {
                 fn snprintf(s: *mut c_char, n: usize, format: *const c_char, ...) -> c_int;
             }
@@ -1144,7 +1137,7 @@ unsafe fn SetMissionForPackName(pack_name: *mut c_char) {
         println!("\t{}", c_str_to_str(pack.name.0));
     }
 
-    I_Error(b"Unknown mission pack name\0".as_ptr() as *const c_char);
+    i_error!("Unknown mission pack name");
 }
 
 // ---------------------------------------------------------------------------
@@ -1177,7 +1170,7 @@ pub extern "C" fn D_IdentifyVersion() {
             }
 
             if gamemission == d_mode::none {
-                I_Error(b"Unknown or invalid IWAD file.\0".as_ptr() as *const c_char);
+                i_error!("Unknown or invalid IWAD file.");
             }
         }
 
@@ -1368,7 +1361,7 @@ unsafe fn InitGameVersion() {
                 );
             }
 
-            I_Error(b"Unknown game version\0".as_ptr() as *const c_char);
+            i_error!("Unknown game version");
         }
     } else {
         // Determine automatically
@@ -1550,11 +1543,7 @@ pub extern "C" fn D_DoomMain() {
         iwadfile = D_FindIWAD(1, &mut gamemission); // IWAD_MASK_DOOM = 1
 
         if iwadfile.is_null() {
-            I_Error(
-                b"Game mode indeterminate.  No IWAD file was found.  Try\n\
-                     specifying one with the '-iwad' command line parameter.\n\0"
-                    .as_ptr() as *const c_char,
-            );
+            i_error!("Game mode indeterminate.  No IWAD file was found.  Try\nspecifying one with the '-iwad' command line parameter.\n");
         }
 
         modifiedgame = 0;
@@ -1603,12 +1592,8 @@ pub extern "C" fn D_DoomMain() {
             if c_str_ends_with(arg, b".lmp\0".as_ptr() as *const c_char) {
                 M_StringCopy(file.as_mut_ptr(), arg, file.len());
             } else {
-                let fmt = b"%s.lmp\0".as_ptr() as *const c_char;
-                extern "C" {
-                    fn snprintf(s: *mut c_char, n: usize, format: *const c_char, ...) -> c_int;
-                }
-                let result = snprintf(file.as_mut_ptr(), file.len(), fmt, arg);
-                M_snprintf_clamp(file.as_mut_ptr(), file.len(), result);
+                let arg_str = std::ffi::CStr::from_ptr(arg).to_string_lossy();
+                c_write!(file, "{}.lmp", arg_str);
             }
 
             if D_AddFile(file.as_mut_ptr()) {
@@ -1649,10 +1634,7 @@ pub extern "C" fn D_DoomMain() {
                 static mut gamemode: c_int;
             }
             if gamemode == d_mode::shareware {
-                I_Error(DEH_String(
-                    b"\nYou cannot -file with the shareware version. Register!\0".as_ptr()
-                        as *const c_char,
-                ));
+                i_error!("\nYou cannot -file with the shareware version. Register!");
             }
 
             // Check for fake IWAD
@@ -1662,9 +1644,7 @@ pub extern "C" fn D_DoomMain() {
                 }
                 for i in 0..23 {
                     if W_CheckNumForName(IWAD_CHECK_NAMES[i].0) < 0 {
-                        I_Error(DEH_String(
-                            b"\nThis is not the registered version.\0".as_ptr() as *const c_char,
-                        ));
+                        i_error!("\nThis is not the registered version.");
                     }
                 }
             }

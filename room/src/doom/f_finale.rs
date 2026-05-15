@@ -14,6 +14,7 @@ use crate::doom::doomstat::{gamemission, gameversion};
 use crate::doom::hu_stuff::{hu_font, HU_FONTSIZE, HU_FONTSTART};
 use crate::doom::info::*;
 use crate::doom::v_video::patch_t;
+use crate::DEH_snprintf;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -201,7 +202,6 @@ extern "C" {
 
     fn toupper(c: c_int) -> c_int;
     fn strlen(s: *const c_char) -> usize;
-    fn snprintf(s: *mut c_char, n: usize, format: *const c_char, ...) -> c_int;
 }
 
 // ---------------------------------------------------------------------------
@@ -222,12 +222,6 @@ unsafe fn logical_gamemission() -> c_int {
 #[inline(always)]
 unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
     s
-}
-
-/// DEH_snprintf is just snprintf.
-#[inline(always)]
-unsafe fn DEH_snprintf(buf: *mut c_char, len: usize, fmt: *const c_char, val: c_int) {
-    snprintf(buf, len, fmt, val);
 }
 
 // ---------------------------------------------------------------------------
@@ -991,7 +985,7 @@ pub extern "C" fn F_BunnyScroll() {
         }
 
         let mut namebuf: [c_char; 10] = [0; 10];
-        DEH_snprintf(namebuf.as_mut_ptr(), namebuf.len(), cstr!("END%i"), stage);
+        DEH_snprintf!(namebuf, "END{}", stage);
         V_DrawPatch(
             (SCREENWIDTH - 13 * 8) / 2,
             (SCREENHEIGHT - 8 * 8) / 2,

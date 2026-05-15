@@ -25,6 +25,7 @@ use crate::doom::d_player::{PlayerT, MAXPLAYERS};
 use crate::doom::doomstat::gamemode;
 use crate::doom::v_video::patch_t;
 use crate::doom::v_video::V_DrawPatch;
+use crate::{c_write, DEH_snprintf};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -598,7 +599,6 @@ static mut snl_pointeron: bool = false;
 
 extern "C" {
     fn printf(fmt: *const c_char, ...) -> c_int;
-    fn snprintf(buf: *mut c_char, len: usize, fmt: *const c_char, ...) -> c_int;
     fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
     fn M_Random() -> c_int;
     fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> *mut c_char;
@@ -622,11 +622,6 @@ extern "C" {
 #[inline(always)]
 unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
     s
-}
-
-#[inline(always)]
-unsafe fn DEH_snprintf(buf: *mut c_char, len: usize, fmt: *const c_char, val: c_int) {
-    snprintf(buf, len, fmt, val);
 }
 
 #[inline(always)]
@@ -1582,23 +1577,12 @@ unsafe fn WI_loadUnloadData(callback: LoadCallback) {
 
     if gamemode == d_mode::commercial {
         for i in 0..NUMCMAPS {
-            DEH_snprintf(
-                name.as_mut_ptr(),
-                9,
-                b"CWILV%2.2d\0".as_ptr() as *const c_char,
-                i,
-            );
+            DEH_snprintf!(name, "CWILV{:02}", i);
             callback(name.as_mut_ptr(), lnames.offset(i as isize));
         }
     } else {
         for i in 0..NUMMAPS as c_int {
-            snprintf(
-                name.as_mut_ptr(),
-                9,
-                b"WILV%d%d\0".as_ptr() as *const c_char,
-                (*wbs).epsd,
-                i,
-            );
+            c_write!(name, "WILV{}{}", (*wbs).epsd, i);
             callback(name.as_mut_ptr(), lnames.offset(i as isize));
         }
 
@@ -1614,14 +1598,7 @@ unsafe fn WI_loadUnloadData(callback: LoadCallback) {
                 let a = (ANIMS[(*wbs).epsd as usize] as *mut anim_t).add(j as usize);
                 for i in 0..(*a).nanims {
                     if (*wbs).epsd != 1 || j != 8 {
-                        snprintf(
-                            name.as_mut_ptr(),
-                            9,
-                            b"WIA%d%.2d%.2d\0".as_ptr() as *const c_char,
-                            (*wbs).epsd,
-                            j,
-                            i,
-                        );
+                        c_write!(name, "WIA{}{:02}{:02}", (*wbs).epsd, j, i);
                         callback(name.as_mut_ptr(), &mut (*a).p[i as usize]);
                     } else {
                         (*a).p[i as usize] = (*((ANIMS[1] as *mut anim_t).add(4))).p[i as usize];
@@ -1636,13 +1613,8 @@ unsafe fn WI_loadUnloadData(callback: LoadCallback) {
         &mut wiminus,
     );
 
-    for i in 0..10 {
-        DEH_snprintf(
-            name.as_mut_ptr(),
-            9,
-            b"WINUM%d\0".as_ptr() as *const c_char,
-            i,
-        );
+    for i in 0..10i32 {
+        DEH_snprintf!(name, "WINUM{}", i);
         callback(name.as_mut_ptr(), &mut num[i as usize]);
     }
 
@@ -1691,19 +1663,9 @@ unsafe fn WI_loadUnloadData(callback: LoadCallback) {
     callback(DEH_String(b"WIMSTT\0".as_ptr() as *mut c_char), &mut total);
 
     for i in 0..MAXPLAYERS {
-        DEH_snprintf(
-            name.as_mut_ptr(),
-            9,
-            b"STPB%d\0".as_ptr() as *const c_char,
-            i as c_int,
-        );
+        DEH_snprintf!(name, "STPB{}", i);
         callback(name.as_mut_ptr(), &mut p[i]);
-        DEH_snprintf(
-            name.as_mut_ptr(),
-            9,
-            b"WIBP%d\0".as_ptr() as *const c_char,
-            (i + 1) as c_int,
-        );
+        DEH_snprintf!(name, "WIBP{}", i + 1);
         callback(name.as_mut_ptr(), &mut bp[i]);
     }
 
@@ -1720,12 +1682,7 @@ unsafe fn WI_loadUnloadData(callback: LoadCallback) {
             name.len(),
         );
     } else {
-        DEH_snprintf(
-            name.as_mut_ptr(),
-            name.len(),
-            b"WIMAP%d\0".as_ptr() as *const c_char,
-            (*wbs).epsd,
-        );
+        DEH_snprintf!(name, "WIMAP{}", (*wbs).epsd);
     }
 
     callback(name.as_mut_ptr(), &mut background);
