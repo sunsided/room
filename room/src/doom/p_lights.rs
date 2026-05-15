@@ -7,8 +7,12 @@
 use std::ffi::c_void;
 use std::os::raw::c_int;
 
+use crate::doom::c_ffi as cffi;
+use crate::doom::m_random::P_Random;
+use crate::doom::p_setup::{numsectors, sectors};
+use crate::doom::p_spec::{getNextSector, P_FindMinSurroundingLight, P_FindSectorFromLineTag};
 use crate::doom::p_tick::{thinker_t, P_AddThinker};
-use crate::doom::z_zone::PU_LEVSPEC;
+use crate::doom::z_zone::{PU_LEVSPEC, Z_Malloc};
 const GLOWSPEED: c_int = 8;
 const STROBEBRIGHT: c_int = 5;
 const FASTDARK: c_int = 15;
@@ -105,15 +109,6 @@ pub struct line_t {
     pub specialdata: *mut c_void,
 }
 
-extern "C" {
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn P_Random() -> c_int;
-    fn P_FindMinSurroundingLight(sector: *mut sector_t, max: c_int) -> c_int;
-    fn P_FindSectorFromLineTag(line: *mut line_t, start: c_int) -> c_int;
-    fn getNextSector(line: *mut line_t, sec: *mut sector_t) -> *mut sector_t;
-    static mut numsectors: c_int;
-    static mut sectors: *mut sector_t;
-}
 
 #[no_mangle]
 pub unsafe extern "C" fn T_FireFlicker(flick: *mut fireflicker_t) {
@@ -153,7 +148,7 @@ pub extern "C" fn P_SpawnFireFlicker(sector: *mut sector_t) {
         >(T_FireFlicker));
         (*flick).sector = sector;
         (*flick).maxlight = (*sector).lightlevel as c_int;
-        (*flick).minlight = P_FindMinSurroundingLight(sector, (*sector).lightlevel as c_int) + 16;
+        (*flick).minlight = P_FindMinSurroundingLight(sector as *mut cffi::sector_t, (*sector).lightlevel as c_int) + 16;
         (*flick).count = 4;
     }
 }
@@ -195,7 +190,7 @@ pub extern "C" fn P_SpawnLightFlash(sector: *mut sector_t) {
         >(T_LightFlash));
         (*flash).sector = sector;
         (*flash).maxlight = (*sector).lightlevel as c_int;
-        (*flash).minlight = P_FindMinSurroundingLight(sector, (*sector).lightlevel as c_int);
+        (*flash).minlight = P_FindMinSurroundingLight(sector as *mut cffi::sector_t, (*sector).lightlevel as c_int);
         (*flash).maxtime = 64;
         (*flash).mintime = 7;
         (*flash).count = (P_Random() & (*flash).maxtime) + 1;
@@ -239,7 +234,7 @@ pub extern "C" fn P_SpawnStrobeFlash(sector: *mut sector_t, fastOrSlow: c_int, i
             unsafe extern "C" fn(*mut c_void),
         >(T_StrobeFlash));
         (*flash).maxlight = (*sector).lightlevel as c_int;
-        (*flash).minlight = P_FindMinSurroundingLight(sector, (*sector).lightlevel as c_int);
+        (*flash).minlight = P_FindMinSurroundingLight(sector as *mut cffi::sector_t, (*sector).lightlevel as c_int);
 
         if (*flash).minlight == (*flash).maxlight {
             (*flash).minlight = 0;
@@ -260,7 +255,7 @@ pub extern "C" fn EV_StartLightStrobing(line: *mut line_t) {
     unsafe {
         let mut secnum: c_int = -1;
         loop {
-            secnum = P_FindSectorFromLineTag(line, secnum);
+            secnum = P_FindSectorFromLineTag(line as *mut cffi::line_t, secnum);
             if secnum < 0 {
                 break;
             }
@@ -268,7 +263,7 @@ pub extern "C" fn EV_StartLightStrobing(line: *mut line_t) {
             if !(*sec).specialdata.is_null() {
                 continue;
             }
-            P_SpawnStrobeFlash(sec, SLOWDARK, 0);
+            P_SpawnStrobeFlash(sec as *mut sector_t, SLOWDARK, 0);
         }
     }
 }
@@ -285,7 +280,7 @@ pub extern "C" fn EV_TurnTagLightsOff(line: *mut line_t) {
             let mut min = (*sec).lightlevel as c_int;
             for i in 0..(*sec).linecount as usize {
                 let templine = *(*sec).lines.add(i);
-                let tsec = getNextSector(templine, sec);
+                let tsec = getNextSector(templine as *mut cffi::line_t, sec);
                 if tsec.is_null() {
                     continue;
                 }
@@ -312,7 +307,7 @@ pub extern "C" fn EV_LightTurnOn(line: *mut line_t, bright: c_int) {
             if bright == 0 {
                 for j in 0..(*sec).linecount as usize {
                     let templine = *(*sec).lines.add(j);
-                    let temp = getNextSector(templine, sec);
+                    let temp = getNextSector(templine as *mut cffi::line_t, sec);
                     if temp.is_null() {
                         continue;
                     }
@@ -361,7 +356,7 @@ pub extern "C" fn P_SpawnGlowingLight(sector: *mut sector_t) {
         P_AddThinker(&mut (*g).thinker);
 
         (*g).sector = sector;
-        (*g).minlight = P_FindMinSurroundingLight(sector, (*sector).lightlevel as c_int);
+        (*g).minlight = P_FindMinSurroundingLight(sector as *mut cffi::sector_t, (*sector).lightlevel as c_int);
         (*g).maxlight = (*sector).lightlevel as c_int;
         (*g).thinker.function.acp1 = Some(core::mem::transmute::<
             unsafe extern "C" fn(*mut glow_t),
