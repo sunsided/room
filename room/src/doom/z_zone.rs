@@ -42,9 +42,7 @@ struct memzone_t {
 
 pub static mut mainzone: *mut memzone_t = ptr::null_mut();
 
-extern "C" {
-    fn I_ZoneBase(size: *mut c_int) -> *mut u8;
-}
+use crate::doom::i_system::I_ZoneBase;
 
 unsafe fn Z_ClearZone(zone: *mut memzone_t) {
     let block = (zone as *mut u8).add(std::mem::size_of::<memzone_t>()) as *mut memblock_t;
