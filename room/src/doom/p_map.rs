@@ -7,12 +7,12 @@
 use std::ffi::{c_char, c_int, c_uint, c_void};
 use std::ptr;
 
+use crate::i_error;
 use crate::doom::c_ffi::{
     intercept_t, line_t, mobj_t, sector_t, subsector_t, ANG180, ANGLETOFINESHIFT, BOXBOTTOM,
     BOXLEFT, BOXRIGHT, BOXTOP, DEFAULT_SPECHIT_MAGIC, FRACBITS, FRACUNIT, MAPBLOCKSHIFT,
     ML_BLOCKING, ML_BLOCKMONSTERS, ML_TWOSIDED,
 };
-use crate::doom::i_system::I_ErrorV;
 use crate::doom::info::MobjInfo;
 use crate::doom::m_fixed::{fixed_t, FixedDiv, FixedMul};
 use crate::doom::m_random::P_Random;
@@ -493,7 +493,7 @@ pub unsafe extern "C" fn P_HitSlideLine(ld: *mut line_t) {
 pub unsafe extern "C" fn PTR_SlideTraverse(in_: *mut intercept_t) -> c_uint {
     let in_ = &*in_;
     if in_.isaline == 0 {
-        I_ErrorV(b"PTR_SlideTraverse: not a line?\0".as_ptr() as *const c_char);
+        i_error!("PTR_SlideTraverse: not a line?");
     }
     let li = in_.d.line;
     if (*li).flags as c_int & ML_TWOSIDED as c_int == 0 {

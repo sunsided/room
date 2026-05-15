@@ -8,6 +8,7 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::os::raw::c_short;
 
+use crate::i_error;
 use crate::doom::d_mode;
 use crate::doom::p_ceilng::EV_DoCeiling;
 use crate::doom::p_floor::{side_t, EV_BuildStairs, EV_DoFloor};
@@ -351,7 +352,6 @@ extern "C" {
     fn EV_DoLockedDoor(line: *mut line_t, dtype: c_int, thing: *mut c_void) -> c_int;
     fn G_ExitLevel();
     fn G_SecretExitLevel();
-    fn I_Error(error: *const c_char, ...);
     fn EV_DoDonut(line: *mut line_t) -> c_int;
 
     static mut gamemode: c_int;
@@ -413,7 +413,7 @@ pub unsafe extern "C" fn P_StartButton(line: *mut line_t, w: c_int, texture: c_i
         }
     }
 
-    I_Error(b"P_StartButton: no button slots left!\0".as_ptr() as *const c_char);
+    i_error!("P_StartButton: no button slots left!");
 }
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::i_error;
 use std::ffi::{c_char, c_float, c_int, c_void};
 use std::mem;
 use std::ptr;
@@ -105,7 +106,6 @@ extern "C" {
     static mut myargv: *mut *mut c_char;
     fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
     fn Z_Free(ptr: *mut c_void);
-    fn I_Error(format: *const c_char, ...);
 }
 
 unsafe fn cmap_to_fb(out: *mut u8, inp: *mut u8, in_pixels: c_int) {
@@ -205,10 +205,7 @@ pub unsafe extern "C" fn I_InitGraphics() {
                 s_Fb.red.offset = 0;
                 s_Fb.transp.offset = 16;
             } else {
-                I_Error(
-                    b"Unknown gfxmode value: %s\n\0".as_ptr() as *const c_char,
-                    mode,
-                );
+                i_error!("Unknown gfxmode value: {}\n", std::ffi::CStr::from_ptr(mode).to_string_lossy());
             }
         }
     }
