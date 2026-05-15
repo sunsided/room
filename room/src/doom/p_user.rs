@@ -65,23 +65,11 @@ const STATE_T_SIZEOF: usize = 40;
 #[no_mangle]
 pub static mut onground: c_int = 0;
 
-extern "C" {
-    fn P_SetMobjState(thing: *mut mobj_t, state: c_int) -> c_int;
-    fn P_MovePsprites(player: *mut PlayerT);
-    fn P_BringUpWeapon(player: *mut PlayerT);
-    fn P_SetPsprite(player: *mut PlayerT, psprite: c_int, state: c_int);
-    fn P_PlayerInSpecialSector(player: *mut PlayerT);
-    fn P_UseLines(player: *mut PlayerT);
-    fn R_PointToAngle2(x1: fixed_t, y1: fixed_t, x2: fixed_t, y2: fixed_t) -> u32;
-    // `states` is `state_t states[NUMSTATES]` in info.c. We declare it as
-    // an opaque byte (size-0 would be invalid); only its ADDRESS is used,
-    // via byte-offset arithmetic with STATE_T_SIZEOF.
-    static states: u8;
-    static mut demorecording: c_int;
-    static mut viewangleoffset: c_int;
-    static mut allowautoaim: c_int;
-    fn P_CalcSwirl();
-}
+use crate::doom::p_mobj::P_SetMobjState;
+use crate::doom::p_pspr::P_MovePsprites;
+use crate::doom::p_spec::P_PlayerInSpecialSector;
+use crate::doom::p_map::P_UseLines;
+use crate::doom::r_main::R_PointToAngle2;
 
 #[no_mangle]
 pub extern "C" fn P_Thrust(player: *mut PlayerT, angle: u32, move_: fixed_t) {
@@ -180,7 +168,7 @@ pub extern "C" fn P_MovePlayer(player: *mut PlayerT) {
         }
 
         // C: player->mo->state == &states[S_PLAY]
-        let p_play = (&states as *const u8).add(S_PLAY as usize * STATE_T_SIZEOF);
+        let p_play = (states.as_ptr() as *const u8).add(S_PLAY as usize * STATE_T_SIZEOF);
         if (cmd.forwardmove != 0 || cmd.sidemove != 0) && (*mo).state as *const u8 == p_play {
             P_SetMobjState(mo, S_PLAY_RUN1);
         }
@@ -315,7 +303,7 @@ pub extern "C" fn P_PlayerThink(player: *mut PlayerT) {
         // Check for use
         if cmd.buttons & BT_USE != 0 {
             if (*player).usedown == 0 {
-                P_UseLines(player);
+                P_UseLines(player as *mut std::ffi::c_void);
                 (*player).usedown = 1;
             }
         } else {
