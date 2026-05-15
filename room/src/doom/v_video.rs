@@ -7,6 +7,8 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
+use crate::i_error;
+
 const SCREENWIDTH: c_int = 320;
 const SCREENHEIGHT: c_int = 200;
 const PU_STATIC: c_int = 1;
@@ -68,7 +70,6 @@ static mut dest_screen: *mut u8 = ptr::null_mut();
 static mut patchclip_callback: vpatchclipfunc_t = None;
 
 extern "C" {
-    fn I_Error(format: *const c_char, ...);
     fn M_AddToBox(bbox: *mut c_int, x: c_int, y: c_int);
     fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void;
     fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
@@ -568,6 +569,8 @@ pub extern "C" fn V_ScreenShot(format: *mut c_char) {
 
         let mut i = 0;
         while i <= 99 {
+            // Dynamic format string (*mut c_char from C caller, e.g. "DOOM%02i.%s").
+            // Cannot use c_write! — format string is not a Rust literal.
             libc::snprintf(
                 lbmname.as_mut_ptr() as *mut c_char,
                 lbmname.len(),
@@ -583,7 +586,7 @@ pub extern "C" fn V_ScreenShot(format: *mut c_char) {
         }
 
         if i == 100 {
-            I_Error(b"V_ScreenShot: Couldn't create a PCX\0".as_ptr() as *const c_char);
+            i_error!("V_ScreenShot: Couldn't create a PCX");
         }
 
         WritePCXfile(

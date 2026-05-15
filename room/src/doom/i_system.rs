@@ -8,6 +8,8 @@
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr};
 use std::ptr;
 
+use crate::i_error;
+
 const DEFAULT_RAM: c_int = 6; // MiB
 const MIN_RAM: c_int = 6; // MiB
 
@@ -36,14 +38,7 @@ unsafe fn AutoAllocMemory(size: *mut c_int, mut default_ram: c_int, min_ram: c_i
 
     while zonemem.is_null() {
         if default_ram < min_ram {
-            let mut buf = [0u8; 512];
-            libc::snprintf(
-                buf.as_mut_ptr() as *mut c_char,
-                buf.len(),
-                b"Unable to allocate %i MiB of RAM for zone\0".as_ptr() as *const c_char,
-                default_ram,
-            );
-            I_Error(buf.as_ptr() as *const c_char);
+            i_error!("Unable to allocate {} MiB of RAM for zone", default_ram);
         }
 
         *size = default_ram * 1024 * 1024;
