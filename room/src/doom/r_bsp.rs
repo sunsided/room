@@ -380,38 +380,18 @@ static CHECKCOORD: [[c_int; 4]; 12] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Externs from other modules
+// Imports from other modules
 // ---------------------------------------------------------------------------
 
-extern "C" {
-    static mut viewx: fixed_t;
-    static mut viewy: fixed_t;
-    static mut viewz: fixed_t;
-    static mut viewangle: angle_t;
-    static mut viewwidth: c_int;
-    static mut clipangle: angle_t;
-    static mut sscount: c_int;
-    static mut viewangletox: [c_int; tables::FINEANGLES / 2 + 1];
-    static mut rw_angle1: angle_t;
-
-    fn R_PointToAngle(x: fixed_t, y: fixed_t) -> angle_t;
-    fn R_PointOnSide(x: fixed_t, y: fixed_t, node: *const node_t) -> c_int;
-    fn R_StoreWallRange(start: c_int, stop: c_int);
-
-    static nodes: *mut node_t;
-    static segs: *mut seg_t;
-    static subsectors: *mut subsector_t;
-    static numsubsectors: c_int;
-    static skyflatnum: c_int;
-
-    static mut floorplane: *mut visplane_t;
-    static mut ceilingplane: *mut visplane_t;
-
-    fn R_FindPlane(height: fixed_t, picnum: c_int, lightlevel: c_int) -> *mut visplane_t;
-    fn R_AddSprites(sec: *mut sector_t);
-
-    fn I_Error(format: *const i8, ...);
-}
+use crate::doom::p_setup::{nodes, segs, subsectors};
+use crate::doom::r_draw::viewwidth;
+use crate::doom::r_main::{
+    clipangle, sscount, viewangle, viewangletox, viewx, viewy, viewz, R_PointOnSide, R_PointToAngle,
+};
+use crate::doom::r_plane::{ceilingplane, floorplane, R_FindPlane};
+use crate::doom::r_segs::{rw_angle1, R_StoreWallRange};
+use crate::doom::r_sky::skyflatnum;
+use crate::doom::r_things::R_AddSprites;
 
 // ---------------------------------------------------------------------------
 // R_ClearDrawSegs
@@ -843,10 +823,10 @@ pub unsafe extern "C" fn R_Subsector(num: c_int) {
 
     sscount += 1;
 
-    let sub = &*subsectors.add(num_usize);
-    frontsector = (*sub).sector;
+    let sub = &*(subsectors.add(num_usize) as *mut subsector_t);
+    frontsector = (*sub).sector as *mut sector_t;
     let mut count = (*sub).numlines as c_int;
-    let mut line = segs.add((*sub).firstline as usize);
+    let mut line = segs.add((*sub).firstline as usize) as *mut seg_t;
 
     if (*frontsector).floorheight < viewz {
         floorplane = R_FindPlane(
@@ -900,7 +880,7 @@ pub unsafe extern "C" fn R_RenderBSPNode(bspnum: c_int) {
         return;
     }
 
-    let bsp = &*nodes.add(bspnum as usize);
+    let bsp = &*(nodes.add(bspnum as usize) as *const node_t);
 
     let side = R_PointOnSide(viewx, viewy, bsp);
 
