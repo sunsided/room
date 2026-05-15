@@ -187,7 +187,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_pointer_width = "64")]
     fn struct_size_assertion() {
         assert_eq!(std::mem::size_of::<cheatseq_t>(), 72);
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "32")]
+    fn struct_size_assertion() {
+        assert_eq!(std::mem::size_of::<cheatseq_t>(), 52);
     }
 }
