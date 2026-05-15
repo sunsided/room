@@ -39,51 +39,18 @@ const MAXDRAWSEGS: usize = 256;
 // Externs from other modules
 // ---------------------------------------------------------------------------
 
-extern "C" {
-    static mut viewz: fixed_t;
-    static mut viewangle: angle_t;
-    static mut viewheight: c_int;
-    static mut centeryfrac: fixed_t;
-    static mut extralight: c_int;
-    static mut fixedcolormap: *mut c_uchar;
-    static mut scalelight: [[*mut c_uchar; MAXLIGHTSCALE]; LIGHTLEVELS];
-    static mut texturetranslation: *mut c_int;
-    static mut textureheight: *mut fixed_t;
-    static mut xtoviewangle: [angle_t; SCREENWIDTH + 1];
-    static mut skyflatnum: c_int;
-    static mut screenheightarray: [c_short; SCREENWIDTH];
-    static mut negonearray: [c_short; SCREENWIDTH];
-
-    static mut ceilingclip: [c_short; SCREENWIDTH];
-    static mut floorclip: [c_short; SCREENWIDTH];
-    static mut floorplane: *mut visplane_t;
-    static mut ceilingplane: *mut visplane_t;
-    static mut lastopening: *mut c_short;
-
-    static mut drawsegs: [drawseg_t; MAXDRAWSEGS];
-    static mut ds_p: *mut drawseg_t;
-    static mut curline: *mut seg_t;
-    static mut frontsector: *mut sector_t;
-    static mut backsector: *mut sector_t;
-    static mut sidedef: *mut side_t;
-    static mut linedef: *mut line_t;
-
-    static mut dc_x: c_int;
-    static mut dc_yl: c_int;
-    static mut dc_yh: c_int;
-    static mut dc_iscale: fixed_t;
-    static mut dc_texturemid: fixed_t;
-    static mut dc_source: *mut c_uchar;
-    static mut dc_colormap: *mut c_uchar;
-
-    static mut colfunc: Option<unsafe extern "C" fn()>;
-
-    fn R_GetColumn(tex: c_int, col: c_int) -> *mut c_uchar;
-    fn R_CheckPlane(pl: *mut visplane_t, start: c_int, stop: c_int) -> *mut visplane_t;
-    fn R_ScaleFromGlobalAngle(visangle: angle_t) -> fixed_t;
-    fn R_PointToDist(x: fixed_t, y: fixed_t) -> fixed_t;
-    fn R_DrawMaskedColumn(column: *mut c_void);
-}
+use crate::doom::r_bsp::{backsector, curline, drawsegs, ds_p, frontsector, linedef, sidedef};
+use crate::doom::r_data::{textureheight, texturetranslation, R_GetColumn};
+use crate::doom::r_draw::{
+    dc_colormap, dc_iscale, dc_source, dc_texturemid, dc_x, dc_yh, dc_yl, viewheight,
+};
+use crate::doom::r_main::{
+    colfunc, centeryfrac, extralight, fixedcolormap, scalelight, viewangle, viewz,
+    xtoviewangle, R_PointToDist, R_ScaleFromGlobalAngle,
+};
+use crate::doom::r_plane::{ceilingclip, ceilingplane, floorclip, floorplane, lastopening, R_CheckPlane};
+use crate::doom::r_sky::skyflatnum;
+use crate::doom::r_things::{negonearray, screenheightarray, R_DrawMaskedColumn};
 
 // ---------------------------------------------------------------------------
 // Globals defined by this module
