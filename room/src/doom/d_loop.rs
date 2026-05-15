@@ -12,7 +12,6 @@ use std::os::raw::c_int;
 use crate::i_error;
 use crate::types::Boolean;
 
-
 use crate::doom::d_net::{LoopInterfaceT, NetConnectDataT, NetGameSettingsT};
 use crate::doom::d_player::TiccmdT;
 use crate::doom::i_timer::TICRATE;

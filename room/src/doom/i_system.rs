@@ -11,7 +11,6 @@ use std::ptr;
 use crate::i_error;
 use crate::types::Boolean;
 
-
 const DEFAULT_RAM: c_int = 6; // MiB
 const MIN_RAM: c_int = 6; // MiB
 

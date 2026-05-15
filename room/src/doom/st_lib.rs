@@ -8,9 +8,9 @@ use std::ffi::c_char;
 use std::ffi::c_void;
 use std::os::raw::c_int;
 
-use crate::i_error;
 use crate::doom::v_video::patch_t;
 use crate::doom::z_zone::PU_STATIC;
+use crate::i_error;
 const ST_HEIGHT: c_int = 32;
 const ST_Y: c_int = 200 - ST_HEIGHT; // 168
 

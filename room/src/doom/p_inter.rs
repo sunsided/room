@@ -8,7 +8,6 @@
 use std::ffi::{c_char, c_void};
 use std::os::raw::c_int;
 
-use crate::i_error;
 use crate::doom::d_items::weaponinfo;
 use crate::doom::d_player::{consoleplayer, players, PlayerT, CF_GODMODE};
 use crate::doom::doomstat::{gamemode, gameversion};
@@ -18,6 +17,7 @@ use crate::doom::m_random::P_Random;
 use crate::doom::p_pspr::P_DropWeapon;
 use crate::doom::p_telept::mobj_t;
 use crate::doom::tables::{finecosine, finesine, ANG180, ANGLETOFINESHIFT};
+use crate::i_error;
 
 // ---------------------------------------------------------------------------
 // Constants

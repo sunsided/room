@@ -208,7 +208,10 @@ pub unsafe extern "C" fn I_InitGraphics() {
                 s_Fb.red.offset = 0;
                 s_Fb.transp.offset = 16;
             } else {
-                i_error!("Unknown gfxmode value: {}\n", std::ffi::CStr::from_ptr(mode).to_string_lossy());
+                i_error!(
+                    "Unknown gfxmode value: {}\n",
+                    std::ffi::CStr::from_ptr(mode).to_string_lossy()
+                );
             }
         }
     }

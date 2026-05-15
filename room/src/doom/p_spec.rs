@@ -11,7 +11,6 @@
 use std::ffi::{c_char, c_int, c_short, c_void};
 use std::ptr;
 
-use crate::i_error;
 use crate::doom::c_ffi::{line_t, mobj_t, sector_t, side_t, FLOORSPEED, ML_TWOSIDED};
 use crate::doom::d_player::{PlayerT, CF_GODMODE};
 use crate::doom::i_timer::TICRATE;
@@ -30,6 +29,7 @@ use crate::doom::r_data::{
 };
 use crate::doom::s_sound::S_StartSound;
 use crate::doom::z_zone::PU_LEVSPEC;
+use crate::i_error;
 
 // ---------------------------------------------------------------------------
 // Macros
@@ -268,9 +268,11 @@ pub unsafe extern "C" fn P_InitPicAnims() {
         (*lastanim).numpics = (*lastanim).picnum - (*lastanim).basepic + 1;
 
         if (*lastanim).numpics < 2 {
-            i_error!("P_InitPicAnims: bad cycle from {} to {}",
+            i_error!(
+                "P_InitPicAnims: bad cycle from {} to {}",
                 std::ffi::CStr::from_ptr(startname).to_string_lossy(),
-                std::ffi::CStr::from_ptr(endname).to_string_lossy());
+                std::ffi::CStr::from_ptr(endname).to_string_lossy()
+            );
         }
 
         (*lastanim).speed = speed;
@@ -844,7 +846,10 @@ pub unsafe extern "C" fn P_PlayerInSpecialSector(player: *mut PlayerT) {
             }
         }
         _ => {
-            i_error!("P_PlayerInSpecialSector: unknown special {}", (*sector).special);
+            i_error!(
+                "P_PlayerInSpecialSector: unknown special {}",
+                (*sector).special
+            );
         }
     }
 }

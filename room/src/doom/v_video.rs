@@ -7,9 +7,9 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
-use crate::i_error;
 use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
+use crate::i_error;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]

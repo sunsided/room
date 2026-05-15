@@ -7,13 +7,13 @@
 use std::ffi::c_void;
 use std::os::raw::c_int;
 
-use crate::i_error;
 use crate::doom::i_timer::TICRATE;
 use crate::doom::m_fixed::{fixed_t, FRACUNIT};
 use crate::doom::p_floor::side_t;
 use crate::doom::p_lights::{line_t, sector_t};
 use crate::doom::p_tick::{thinker_t, P_AddThinker, P_RemoveThinker};
 use crate::doom::z_zone::PU_LEVSPEC;
+use crate::i_error;
 
 const PLATSPEED: fixed_t = FRACUNIT;
 const PLATWAIT: c_int = 3;

@@ -290,7 +290,10 @@ pub unsafe extern "C" fn D_FindIWAD(mask: c_int, mission: *mut c_int) -> *mut c_
         let result = D_FindWADByName(iwadfile);
 
         if result.is_null() {
-            i_error!("IWAD file '{}' not found!", std::ffi::CStr::from_ptr(iwadfile).to_string_lossy());
+            i_error!(
+                "IWAD file '{}' not found!",
+                std::ffi::CStr::from_ptr(iwadfile).to_string_lossy()
+            );
         }
 
         *mission = IdentifyIWADByName(result, mask);

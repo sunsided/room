@@ -6,6 +6,8 @@
 
 use std::ffi::{c_char, c_int};
 
+use crate::types::Boolean;
+
 pub const none: c_int = 9;
 pub const doom: c_int = 0;
 pub const doom2: c_int = 1;
@@ -175,13 +177,13 @@ static VALID_VERSIONS: [ValidVersion; 10] = [
 ];
 
 #[no_mangle]
-pub extern "C" fn D_ValidGameMode(mission: c_int, mode: c_int) -> c_int {
+pub extern "C" fn D_ValidGameMode(mission: c_int, mode: c_int) -> Boolean {
     for vm in &VALID_MODES {
         if vm.mission == mission && vm.mode == mode {
-            return 1; // true
+            return Boolean::TRUE;
         }
     }
-    0 // false
+    Boolean::FALSE
 }
 
 #[no_mangle]
@@ -190,40 +192,38 @@ pub extern "C" fn D_ValidEpisodeMap(
     mode: c_int,
     episode: c_int,
     map: c_int,
-) -> c_int {
+) -> Boolean {
     // Hacks for Heretic secret episodes
     if mission == heretic {
         if mode == retail && episode == 6 {
-            return if (1..=3).contains(&map) { 1 } else { 0 };
+            return Boolean::from((1..=3).contains(&map));
         } else if mode == registered && episode == 4 {
-            return if map == 1 { 1 } else { 0 };
+            return Boolean::from(map == 1);
         }
     }
 
     for vm in &VALID_MODES {
         if mission == vm.mission && mode == vm.mode {
-            return if episode >= 1 && episode <= vm.episode && map >= 1 && map <= vm.map {
-                1
-            } else {
-                0
-            };
+            return Boolean::from(
+                episode >= 1 && episode <= vm.episode && map >= 1 && map <= vm.map,
+            );
         }
     }
 
-    0 // Unknown mode/mission combination
+    Boolean::FALSE
 }
 
 #[no_mangle]
 pub extern "C" fn D_GetNumEpisodes(mission: c_int, mode: c_int) -> c_int {
     let mut episode = 1;
-    while D_ValidEpisodeMap(mission, mode, episode, 1) != 0 {
+    while D_ValidEpisodeMap(mission, mode, episode, 1).is_truthy() {
         episode += 1;
     }
     episode - 1
 }
 
 #[no_mangle]
-pub extern "C" fn D_ValidGameVersion(mission: c_int, version: c_int) -> c_int {
+pub extern "C" fn D_ValidGameVersion(mission: c_int, version: c_int) -> Boolean {
     let mission = if mission == doom2
         || mission == pack_plut
         || mission == pack_tnt
@@ -237,18 +237,18 @@ pub extern "C" fn D_ValidGameVersion(mission: c_int, version: c_int) -> c_int {
 
     for vv in &VALID_VERSIONS {
         if vv.mission == mission && vv.version == version {
-            return 1; // true
+            return Boolean::TRUE;
         }
     }
 
-    0 // false
+    Boolean::FALSE
 }
 
 #[no_mangle]
-pub extern "C" fn D_IsEpisodeMap(mission: c_int) -> c_int {
+pub extern "C" fn D_IsEpisodeMap(mission: c_int) -> Boolean {
     match mission {
-        doom | heretic | pack_chex => 1, // true
-        _ => 0,                          // false
+        doom | heretic | pack_chex => Boolean::TRUE,
+        _ => Boolean::FALSE,
     }
 }
 
@@ -277,16 +277,17 @@ pub extern "C" fn D_GameMissionString(mission: c_int) -> *mut c_char {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::Boolean;
     use std::ffi::CStr;
 
     #[test]
     fn valid_game_mode_doom_shareware() {
-        assert_eq!(D_ValidGameMode(doom, shareware), 1);
+        assert_eq!(D_ValidGameMode(doom, shareware), Boolean::TRUE);
     }
 
     #[test]
     fn valid_game_mode_doom2_shareware_invalid() {
-        assert_eq!(D_ValidGameMode(doom2, shareware), 0);
+        assert_eq!(D_ValidGameMode(doom2, shareware), Boolean::FALSE);
     }
 
     #[test]
@@ -296,12 +297,12 @@ mod tests {
 
     #[test]
     fn is_episode_map_doom2_false() {
-        assert_eq!(D_IsEpisodeMap(doom2), 0);
+        assert_eq!(D_IsEpisodeMap(doom2), Boolean::FALSE);
     }
 
     #[test]
     fn is_episode_map_doom_true() {
-        assert_eq!(D_IsEpisodeMap(doom), 1);
+        assert_eq!(D_IsEpisodeMap(doom), Boolean::TRUE);
     }
 
     #[test]
@@ -320,57 +321,56 @@ mod tests {
 
     #[test]
     fn valid_game_version_doom_final2() {
-        assert_eq!(D_ValidGameVersion(doom, exe_final2), 1);
+        assert_eq!(D_ValidGameVersion(doom, exe_final2), Boolean::TRUE);
     }
 
     #[test]
     fn valid_game_version_doom2_mapped_to_doom() {
-        // doom2 variants check against doom versions
-        assert_eq!(D_ValidGameVersion(doom2, exe_final2), 1);
+        assert_eq!(D_ValidGameVersion(doom2, exe_final2), Boolean::TRUE);
     }
 
     #[test]
     fn valid_episode_map_doom_retail_ep4_map9() {
-        assert_eq!(D_ValidEpisodeMap(doom, retail, 4, 9), 1);
+        assert_eq!(D_ValidEpisodeMap(doom, retail, 4, 9), Boolean::TRUE);
     }
 
     #[test]
     fn valid_episode_map_doom_retail_ep5_map1_invalid() {
-        assert_eq!(D_ValidEpisodeMap(doom, retail, 5, 1), 0);
+        assert_eq!(D_ValidEpisodeMap(doom, retail, 5, 1), Boolean::FALSE);
     }
 
     /// Heretic retail secret episode 6 allows maps 1-3 only.
     #[test]
     fn valid_episode_map_heretic_retail_ep6_maps_1_to_3() {
-        assert_eq!(D_ValidEpisodeMap(heretic, retail, 6, 1), 1);
-        assert_eq!(D_ValidEpisodeMap(heretic, retail, 6, 2), 1);
-        assert_eq!(D_ValidEpisodeMap(heretic, retail, 6, 3), 1);
-        assert_eq!(D_ValidEpisodeMap(heretic, retail, 6, 4), 0);
-        assert_eq!(D_ValidEpisodeMap(heretic, retail, 6, 0), 0);
+        assert_eq!(D_ValidEpisodeMap(heretic, retail, 6, 1), Boolean::TRUE);
+        assert_eq!(D_ValidEpisodeMap(heretic, retail, 6, 2), Boolean::TRUE);
+        assert_eq!(D_ValidEpisodeMap(heretic, retail, 6, 3), Boolean::TRUE);
+        assert_eq!(D_ValidEpisodeMap(heretic, retail, 6, 4), Boolean::FALSE);
+        assert_eq!(D_ValidEpisodeMap(heretic, retail, 6, 0), Boolean::FALSE);
     }
 
     /// Heretic registered secret episode 4 allows only map 1.
     #[test]
     fn valid_episode_map_heretic_registered_ep4_map1_only() {
-        assert_eq!(D_ValidEpisodeMap(heretic, registered, 4, 1), 1);
-        assert_eq!(D_ValidEpisodeMap(heretic, registered, 4, 2), 0);
-        assert_eq!(D_ValidEpisodeMap(heretic, registered, 4, 0), 0);
+        assert_eq!(D_ValidEpisodeMap(heretic, registered, 4, 1), Boolean::TRUE);
+        assert_eq!(D_ValidEpisodeMap(heretic, registered, 4, 2), Boolean::FALSE);
+        assert_eq!(D_ValidEpisodeMap(heretic, registered, 4, 0), Boolean::FALSE);
     }
 
     /// Doom 2 only has episode 1; requesting episode 2 should fail.
     #[test]
     fn valid_episode_map_doom2_ep2_invalid() {
-        assert_eq!(D_ValidEpisodeMap(doom2, commercial, 2, 1), 0);
-        assert_eq!(D_ValidEpisodeMap(doom2, commercial, 1, 1), 1);
-        assert_eq!(D_ValidEpisodeMap(doom2, commercial, 1, 32), 1);
-        assert_eq!(D_ValidEpisodeMap(doom2, commercial, 1, 33), 0);
+        assert_eq!(D_ValidEpisodeMap(doom2, commercial, 2, 1), Boolean::FALSE);
+        assert_eq!(D_ValidEpisodeMap(doom2, commercial, 1, 1), Boolean::TRUE);
+        assert_eq!(D_ValidEpisodeMap(doom2, commercial, 1, 32), Boolean::TRUE);
+        assert_eq!(D_ValidEpisodeMap(doom2, commercial, 1, 33), Boolean::FALSE);
     }
 
     /// Map 0 is always invalid.
     #[test]
     fn valid_episode_map_map_zero_invalid() {
-        assert_eq!(D_ValidEpisodeMap(doom, retail, 1, 0), 0);
-        assert_eq!(D_ValidEpisodeMap(doom2, commercial, 1, 0), 0);
+        assert_eq!(D_ValidEpisodeMap(doom, retail, 1, 0), Boolean::FALSE);
+        assert_eq!(D_ValidEpisodeMap(doom2, commercial, 1, 0), Boolean::FALSE);
     }
 
     /// D_GetNumEpisodes for doom shareware has 1 episode.
@@ -394,25 +394,25 @@ mod tests {
     /// D_IsEpisodeMap is true for pack_chex (chex.wad is episode-based).
     #[test]
     fn is_episode_map_pack_chex_true() {
-        assert_eq!(D_IsEpisodeMap(pack_chex), 1);
+        assert_eq!(D_IsEpisodeMap(pack_chex), Boolean::TRUE);
     }
 
     /// pack_tnt / pack_plut are commercial (MAP01–MAP32), not episode-based.
     #[test]
     fn is_episode_map_pack_tnt_false() {
-        assert_eq!(D_IsEpisodeMap(pack_tnt), 0);
-        assert_eq!(D_IsEpisodeMap(pack_plut), 0);
+        assert_eq!(D_IsEpisodeMap(pack_tnt), Boolean::FALSE);
+        assert_eq!(D_IsEpisodeMap(pack_plut), Boolean::FALSE);
     }
 
     /// D_ValidGameMode: all expected valid combinations succeed.
     #[test]
     fn valid_game_mode_all_missions() {
-        assert_eq!(D_ValidGameMode(doom, retail), 1);
-        assert_eq!(D_ValidGameMode(doom, registered), 1);
-        assert_eq!(D_ValidGameMode(doom2, commercial), 1);
-        assert_eq!(D_ValidGameMode(heretic, shareware), 1);
-        assert_eq!(D_ValidGameMode(hexen, commercial), 1);
-        assert_eq!(D_ValidGameMode(strife, commercial), 1);
+        assert_eq!(D_ValidGameMode(doom, retail), Boolean::TRUE);
+        assert_eq!(D_ValidGameMode(doom, registered), Boolean::TRUE);
+        assert_eq!(D_ValidGameMode(doom2, commercial), Boolean::TRUE);
+        assert_eq!(D_ValidGameMode(heretic, shareware), Boolean::TRUE);
+        assert_eq!(D_ValidGameMode(hexen, commercial), Boolean::TRUE);
+        assert_eq!(D_ValidGameMode(strife, commercial), Boolean::TRUE);
     }
 
     /// D_ValidGameVersion: doom2 maps to doom for version checks.
@@ -421,7 +421,7 @@ mod tests {
         for mission in [doom2, pack_plut, pack_tnt, pack_hacx, pack_chex] {
             assert_eq!(
                 D_ValidGameVersion(mission, exe_doom_1_9),
-                1,
+                Boolean::TRUE,
                 "mission {mission} should accept exe_doom_1_9"
             );
         }

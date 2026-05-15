@@ -7,7 +7,6 @@
 use std::ffi::{c_char, c_int, c_uint, c_void};
 use std::ptr;
 
-use crate::i_error;
 use crate::doom::c_ffi::{
     intercept_t, line_t, mobj_t, sector_t, subsector_t, DEFAULT_SPECHIT_MAGIC, MAPBLOCKSHIFT,
     ML_BLOCKING, ML_BLOCKMONSTERS, ML_TWOSIDED,
@@ -25,6 +24,7 @@ use crate::doom::p_setup::{bmaporgx, bmaporgy, lines};
 use crate::doom::p_sight::{bottomslope, topslope, P_CheckSight};
 use crate::doom::r_main::{validcount, R_PointInSubsector, R_PointToAngle2};
 use crate::doom::tables::{finecosine, finesine, ANG180, ANGLETOFINESHIFT};
+use crate::i_error;
 
 // ---------------------------------------------------------------------------
 // Constants

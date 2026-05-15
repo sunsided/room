@@ -630,8 +630,13 @@ fn M_QuickSave() {
             return;
         }
         static mut QUICK_SAVE_MSG: [c_char; 80] = [0; 80];
-        let slot_str = std::ffi::CStr::from_ptr(savegamestrings[quickSaveSlot as usize].as_ptr()).to_string_lossy();
-        c_write!(QUICK_SAVE_MSG, "quicksave over your game named\n\n'{}'?\n\npress y or n.", slot_str);
+        let slot_str = std::ffi::CStr::from_ptr(savegamestrings[quickSaveSlot as usize].as_ptr())
+            .to_string_lossy();
+        c_write!(
+            QUICK_SAVE_MSG,
+            "quicksave over your game named\n\n'{}'?\n\npress y or n.",
+            slot_str
+        );
         M_StartMessage(QUICK_SAVE_MSG.as_mut_ptr(), Some(M_QuickSaveResponse), 1);
     }
 }
@@ -666,8 +671,13 @@ fn M_QuickLoad() {
             return;
         }
         static mut QUICK_LOAD_MSG: [c_char; 80] = [0; 80];
-        let slot_str = std::ffi::CStr::from_ptr(savegamestrings[quickSaveSlot as usize].as_ptr()).to_string_lossy();
-        c_write!(QUICK_LOAD_MSG, "do you want to quickload the game named\n\n'{}'?\n\npress y or n.", slot_str);
+        let slot_str = std::ffi::CStr::from_ptr(savegamestrings[quickSaveSlot as usize].as_ptr())
+            .to_string_lossy();
+        c_write!(
+            QUICK_LOAD_MSG,
+            "do you want to quickload the game named\n\n'{}'?\n\npress y or n.",
+            slot_str
+        );
         M_StartMessage(QUICK_LOAD_MSG.as_mut_ptr(), Some(M_QuickLoadResponse), 1);
     }
 }

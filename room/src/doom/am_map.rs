@@ -9,6 +9,7 @@ use std::ffi::{c_char, c_int, c_void};
 use std::os::raw::c_uint;
 use std::ptr;
 
+use crate::c_write;
 use crate::doom::c_ffi::{mobj_t, sector_t, MAPBLOCKSHIFT, MAPBLOCKSIZE, MAPBLOCKUNITS};
 use crate::doom::d_event::event_t;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS};
@@ -27,7 +28,6 @@ use crate::doom::p_setup::{
 use crate::doom::tables::ANGLETOFINESHIFT;
 use crate::doom::tables::{finecosine, finesine};
 use crate::doom::v_video::patch_t;
-use crate::c_write;
 
 use crate::doom::z_zone::PU_STATIC;
 

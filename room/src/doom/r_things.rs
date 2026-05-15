@@ -539,10 +539,7 @@ pub unsafe extern "C" fn R_ProjectSprite(thing: *mut c_void) {
     #[cfg(feature = "rangecheck")]
     {
         if (*thing).sprite as u32 >= numsprites as u32 {
-            i_error!(
-                "R_ProjectSprite: invalid sprite number {}",
-                (*thing).sprite
-            );
+            i_error!("R_ProjectSprite: invalid sprite number {}", (*thing).sprite);
         }
     }
 

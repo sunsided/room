@@ -25,7 +25,6 @@ fn abs(x: c_int) -> c_int {
     }
 }
 
-use crate::i_error;
 use crate::doom::c_ffi::{line_t, sector_t, side_t, vertex_t, MAPBLOCKSHIFT};
 use crate::doom::d_loop::gametic;
 use crate::doom::d_player::{players, PlayerT, PspdefT, MAXPLAYERS};
@@ -60,6 +59,7 @@ use crate::doom::p_sight::P_CheckSight;
 use crate::doom::p_switch::P_UseSpecialLine;
 use crate::doom::p_telept::{mobj_t, subsector_t};
 use crate::doom::tables::{ANG180, ANG270, ANG90, ANGLETOFINESHIFT};
+use crate::i_error;
 type CffiMobj = crate::doom::c_ffi::mobj_t;
 use crate::doom::p_tick::{thinker_t, thinkercap};
 use crate::doom::r_main::{validcount, R_PointToAngle2};

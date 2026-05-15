@@ -8,6 +8,7 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
+use crate::c_write;
 use crate::doom::d_event::event_t;
 use crate::doom::d_items::weaponinfo;
 use crate::doom::d_mode;
@@ -24,7 +25,6 @@ use crate::doom::st_lib::{
 use crate::doom::tables::{ANG180, ANG45};
 use crate::doom::v_video::patch_t;
 use crate::doom::v_video::{V_CopyRect, V_DrawPatch, V_RestoreBuffer, V_UseBuffer};
-use crate::c_write;
 use crate::types::Boolean;
 
 // ---------------------------------------------------------------------------
@@ -447,7 +447,13 @@ pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
             } else if cht_CheckCheat(&mut cheat_mypos, ev.data2 as c_char) != 0 {
                 static mut BUF: [c_char; 52] = [0; 52];
                 let mo = players[consoleplayer as usize].mo as *mut mobj_t;
-                c_write!(BUF, "ang=0x{:x};x,y=(0x{:x},0x{:x})", (*mo).angle, (*mo).x, (*mo).y);
+                c_write!(
+                    BUF,
+                    "ang=0x{:x};x,y=(0x{:x},0x{:x})",
+                    (*mo).angle,
+                    (*mo).x,
+                    (*mo).y
+                );
                 (*plyr).message = BUF.as_mut_ptr();
             }
         }

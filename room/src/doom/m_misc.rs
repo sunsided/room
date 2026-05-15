@@ -5,7 +5,6 @@ use std::ffi::{c_char, c_int, c_long, c_void, CStr};
 use crate::i_error;
 use crate::types::Boolean;
 
-
 enum FILE {}
 
 const DIR_SEPARATOR: c_char = b'/' as c_char;
@@ -105,14 +104,20 @@ pub extern "C" fn M_ReadFile(name: *mut c_char, buffer: *mut *mut c_char) -> c_i
     unsafe {
         let handle = fopen(name as *const c_char, b"rb\0".as_ptr() as *const c_char);
         if handle.is_null() {
-            i_error!("Couldn't read file {}", std::ffi::CStr::from_ptr(name).to_string_lossy());
+            i_error!(
+                "Couldn't read file {}",
+                std::ffi::CStr::from_ptr(name).to_string_lossy()
+            );
         }
         let length = M_FileLength(handle);
         let buf = Z_Malloc(length as c_int, PU_STATIC, std::ptr::null_mut());
         let count = fread(buf, 1, length as usize, handle);
         fclose(handle);
         if count < length as usize {
-            i_error!("Couldn't read file {}", std::ffi::CStr::from_ptr(name).to_string_lossy());
+            i_error!(
+                "Couldn't read file {}",
+                std::ffi::CStr::from_ptr(name).to_string_lossy()
+            );
         }
         *buffer = buf as *mut c_char;
         length as c_int
@@ -222,7 +227,10 @@ pub extern "C" fn M_StringDuplicate(orig: *const c_char) -> *mut c_char {
     unsafe {
         let result = strdup(orig);
         if result.is_null() {
-            i_error!("Failed to duplicate string (length {})\n", strlen(orig) as c_int);
+            i_error!(
+                "Failed to duplicate string (length {})\n",
+                strlen(orig) as c_int
+            );
         }
         result
     }
@@ -623,9 +631,8 @@ mod tests {
         let haystack = CString::new("hello world").unwrap();
         let needle = CString::new("world").unwrap();
         let replacement = CString::new("earth").unwrap();
-        let result = unsafe {
-            M_StringReplace(haystack.as_ptr(), needle.as_ptr(), replacement.as_ptr())
-        };
+        let result =
+            unsafe { M_StringReplace(haystack.as_ptr(), needle.as_ptr(), replacement.as_ptr()) };
         assert!(!result.is_null());
         let s = unsafe { CStr::from_ptr(result).to_str().unwrap().to_owned() };
         unsafe { free_cstring(result) };
@@ -637,9 +644,8 @@ mod tests {
         let haystack = CString::new("hello").unwrap();
         let needle = CString::new("world").unwrap();
         let replacement = CString::new("earth").unwrap();
-        let result = unsafe {
-            M_StringReplace(haystack.as_ptr(), needle.as_ptr(), replacement.as_ptr())
-        };
+        let result =
+            unsafe { M_StringReplace(haystack.as_ptr(), needle.as_ptr(), replacement.as_ptr()) };
         assert!(!result.is_null());
         let s = unsafe { CStr::from_ptr(result).to_str().unwrap().to_owned() };
         unsafe { free_cstring(result) };
@@ -651,9 +657,8 @@ mod tests {
         let haystack = CString::new("aababab").unwrap();
         let needle = CString::new("ab").unwrap();
         let replacement = CString::new("cd").unwrap();
-        let result = unsafe {
-            M_StringReplace(haystack.as_ptr(), needle.as_ptr(), replacement.as_ptr())
-        };
+        let result =
+            unsafe { M_StringReplace(haystack.as_ptr(), needle.as_ptr(), replacement.as_ptr()) };
         assert!(!result.is_null());
         let s = unsafe { CStr::from_ptr(result).to_str().unwrap().to_owned() };
         unsafe { free_cstring(result) };
@@ -704,10 +709,7 @@ mod tests {
 
     #[test]
     fn test_force_uppercase() {
-        let mut buf: Vec<c_char> = b"Hello, World!\0"
-            .iter()
-            .map(|&b| b as c_char)
-            .collect();
+        let mut buf: Vec<c_char> = b"Hello, World!\0".iter().map(|&b| b as c_char).collect();
         unsafe { M_ForceUppercase(buf.as_mut_ptr()) };
         let s = unsafe { CStr::from_ptr(buf.as_ptr()).to_str().unwrap() };
         assert_eq!(s, "HELLO, WORLD!");
@@ -715,10 +717,7 @@ mod tests {
 
     #[test]
     fn test_force_lowercase() {
-        let mut buf: Vec<c_char> = b"Hello, World!\0"
-            .iter()
-            .map(|&b| b as c_char)
-            .collect();
+        let mut buf: Vec<c_char> = b"Hello, World!\0".iter().map(|&b| b as c_char).collect();
         unsafe { M_ForceLowercase(buf.as_mut_ptr()) };
         let s = unsafe { CStr::from_ptr(buf.as_ptr()).to_str().unwrap() };
         assert_eq!(s, "hello, world!");
@@ -759,10 +758,7 @@ mod tests {
     #[test]
     fn test_snprintf_clamp_truncation() {
         // result >= len: buffer is null-terminated at len-1, clamped value returned.
-        let mut buf: Vec<i8> = b"ABCDEFGHIJKLMNOP"
-            .iter()
-            .map(|&b| b as i8)
-            .collect();
+        let mut buf: Vec<i8> = b"ABCDEFGHIJKLMNOP".iter().map(|&b| b as i8).collect();
         let len = buf.len();
         let r = m_snprintf_clamp(buf.as_mut_ptr(), len, len as c_int);
         assert_eq!(r, (len - 1) as c_int);

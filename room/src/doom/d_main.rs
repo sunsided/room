@@ -18,8 +18,8 @@ use crate::doom::i_video::I_StartFrame;
 use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 use crate::doom::m_config::M_SaveDefaults;
 use crate::doom::m_misc::M_snprintf_clamp;
-use crate::{c_write, i_error};
 use crate::types::Boolean;
+use crate::{c_write, i_error};
 
 // ---------------------------------------------------------------------------
 // String constants from d_englsh.h / dstrings.h

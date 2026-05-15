@@ -8,12 +8,12 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::os::raw::c_short;
 
-use crate::i_error;
 use crate::doom::d_mode;
 use crate::doom::p_ceilng::EV_DoCeiling;
 use crate::doom::p_floor::{side_t, EV_BuildStairs, EV_DoFloor};
 use crate::doom::p_lights::{line_t, EV_LightTurnOn};
 use crate::doom::p_plats::EV_DoPlat;
+use crate::i_error;
 
 // ---------------------------------------------------------------------------
 // Constants
