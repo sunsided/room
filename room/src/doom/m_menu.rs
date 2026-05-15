@@ -116,52 +116,36 @@ struct patch_stub {
 }
 
 extern "C" {
-    fn V_DrawPatchDirect(x: c_int, y: c_int, patch: *mut c_void);
-    fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void;
-    fn I_SetPalette(lump: *mut c_void);
-    fn I_Quit();
-    fn I_WaitVBL(count: c_int);
-    fn G_ScreenShot();
-    fn G_DeferedInitNew(skill: c_int, episode: c_int, map: c_int);
-    fn G_LoadGame(name: *const c_char);
-    fn G_SaveGame(slot: c_int, name: *const c_char);
-    fn R_SetViewSize(blocks: c_int, detail: c_int);
-    fn P_SaveGameFile(i: c_int) -> *const c_char;
-    fn D_StartTitle();
     fn fopen(path: *const c_char, mode: *const c_char) -> *mut c_void;
     fn fread(ptr: *mut c_void, size: usize, nmemb: usize, stream: *mut c_void) -> usize;
     fn fclose(stream: *mut c_void) -> c_int;
     fn toupper(c: c_int) -> c_int;
     fn strlen(s: *const c_char) -> usize;
     fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int;
-}
-
-extern "C" {
-    fn I_GetTime() -> c_int;
-    fn S_StartSound(origin: *mut c_void, sfx_id: c_int);
-    fn S_SetSfxVolume(volume: c_int);
-    fn S_SetMusicVolume(volume: c_int);
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean;
-}
-
-use crate::doom::hu_stuff::{chat_on, hu_font, message_dontfuckwithme};
-
-extern "C" {
-    static mut usegamma: c_int;
-    static mut automapactive: c_int;
-    static mut devparm: c_int;
-    static mut testcontrols: c_int;
-    static mut vanilla_keyboard_mapping: c_int;
-    static mut gametic: c_int;
-    static mut netgame: c_int;
-    static mut usergame: c_int;
-    static mut gamestate: c_int;
-    static mut demoplayback: c_int;
-    static mut consoleplayer: c_int;
-    static mut players: [super::d_player::PlayerT; MAXPLAYERS];
+    // doom1_endmsg/doom2_endmsg are exported with #[no_mangle] from dstrings.rs, but
+    // their element type (Ptr) is private; keep them via C linkage to avoid exposing it.
     static mut doom1_endmsg: [*const c_char; 8];
     static mut doom2_endmsg: [*const c_char; 8];
 }
+
+use crate::doom::am_map::automapactive;
+use crate::doom::d_loop::gametic;
+use crate::doom::d_main::{devparm, D_StartTitle};
+use crate::doom::g_game::{
+    consoleplayer, demoplayback, gamestate, netgame, players, testcontrols, usergame,
+    G_DeferedInitNew, G_LoadGame, G_SaveGame, G_ScreenShot,
+};
+use crate::doom::hu_stuff::{chat_on, hu_font, message_dontfuckwithme};
+use crate::doom::i_input::vanilla_keyboard_mapping;
+use crate::doom::i_system::I_Quit;
+use crate::doom::i_timer::{I_GetTime, I_WaitVBL};
+use crate::doom::i_video::{usegamma, I_SetPalette};
+use crate::doom::m_misc::M_StringCopy;
+use crate::doom::p_saveg::P_SaveGameFile;
+use crate::doom::r_main::R_SetViewSize;
+use crate::doom::s_sound::{S_SetMusicVolume, S_SetSfxVolume, S_StartSound};
+use crate::doom::v_video::{patch_t, V_DrawPatchDirect};
+use crate::doom::w_wad::W_CacheLumpName;
 
 const SFX_PISTOL: c_int = 1;
 const SFX_PSTOP: c_int = 19;
@@ -466,7 +450,7 @@ extern "C" fn M_DrawLoad() {
         V_DrawPatchDirect(
             72,
             28,
-            W_CacheLumpName(b"M_LOADG\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_LOADG\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
 
         for i in 0..load_end {
@@ -488,7 +472,7 @@ fn M_DrawSaveLoadBorder(x: c_int, y: c_int) {
         V_DrawPatchDirect(
             x - 8,
             y + 7,
-            W_CacheLumpName(b"M_LSLEFT\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_LSLEFT\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
 
         let mut xi = x;
@@ -496,7 +480,7 @@ fn M_DrawSaveLoadBorder(x: c_int, y: c_int) {
             V_DrawPatchDirect(
                 xi,
                 y + 7,
-                W_CacheLumpName(b"M_LSCNTR\0".as_ptr() as *const c_char, 0),
+                W_CacheLumpName(b"M_LSCNTR\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
             );
             xi += 8;
         }
@@ -504,7 +488,7 @@ fn M_DrawSaveLoadBorder(x: c_int, y: c_int) {
         V_DrawPatchDirect(
             xi,
             y + 7,
-            W_CacheLumpName(b"M_LSRGHT\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_LSRGHT\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
     }
 }
@@ -513,7 +497,7 @@ extern "C" fn M_LoadSelect(choice: c_int) {
     unsafe {
         let mut name: [c_char; 256] = [0; 256];
         M_StringCopy(name.as_mut_ptr(), P_SaveGameFile(choice), name.len());
-        G_LoadGame(name.as_ptr());
+        G_LoadGame(name.as_mut_ptr());
         M_ClearMenus();
     }
 }
@@ -538,7 +522,7 @@ extern "C" fn M_DrawSave() {
         V_DrawPatchDirect(
             72,
             28,
-            W_CacheLumpName(b"M_SAVEG\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_SAVEG\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
         for i in 0..load_end {
             M_DrawSaveLoadBorder(
@@ -732,7 +716,7 @@ extern "C" fn M_DrawReadThis1() {
             }
         }
 
-        V_DrawPatchDirect(0, 0, W_CacheLumpName(lumpname, 0));
+        V_DrawPatchDirect(0, 0, W_CacheLumpName(lumpname as *mut c_char, 0) as *mut patch_t);
         ReadDef1.x = skullx;
         ReadDef1.y = skully;
     }
@@ -744,7 +728,7 @@ extern "C" fn M_DrawReadThis2() {
         V_DrawPatchDirect(
             0,
             0,
-            W_CacheLumpName(b"HELP1\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"HELP1\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
     }
 }
@@ -755,7 +739,7 @@ extern "C" fn M_DrawSound() {
         V_DrawPatchDirect(
             60,
             38,
-            W_CacheLumpName(b"M_SVOL\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_SVOL\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
 
         M_DrawThermo(
@@ -815,7 +799,7 @@ extern "C" fn M_DrawMainMenu() {
         V_DrawPatchDirect(
             94,
             2,
-            W_CacheLumpName(b"M_DOOM\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_DOOM\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
     }
 }
@@ -825,12 +809,12 @@ extern "C" fn M_DrawNewGame() {
         V_DrawPatchDirect(
             96,
             14,
-            W_CacheLumpName(b"M_NEWG\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_NEWG\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
         V_DrawPatchDirect(
             54,
             38,
-            W_CacheLumpName(b"M_SKILL\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_SKILL\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
     }
 }
@@ -859,7 +843,7 @@ extern "C" fn M_DrawEpisode() {
         V_DrawPatchDirect(
             54,
             38,
-            W_CacheLumpName(b"M_EPISOD\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_EPISOD\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
     }
 }
@@ -919,28 +903,28 @@ extern "C" fn M_DrawOptions() {
         V_DrawPatchDirect(
             108,
             15,
-            W_CacheLumpName(b"M_OPTTTL\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_OPTTTL\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
 
-        let detail_names: [*const c_char; 2] = [
-            b"M_GDHIGH\0".as_ptr() as *const c_char,
-            b"M_GDLOW\0".as_ptr() as *const c_char,
+        let detail_names: [*mut c_char; 2] = [
+            b"M_GDHIGH\0".as_ptr() as *mut c_char,
+            b"M_GDLOW\0".as_ptr() as *mut c_char,
         ];
-        let msg_names: [*const c_char; 2] = [
-            b"M_MSGOFF\0".as_ptr() as *const c_char,
-            b"M_MSGON\0".as_ptr() as *const c_char,
+        let msg_names: [*mut c_char; 2] = [
+            b"M_MSGOFF\0".as_ptr() as *mut c_char,
+            b"M_MSGON\0".as_ptr() as *mut c_char,
         ];
 
         V_DrawPatchDirect(
             OptionsDef.x as c_int + 175,
             OptionsDef.y as c_int + LINEHEIGHT * detail as c_int,
-            W_CacheLumpName(detail_names[detailLevel as usize], 0),
+            W_CacheLumpName(detail_names[detailLevel as usize], 0) as *mut patch_t,
         );
 
         V_DrawPatchDirect(
             OptionsDef.x as c_int + 120,
             OptionsDef.y as c_int + LINEHEIGHT * messages as c_int,
-            W_CacheLumpName(msg_names[showMessages as usize], 0),
+            W_CacheLumpName(msg_names[showMessages as usize], 0) as *mut patch_t,
         );
 
         M_DrawThermo(
@@ -1120,27 +1104,27 @@ fn M_DrawThermo(x: c_int, y: c_int, thermWidth: c_int, thermDot: c_int) {
         V_DrawPatchDirect(
             xx,
             y,
-            W_CacheLumpName(b"M_THERML\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_THERML\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
         xx += 8;
         for _ in 0..thermWidth {
             V_DrawPatchDirect(
                 xx,
                 y,
-                W_CacheLumpName(b"M_THERMM\0".as_ptr() as *const c_char, 0),
+                W_CacheLumpName(b"M_THERMM\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
             );
             xx += 8;
         }
         V_DrawPatchDirect(
             xx,
             y,
-            W_CacheLumpName(b"M_THERMR\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_THERMR\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
 
         V_DrawPatchDirect(
             (x + 8) + thermDot * 8,
             y,
-            W_CacheLumpName(b"M_THERMO\0".as_ptr() as *const c_char, 0),
+            W_CacheLumpName(b"M_THERMO\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
         );
     }
 }
@@ -1227,7 +1211,7 @@ fn M_WriteText(x: c_int, y: c_int, string: *mut c_char) {
             if cx + w > SCREENWIDTH {
                 break;
             }
-            V_DrawPatchDirect(cx, cy, hu_font[c as usize] as *mut c_void);
+            V_DrawPatchDirect(cx, cy, hu_font[c as usize]);
             cx += w;
         }
     }
@@ -1501,7 +1485,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
                     usegamma = 0;
                 }
                 M_Menu_SetPlayerMessage(gammamsg[usegamma as usize].as_ptr());
-                I_SetPalette(W_CacheLumpName(b"PLAYPAL\0".as_ptr() as *const c_char, 0));
+                I_SetPalette(W_CacheLumpName(b"PLAYPAL\0".as_ptr() as *mut c_char, 0) as *mut u8);
                 return Boolean::TRUE;
             }
         }
@@ -1671,14 +1655,14 @@ pub extern "C" fn M_Drawer() {
         for i in 0..max {
             let name = (*(*currentMenu).menuitems.add(i)).name.as_ptr();
             if *name != 0 {
-                V_DrawPatchDirect(x, y + LINEHEIGHT * i as c_int, W_CacheLumpName(name, 0));
+                V_DrawPatchDirect(x, y + LINEHEIGHT * i as c_int, W_CacheLumpName(name as *mut c_char, 0) as *mut patch_t);
             }
         }
 
         V_DrawPatchDirect(
             x + SKULLXOFF,
             (*currentMenu).y as c_int - 5 + itemOn as c_int * LINEHEIGHT,
-            W_CacheLumpName(skullName[whichSkull as usize], 0),
+            W_CacheLumpName(skullName[whichSkull as usize] as *mut c_char, 0) as *mut patch_t,
         );
     }
 }
