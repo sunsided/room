@@ -428,6 +428,53 @@ pub extern "C" fn M_OEMToUTF8(_oem: *const c_char) -> *mut c_char {
     std::ptr::null_mut()
 }
 
+/// Fill a `[c_char; N]` buffer using Rust format syntax.
+///
+/// Equivalent to `snprintf(buf, len, fmt, args...)` followed by
+/// `m_snprintf_clamp`. No persistent heap allocation.
+#[macro_export]
+macro_rules! c_write {
+    ($buf:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {
+        $crate::doom::m_misc::write_c_buf(
+            &mut $buf,
+            &::std::format!($fmt $(, $arg)*)
+        )
+    };
+}
+
+/// Rust replacement for the C `DEH_snprintf` helper.
+///
+/// Formats into a null-terminated `[c_char]` buffer using Rust format syntax.
+/// `DEH_String` is identity in this build; the format string is passed as a
+/// Rust literal instead of a `*const c_char`.
+#[macro_export]
+macro_rules! DEH_snprintf {
+    ($buf:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {
+        $crate::doom::m_misc::write_c_buf(
+            &mut $buf,
+            &::std::format!($fmt $(, $arg)*)
+        )
+    };
+}
+
+/// Format a message and call `I_Error`, which exits the process.
+///
+/// The `CString` is a temporary; it is valid for the duration of the call
+/// because `I_Error` never returns. Panics if the formatted string contains
+/// an interior null byte (game strings never embed `\0`).
+#[doc(alias = "I_Error")]
+#[doc(alias = "I_ErrorV")]
+#[macro_export]
+macro_rules! i_error {
+    ($fmt:literal $(, $arg:expr)* $(,)?) => {
+        $crate::doom::i_system::I_Error(
+            ::std::ffi::CString::new(::std::format!($fmt $(, $arg)*))
+                .unwrap()
+                .as_ptr()
+        )
+    };
+}
+
 pub(crate) fn write_c_buf(buf: &mut [c_char], s: &str) {
     if buf.is_empty() {
         return;
