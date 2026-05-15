@@ -149,20 +149,12 @@ unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
 // C globals still provided by unported C modules
 // ---------------------------------------------------------------------------
 
-extern "C" {
-    static mut gameskill: c_int;
-    static mut netgame: c_int;
-    static mut deathmatch: c_int;
-    static mut automapactive: c_int;
-
-    fn I_Tactile(on: c_int, off: c_int, total: c_int);
-    fn S_StartSound(origin: *mut c_void, sfx_id: c_int);
-    fn P_SetMobjState(mobj: *mut mobj_t, state: c_int) -> c_int;
-    fn P_RemoveMobj(mobj: *mut mobj_t);
-    fn P_SpawnMobj(x: c_int, y: c_int, z: c_int, type_: c_int) -> *mut mobj_t;
-    fn AM_Stop();
-    fn R_PointToAngle2(x1: fixed_t, y1: fixed_t, x2: fixed_t, y2: fixed_t) -> u32;
-}
+use crate::doom::am_map::{automapactive, AM_Stop};
+use crate::doom::g_game::{deathmatch, gameskill, netgame};
+use crate::doom::i_system::I_Tactile;
+use crate::doom::p_mobj::{P_RemoveMobj, P_SetMobjState, P_SpawnMobj};
+use crate::doom::r_main::R_PointToAngle2;
+use crate::doom::s_sound::S_StartSound;
 
 // ---------------------------------------------------------------------------
 // Ammo tables
