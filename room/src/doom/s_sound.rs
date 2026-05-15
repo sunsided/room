@@ -138,7 +138,6 @@ extern "C" {
     fn I_PlaySong(handle: *mut c_void, looping: c_int);
     fn I_StopSong();
     fn I_MusicIsPlaying() -> c_int;
-    fn I_Error(fmt: *const c_char, ...);
     fn I_AtExit(func: extern "C" fn(), run_on_error: c_int);
     fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
     fn R_PointToAngle2(x1: c_int, y1: c_int, x2: c_int, y2: c_int) -> u32;

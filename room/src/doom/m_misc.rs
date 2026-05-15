@@ -2,6 +2,8 @@
 
 use std::ffi::{c_char, c_int, c_long, c_void, CStr};
 
+use crate::i_error;
+
 enum FILE {}
 
 const DIR_SEPARATOR: c_char = b'/' as c_char;
@@ -40,10 +42,6 @@ extern "C" {
     fn strstr(haystack: *const c_char, needle: *const c_char) -> *mut c_char;
     fn sscanf(s: *const c_char, format: *const c_char, ...) -> c_int;
     fn vsnprintf(s: *mut c_char, n: usize, format: *const c_char, arg: ...) -> c_int;
-}
-
-extern "C" {
-    fn I_Error(fmt: *const c_char, ...);
 }
 
 extern "C" {
@@ -105,14 +103,14 @@ pub extern "C" fn M_ReadFile(name: *mut c_char, buffer: *mut *mut c_char) -> c_i
     unsafe {
         let handle = fopen(name as *const c_char, b"rb\0".as_ptr() as *const c_char);
         if handle.is_null() {
-            I_Error(b"Couldn't read file %s\0".as_ptr() as *const c_char, name);
+            i_error!("Couldn't read file {}", std::ffi::CStr::from_ptr(name).to_string_lossy());
         }
         let length = M_FileLength(handle);
         let buf = Z_Malloc(length as c_int, PU_STATIC, std::ptr::null_mut());
         let count = fread(buf, 1, length as usize, handle);
         fclose(handle);
         if count < length as usize {
-            I_Error(b"Couldn't read file %s\0".as_ptr() as *const c_char, name);
+            i_error!("Couldn't read file {}", std::ffi::CStr::from_ptr(name).to_string_lossy());
         }
         *buffer = buf as *mut c_char;
         length as c_int
@@ -222,10 +220,7 @@ pub extern "C" fn M_StringDuplicate(orig: *const c_char) -> *mut c_char {
     unsafe {
         let result = strdup(orig);
         if result.is_null() {
-            I_Error(
-                b"Failed to duplicate string (length %i)\n\0".as_ptr() as *const c_char,
-                strlen(orig) as c_int,
-            );
+            i_error!("Failed to duplicate string (length {})\n", strlen(orig) as c_int);
         }
         result
     }
@@ -253,7 +248,7 @@ pub extern "C" fn M_StringReplace(
         }
         let result = malloc(result_len) as *mut c_char;
         if result.is_null() {
-            I_Error(b"M_StringReplace: Failed to allocate new string\0".as_ptr() as *const c_char);
+            i_error!("M_StringReplace: Failed to allocate new string");
             return std::ptr::null_mut();
         }
         let mut dst = result;
@@ -349,7 +344,7 @@ pub extern "C" fn M_StringJoinA(strs: *const *const c_char) -> *mut c_char {
 
         let result = malloc(result_len) as *mut c_char;
         if result.is_null() {
-            I_Error(b"M_StringJoinA: Failed to allocate new string\0".as_ptr() as *const c_char);
+            i_error!("M_StringJoinA: Failed to allocate new string");
             return std::ptr::null_mut();
         }
 
