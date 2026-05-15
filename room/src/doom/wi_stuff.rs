@@ -17,7 +17,7 @@
 )]
 
 use std::ffi::{c_char, c_int, c_void};
-use std::ptr;
+use std::ptr::{self, addr_of_mut};
 
 use crate::types::Boolean;
 
@@ -138,7 +138,6 @@ struct anim_t {
     ctr: c_int,
     state: c_int,
 }
-unsafe impl Sync for anim_t {}
 
 // ---------------------------------------------------------------------------
 // Static data tables
@@ -185,7 +184,11 @@ static LNODESEPSD3: [point_t; NUMMAPS] = [point_t { x: 0, y: 0 }; NUMMAPS];
 static LNODES: [[point_t; NUMMAPS]; NUMEPISODES] =
     [LNODESEPSD0, LNODESEPSD1, LNODESEPSD2, LNODESEPSD3];
 
-static EPSD0ANIMINFO: [anim_t; 10] = [
+// TODO: Consider splitting into immutable config fields (type_, period, nanims,
+// loc, data1, data2) and mutable runtime state (ctr, nexttic, lastdrawn, state,
+// p) using two separate arrays, or wrapping in UnsafeCell for explicit interior
+// mutability without static mut.
+static mut EPSD0ANIMINFO: [anim_t; 10] = [
     anim_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
@@ -318,7 +321,8 @@ static EPSD0ANIMINFO: [anim_t; 10] = [
     },
 ];
 
-static EPSD1ANIMINFO: [anim_t; 9] = [
+// TODO: Same as EPSD0ANIMINFO — candidate for config/state split or UnsafeCell.
+static mut EPSD1ANIMINFO: [anim_t; 9] = [
     anim_t {
         type_: animenum_t::ANIM_LEVEL,
         period: TICRATE / 3,
@@ -438,7 +442,8 @@ static EPSD1ANIMINFO: [anim_t; 9] = [
     },
 ];
 
-static EPSD2ANIMINFO: [anim_t; 6] = [
+// TODO: Same as EPSD0ANIMINFO — candidate for config/state split or UnsafeCell.
+static mut EPSD2ANIMINFO: [anim_t; 6] = [
     anim_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
@@ -519,18 +524,13 @@ static EPSD2ANIMINFO: [anim_t; 6] = [
     },
 ];
 
-static NUMANIMS: [c_int; NUMEPISODES] = [
-    EPSD0ANIMINFO.len() as c_int,
-    EPSD1ANIMINFO.len() as c_int,
-    EPSD2ANIMINFO.len() as c_int,
-    0,
-];
+static NUMANIMS: [c_int; NUMEPISODES] = [10, 9, 6, 0];
 
-static mut ANIMS: [*const anim_t; NUMEPISODES] = [
-    EPSD0ANIMINFO.as_ptr(),
-    EPSD1ANIMINFO.as_ptr(),
-    EPSD2ANIMINFO.as_ptr(),
-    ptr::null(),
+static mut ANIMS: [*mut anim_t; NUMEPISODES] = [
+    addr_of_mut!(EPSD0ANIMINFO) as *mut anim_t,
+    addr_of_mut!(EPSD1ANIMINFO) as *mut anim_t,
+    addr_of_mut!(EPSD2ANIMINFO) as *mut anim_t,
+    ptr::null_mut(),
 ];
 
 // ---------------------------------------------------------------------------
