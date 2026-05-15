@@ -11,7 +11,7 @@ pub const MAX_CHEAT_PARAMS: usize = 5;
 
 /// Matches `cheatseq_t` from `m_cheat.h`.
 ///
-/// Layout on 64-bit:
+/// Layout on 64-bit (`usize` = 8):
 ///   sequence[25]      -> offset 0, size 25
 ///   (padding 7)       -> offset 25-31
 ///   sequence_len      -> offset 32, size 8
@@ -20,8 +20,19 @@ pub const MAX_CHEAT_PARAMS: usize = 5;
 ///   chars_read        -> offset 48, size 8
 ///   param_chars_read  -> offset 56, size 4
 ///   parameter_buf[5]  -> offset 60, size 5
-///   (padding 8)       -> offset 65-72 (round up to 8-byte boundary)
+///   (padding 7)       -> offset 65-71
 /// Total: 72 bytes
+///
+/// Layout on 32-bit (`usize` = 4):
+///   sequence[25]      -> offset 0, size 25
+///   (padding 3)       -> offset 25-27
+///   sequence_len      -> offset 28, size 4
+///   parameter_chars   -> offset 32, size 4
+///   chars_read        -> offset 36, size 4
+///   param_chars_read  -> offset 40, size 4
+///   parameter_buf[5]  -> offset 44, size 5
+///   (padding 3)       -> offset 49-51
+/// Total: 52 bytes
 #[repr(C)]
 pub struct cheatseq_t {
     pub sequence: [c_char; MAX_CHEAT_LEN],
@@ -32,9 +43,16 @@ pub struct cheatseq_t {
     pub parameter_buf: [c_char; MAX_CHEAT_PARAMS],
 }
 
+#[cfg(target_pointer_width = "64")]
 const _: () = assert!(
     std::mem::size_of::<cheatseq_t>() == 72,
-    "cheatseq_t size mismatch on this platform"
+    "cheatseq_t size mismatch on 64-bit platform"
+);
+
+#[cfg(target_pointer_width = "32")]
+const _: () = assert!(
+    std::mem::size_of::<cheatseq_t>() == 52,
+    "cheatseq_t size mismatch on 32-bit platform"
 );
 
 /// Helper: strlen for a raw c_char array (no C call needed).
