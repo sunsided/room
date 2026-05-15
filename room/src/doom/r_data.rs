@@ -114,39 +114,22 @@ struct spritedef_t {
 // ---------------------------------------------------------------------------
 
 extern "C" {
-    fn I_ConsoleStdout() -> c_int;
-
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean;
-
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn Z_Free(ptr: *mut c_void);
-    fn Z_ChangeTag2(ptr: *mut c_void, tag: c_int, file: *const c_char, line: c_int);
-
-    fn W_CacheLumpName(name: *mut c_char, tag: c_int) -> *mut c_void;
-    fn W_CacheLumpNum(lumpnum: c_int, tag: c_int) -> *mut c_void;
-    fn W_CheckNumForName(name: *mut c_char) -> c_int;
-    fn W_GetNumForName(name: *mut c_char) -> c_int;
-    fn W_LumpLength(lump: c_int) -> c_int;
-    fn W_ReleaseLumpName(name: *mut c_char);
-    fn W_LumpNameHash(s: *const c_char) -> c_uint;
-
     fn strncasecmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int;
-
-    fn P_MobjThinker(mobj: *mut c_void);
-
-    static mut lumpinfo: *mut crate::doom::w_wad::lumpinfo_t;
-
-    static mut numsectors: c_int;
-    static mut sectors: *mut sector_t;
-    static mut numsides: c_int;
-    static mut sides: *mut side_t;
-    static mut skytexture: c_int;
-    static mut thinkercap: thinker_t;
-    static mut numsprites: c_int;
-    static mut sprites: *mut spritedef_t;
-
-    static mut demoplayback: c_int;
 }
+
+use crate::doom::g_game::demoplayback;
+use crate::doom::i_system::I_ConsoleStdout;
+use crate::doom::m_misc::M_StringCopy;
+use crate::doom::p_mobj::P_MobjThinker;
+use crate::doom::p_setup::{numsectors, numsides, sectors, sides};
+use crate::doom::p_tick::thinkercap;
+use crate::doom::r_sky::skytexture;
+use crate::doom::r_things::{numsprites, sprites};
+use crate::doom::w_wad::{
+    lumpinfo, W_CacheLumpName, W_CacheLumpNum, W_CheckNumForName, W_GetNumForName, W_LumpLength,
+    W_LumpNameHash, W_ReleaseLumpName,
+};
+use crate::doom::z_zone::{Z_ChangeTag2, Z_Free, Z_Malloc};
 
 // ---------------------------------------------------------------------------
 // Globals defined by this module
@@ -444,7 +427,7 @@ pub unsafe extern "C" fn R_InitTextures() {
     let numtextures1 = LONG(*maptex1);
     let maxoff = W_LumpLength(W_GetNumForName(DEH_String(
         b"TEXTURE1\0".as_ptr() as *mut c_char
-    )));
+    )) as c_uint);
     let mut directory = maptex1.add(1);
 
     let mut maptex2: *mut c_int = ptr::null_mut();
@@ -457,7 +440,7 @@ pub unsafe extern "C" fn R_InitTextures() {
         numtextures2 = LONG(*maptex2);
         maxoff2 = W_LumpLength(W_GetNumForName(DEH_String(
             b"TEXTURE2\0".as_ptr() as *mut c_char
-        )));
+        )) as c_uint);
     }
 
     numtextures = numtextures1 + numtextures2;
@@ -814,7 +797,12 @@ pub unsafe extern "C" fn R_PrecacheLevel() {
 
     let mut th = thinkercap.next;
     while !std::ptr::eq(th, std::ptr::addr_of!(thinkercap)) {
-        if (*th).function.acp1 == Some(P_MobjThinker) {
+        if (*th).function.acp1
+            == Some(std::mem::transmute::<
+                unsafe extern "C" fn(*mut crate::doom::p_telept::mobj_t),
+                unsafe extern "C" fn(*mut c_void),
+            >(P_MobjThinker))
+        {
             let mobj = th as *mut mobj_t;
             *spritepresent.add((*mobj).sprite as usize) = 1;
         }
@@ -826,7 +814,7 @@ pub unsafe extern "C" fn R_PrecacheLevel() {
         if *spritepresent.add(i) == 0 {
             continue;
         }
-        let sprdef = sprites.add(i);
+        let sprdef = (sprites as *mut spritedef_t).add(i);
         for j in 0..(*sprdef).numframes as usize {
             let sf = (*sprdef).spriteframes.add(j);
             for k in 0..8usize {
