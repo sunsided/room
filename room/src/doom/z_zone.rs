@@ -9,6 +9,8 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
+use crate::i_error;
+
 // const PU_STATIC: c_int = 1;
 const PU_FREE: c_int = 4;
 const PU_PURGELEVEL: c_int = 7;
@@ -39,7 +41,6 @@ pub static mut mainzone: *mut memzone_t = ptr::null_mut();
 
 extern "C" {
     fn I_ZoneBase(size: *mut c_int) -> *mut u8;
-    fn I_Error(format: *const c_char, ...);
 }
 
 unsafe fn Z_ClearZone(zone: *mut memzone_t) {
@@ -71,8 +72,7 @@ pub unsafe extern "C" fn Z_Free(ptr: *mut c_void) {
     let block = (ptr as *mut u8).sub(std::mem::size_of::<memblock_t>()) as *mut memblock_t;
 
     if (*block).id as u32 != ZONEID {
-        let msg = b"Z_Free: freed a pointer without ZONEID\0";
-        I_Error(msg.as_ptr() as *const c_char);
+        i_error!("Z_Free: freed a pointer without ZONEID");
     }
 
     if (*block).tag != PU_FREE && !(*block).user.is_null() {
@@ -137,8 +137,7 @@ pub unsafe extern "C" fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) ->
 
     loop {
         if rover == start {
-            let msg = b"Z_Malloc: failed on allocation\0";
-            I_Error(msg.as_ptr() as *const c_char);
+            i_error!("Z_Malloc: failed on allocation");
         }
 
         if (*rover).tag != PU_FREE {
@@ -176,8 +175,7 @@ pub unsafe extern "C" fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) ->
     }
 
     if user.is_null() && tag >= PU_PURGELEVEL {
-        let msg = b"Z_Malloc: an owner is required for purgable blocks\0";
-        I_Error(msg.as_ptr() as *const c_char);
+        i_error!("Z_Malloc: an owner is required for purgable blocks");
     }
 
     (*base).user = user as *mut *mut c_void;
@@ -300,8 +298,7 @@ pub unsafe extern "C" fn Z_CheckHeap() {
                 (*block).next,
                 (block as *mut u8).add((*block).size as usize)
             );
-            let msg = b"Z_CheckHeap: block size does not touch the next block\n\0";
-            I_Error(msg.as_ptr() as *const c_char);
+            i_error!("Z_CheckHeap: block size does not touch the next block\n");
         }
 
         if (*(*block).next).prev != block {
@@ -311,13 +308,11 @@ pub unsafe extern "C" fn Z_CheckHeap() {
                 (*block).next,
                 (*(*block).next).prev
             );
-            let msg = b"Z_CheckHeap: next block doesn't have proper back link\n\0";
-            I_Error(msg.as_ptr() as *const c_char);
+            i_error!("Z_CheckHeap: next block doesn't have proper back link\n");
         }
 
         if (*block).tag == PU_FREE && (*(*block).next).tag == PU_FREE {
-            let msg = b"Z_CheckHeap: two consecutive free blocks\n\0";
-            I_Error(msg.as_ptr() as *const c_char);
+            i_error!("Z_CheckHeap: two consecutive free blocks\n");
         }
 
         block = (*block).next;
@@ -410,13 +405,11 @@ pub unsafe extern "C" fn Z_ChangeTag2(
     let block = (ptr as *mut u8).sub(std::mem::size_of::<memblock_t>()) as *mut memblock_t;
 
     if (*block).id as u32 != ZONEID {
-        I_Error(b"Z_ChangeTag: block without a ZONEID!\0".as_ptr() as *const c_char);
+        i_error!("Z_ChangeTag: block without a ZONEID!");
     }
 
     if tag >= PU_PURGELEVEL && (*block).user.is_null() {
-        I_Error(
-            b"Z_ChangeTag: an owner is required for purgable blocks\0".as_ptr() as *const c_char,
-        );
+        i_error!("Z_ChangeTag: an owner is required for purgable blocks");
     }
 
     (*block).tag = tag;
@@ -427,9 +420,7 @@ pub unsafe extern "C" fn Z_ChangeUser(ptr: *mut c_void, user: *mut *mut c_void) 
     let block = (ptr as *mut u8).sub(std::mem::size_of::<memblock_t>()) as *mut memblock_t;
 
     if (*block).id as u32 != ZONEID {
-        I_Error(
-            b"Z_ChangeUser: Tried to change user for invalid block!\0".as_ptr() as *const c_char,
-        );
+        i_error!("Z_ChangeUser: Tried to change user for invalid block!");
     }
 
     (*block).user = user;

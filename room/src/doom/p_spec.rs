@@ -11,11 +11,12 @@
 use std::ffi::{c_char, c_int, c_short, c_void};
 use std::ptr;
 
+use crate::i_error;
+
 use crate::doom::c_ffi::{
     line_t, mobj_t, sector_t, side_t, FLOORSPEED, FRACUNIT, ML_TWOSIDED, TICRATE,
 };
 use crate::doom::d_player::PlayerT;
-use crate::doom::i_system::I_ErrorV;
 use crate::doom::info::{MT_BFG, MT_BRUISERSHOT, MT_HEADSHOT, MT_PLASMA, MT_ROCKET, MT_TROOPSHOT};
 use crate::doom::m_argv::{myargv, M_CheckParmWithArgs};
 use crate::doom::m_misc::M_StrToInt;
@@ -271,12 +272,9 @@ pub unsafe extern "C" fn P_InitPicAnims() {
         (*lastanim).numpics = (*lastanim).picnum - (*lastanim).basepic + 1;
 
         if (*lastanim).numpics < 2 {
-            let s = std::ffi::CStr::from_ptr(startname).to_string_lossy();
-            let e = std::ffi::CStr::from_ptr(endname).to_string_lossy();
-            let msg =
-                std::ffi::CString::new(format!("P_InitPicAnims: bad cycle from {} to {}", s, e))
-                    .unwrap();
-            I_ErrorV(msg.as_ptr());
+            i_error!("P_InitPicAnims: bad cycle from {} to {}",
+                std::ffi::CStr::from_ptr(startname).to_string_lossy(),
+                std::ffi::CStr::from_ptr(endname).to_string_lossy());
         }
 
         (*lastanim).speed = speed;
@@ -377,10 +375,7 @@ pub unsafe extern "C" fn P_FindNextHighestFloor(sec: *mut sector_t, currentheigh
             if h == MAX_ADJOINING_SECTORS + 1 {
                 height = (*other).floorheight;
             } else if h == MAX_ADJOINING_SECTORS + 2 {
-                I_ErrorV(
-                    b"Sector with more than 22 adjoining sectors. Vanilla will crash here\0"
-                        .as_ptr() as *const c_char,
-                );
+                i_error!("Sector with more than 22 adjoining sectors. Vanilla will crash here");
             }
             heightlist[h] = (*other).floorheight;
             h += 1;
@@ -853,12 +848,7 @@ pub unsafe extern "C" fn P_PlayerInSpecialSector(player: *mut PlayerT) {
             }
         }
         _ => {
-            let msg = std::ffi::CString::new(format!(
-                "P_PlayerInSpecialSector: unknown special {}",
-                (*sector).special
-            ))
-            .unwrap();
-            I_ErrorV(msg.as_ptr());
+            i_error!("P_PlayerInSpecialSector: unknown special {}", (*sector).special);
         }
     }
 }
@@ -1102,10 +1092,7 @@ pub unsafe extern "C" fn P_SpawnSpecials() {
         match (*lines.offset(i as isize)).special as c_int {
             48 => {
                 if numlinespecials as c_int >= MAXLINEANIMS as c_int {
-                    I_ErrorV(
-                        b"Too many scrolling wall linedefs! (Vanilla limit is 64)\0".as_ptr()
-                            as *const c_char,
-                    );
+                    i_error!("Too many scrolling wall linedefs! (Vanilla limit is 64)");
                 }
                 linespeciallist[numlinespecials as usize] = lines.offset(i as isize);
                 numlinespecials += 1;
