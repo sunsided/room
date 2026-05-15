@@ -6,14 +6,13 @@
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
 use crate::doom::c_ffi::screen_mode_t;
+use crate::doom::m_argv::M_CheckParm;
+use crate::doom::z_zone::{Z_Free, Z_Malloc};
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
 extern "C" {
     static mut stdout: *mut libc::FILE;
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn Z_Free(ptr: *mut c_void);
-    fn M_CheckParm(check: *mut c_char) -> c_int;
 }
 
 use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
