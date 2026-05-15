@@ -174,33 +174,42 @@ struct CastInfo {
 // ---------------------------------------------------------------------------
 
 extern "C" {
-    static mut gameaction: c_int;
-    static mut gamestate: c_int;
-    static mut viewactive: c_int;
-    static mut automapactive: c_int;
-    static mut gamemode: c_int;
-    static mut gameepisode: c_int;
-    static mut gamemap: c_int;
-    static mut wipegamestate: c_int;
-    static mut players: [PlayerT; MAXPLAYERS];
-    static mut consoleplayer: c_int;
-
-    static mut I_VideoBuffer: *mut u8;
-    static mut sprites: *mut spritedef_t;
-    static mut firstspritelump: c_int;
-
-    fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void;
-    fn W_CacheLumpNum(lumpnum: c_int, tag: c_int) -> *mut c_void;
-    fn V_DrawPatch(x: c_int, y: c_int, patch: *mut patch_t);
-    fn V_DrawPatchFlipped(x: c_int, y: c_int, patch: *mut patch_t);
-    fn V_MarkRect(x: c_int, y: c_int, width: c_int, height: c_int);
-    fn S_ChangeMusic(musicnum: c_int, looping: c_int);
-    fn S_StartMusic(m_id: c_int);
-    fn S_StartSound(origin_p: *mut c_void, sfx_id: c_int);
-
+    // libc
     fn toupper(c: c_int) -> c_int;
     fn strlen(s: *const c_char) -> usize;
 }
+
+// g_game.rs
+use crate::doom::g_game::{
+    consoleplayer, gameaction, gameepisode, gamemap, gamestate, players, viewactive,
+};
+
+// am_map.rs
+use crate::doom::am_map::automapactive;
+
+// doomstat.rs
+use crate::doom::doomstat::gamemode;
+
+// d_main.rs
+use crate::doom::d_main::wipegamestate;
+
+// i_video.rs
+use crate::doom::i_video::I_VideoBuffer;
+
+// r_things.rs — exported as *mut c_void; cast to *mut spritedef_t at usage
+use crate::doom::r_things::sprites;
+
+// r_data.rs
+use crate::doom::r_data::firstspritelump;
+
+// w_wad.rs
+use crate::doom::w_wad::{W_CacheLumpName, W_CacheLumpNum};
+
+// v_video.rs
+use crate::doom::v_video::{V_DrawPatch, V_DrawPatchFlipped, V_MarkRect};
+
+// s_sound.rs
+use crate::doom::s_sound::{S_ChangeMusic, S_StartMusic, S_StartSound};
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -896,7 +905,7 @@ pub extern "C" fn F_CastDrawer() {
         );
         F_CastPrint(DEH_String(CASTORDER[castnum as usize].name));
 
-        let sprdef = &*sprites.add((*caststate).sprite as usize);
+        let sprdef = &*(sprites as *mut spritedef_t).add((*caststate).sprite as usize);
         let sprframe = &*(*sprdef)
             .spriteframes
             .add(((*caststate).frame & FF_FRAMEMASK) as usize);
