@@ -428,6 +428,17 @@ pub extern "C" fn M_OEMToUTF8(_oem: *const c_char) -> *mut c_char {
     std::ptr::null_mut()
 }
 
+pub(crate) fn write_c_buf(buf: &mut [c_char], s: &str) {
+    if buf.is_empty() {
+        return;
+    }
+    let n = s.len().min(buf.len() - 1);
+    for (dst, src) in buf[..n].iter_mut().zip(s.bytes()) {
+        *dst = src as c_char;
+    }
+    buf[n] = 0;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -785,5 +796,51 @@ mod tests {
         assert_eq!(r, 9); // "say hello" is 9 characters
         let s = unsafe { CStr::from_ptr(buf.as_ptr()).to_str().unwrap() };
         assert_eq!(s, "say hello");
+    }
+
+    // -----------------------------------------------------------------------
+    // write_c_buf
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_write_c_buf_fits() {
+        let mut buf: [c_char; 16] = [0; 16];
+        write_c_buf(&mut buf, "hello");
+        let s = unsafe { CStr::from_ptr(buf.as_ptr()).to_str().unwrap() };
+        assert_eq!(s, "hello");
+    }
+
+    #[test]
+    fn test_write_c_buf_exact_fit() {
+        // s.len() == buf.len() - 1: no truncation, null at last position
+        let mut buf: [c_char; 6] = [0; 6];
+        write_c_buf(&mut buf, "hello");
+        let s = unsafe { CStr::from_ptr(buf.as_ptr()).to_str().unwrap() };
+        assert_eq!(s, "hello");
+        assert_eq!(buf[5], 0);
+    }
+
+    #[test]
+    fn test_write_c_buf_truncates() {
+        // s.len() > buf.len() - 1: truncated, null at buf[len-1]
+        let mut buf: [c_char; 4] = [0; 4];
+        write_c_buf(&mut buf, "hello");
+        let s = unsafe { CStr::from_ptr(buf.as_ptr()).to_str().unwrap() };
+        assert_eq!(s, "hel");
+        assert_eq!(buf[3], 0);
+    }
+
+    #[test]
+    fn test_write_c_buf_empty_str() {
+        let mut buf: [c_char; 8] = [0x42; 8];
+        write_c_buf(&mut buf, "");
+        assert_eq!(buf[0], 0);
+    }
+
+    #[test]
+    fn test_write_c_buf_empty_buf() {
+        // zero-length buffer: no panic, no write
+        let mut buf: [c_char; 0] = [];
+        write_c_buf(&mut buf, "hello"); // must not panic
     }
 }
