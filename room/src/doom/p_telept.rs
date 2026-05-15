@@ -124,17 +124,17 @@ pub struct line_t {
 
 const EXE_FINAL: c_int = 7;
 
-extern "C" {
-    fn P_TeleportMove(thing: *mut mobj_t, x: c_int, y: c_int) -> c_int;
-    fn P_SpawnMobj(x: c_int, y: c_int, z: c_int, mobjtype: c_int) -> *mut mobj_t;
-    fn S_StartSound(mobj: *mut mobj_t, sfx_id: c_int);
-    static mut thinkercap: thinker_t;
-    static mut numsectors: c_int;
-    static mut sectors: *mut sector_t;
-    static mut gameversion: c_int;
-    static mut finecosine: [c_int; 4096];
-    static mut finesine: [c_int; 4096];
-}
+use crate::doom::doomstat::gameversion;
+use crate::doom::p_map::P_TeleportMove;
+use crate::doom::p_mobj::{P_MobjThinker, P_SpawnMobj};
+use crate::doom::p_setup::{numsectors, sectors};
+use crate::doom::p_tick::thinkercap;
+use crate::doom::s_sound::S_StartSound;
+use crate::doom::tables::{finecosine, finesine};
+
+// Type alias for cross-module pointer cast (#[repr(C)] identical layout).
+type CffiMobj = crate::doom::c_ffi::mobj_t;
+type CffiSector = crate::doom::c_ffi::sector_t;
 // We already have PlayerT in d_player.rs but can't use it here
 // because the C player_s is different. Use pointer casts.
 
@@ -181,7 +181,7 @@ pub extern "C" fn EV_Teleport(line: *mut line_t, side: c_int, thing: *mut mobj_t
 
                 let sector = (*(*m).subsector).sector;
                 // Wrong sector
-                if sector.offset_from(sectors) != i as isize {
+                if sector.offset_from(sectors as *mut sector_t) != i as isize {
                     thinker = (*thinker).next;
                     continue;
                 }
@@ -190,7 +190,7 @@ pub extern "C" fn EV_Teleport(line: *mut line_t, side: c_int, thing: *mut mobj_t
                 let oldy = (*thing).y;
                 let oldz = (*thing).z;
 
-                if P_TeleportMove(thing, (*m).x, (*m).y) == 0 {
+                if P_TeleportMove(thing as *mut CffiMobj, (*m).x, (*m).y) == 0 {
                     return 0;
                 }
 
@@ -206,17 +206,17 @@ pub extern "C" fn EV_Teleport(line: *mut line_t, side: c_int, thing: *mut mobj_t
 
                 // Spawn teleport fog at source
                 let fog = P_SpawnMobj(oldx, oldy, oldz, MT_TFOG);
-                S_StartSound(fog, SFX_TELEPT);
+                S_StartSound(fog as *mut c_void, SFX_TELEPT);
 
                 // Spawn teleport fog at destination
                 let an = ((*m).angle >> ANGLETOFINESHIFT) as usize;
                 let fog = P_SpawnMobj(
-                    (*m).x + 20 * finecosine[an],
+                    (*m).x + 20 * *finecosine.0.add(an),
                     (*m).y + 20 * finesine[an],
                     (*thing).z,
                     MT_TFOG,
                 );
-                S_StartSound(fog, SFX_TELEPT);
+                S_StartSound(fog as *mut c_void, SFX_TELEPT);
 
                 // Don't move for a bit
                 if !(*thing).player.is_null() {
@@ -232,12 +232,6 @@ pub extern "C" fn EV_Teleport(line: *mut line_t, side: c_int, thing: *mut mobj_t
         }
     }
     0
-}
-
-/// Stub declaration so we can compare function pointer values.
-/// The real P_MobjThinker lives in C code (p_mobj.c).
-extern "C" {
-    fn P_MobjThinker(mobj: *mut mobj_t);
 }
 
 /// Anchor function referenced from `doomgeneric_Create` to ensure
