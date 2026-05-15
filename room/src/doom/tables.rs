@@ -4,6 +4,12 @@ use std::ffi::{c_int, c_uint};
 
 pub const FINEANGLES: usize = 8192;
 pub const SLOPERANGE: c_int = 2048;
+pub const ANGLETOFINESHIFT: u32 = 19;
+pub const FINEMASK: c_int = FINEANGLES as c_int - 1;
+pub const ANG45: u32 = 0x2000_0000;
+pub const ANG90: u32 = 0x4000_0000;
+pub const ANG180: u32 = 0x8000_0000;
+pub const ANG270: u32 = 0xC000_0000;
 
 #[no_mangle]
 pub static finetangent: [c_int; 4096] = [

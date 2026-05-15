@@ -9,15 +9,17 @@
 use std::ffi::{c_char, c_int, c_uint, c_void};
 use std::ptr;
 
-use crate::doom::c_ffi::{SCREENHEIGHT, SCREENWIDTH, TICRATE};
 use crate::doom::d_event::event_t;
 use crate::doom::d_mode;
 use crate::doom::d_player::{consoleplayer, players, PlayerT, MAXPLAYERS};
 use crate::doom::doomstat::{gamedescription, gamemission, gamemode, gameversion, modifiedgame};
+use crate::doom::i_timer::TICRATE;
 use crate::doom::i_video::I_StartFrame;
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 use crate::doom::m_config::M_SaveDefaults;
 use crate::doom::m_misc::M_snprintf_clamp;
 use crate::{c_write, i_error};
+use crate::types::Boolean;
 
 // ---------------------------------------------------------------------------
 // String constants from d_englsh.h / dstrings.h
@@ -38,7 +40,6 @@ const HUSTR_KEYRED: c_char = b'r' as c_char;
 type gamestate_t = c_int;
 type gameaction_t = c_int;
 type skill_t = c_int;
-type boolean = c_int; // TODO: Use Boolean type
 type byte = u8;
 
 const GS_LEVEL: gamestate_t = 0;
@@ -64,8 +65,7 @@ const sk_hard: skill_t = 3;
 const sk_nightmare: skill_t = 4;
 const sk_noitems: skill_t = -1;
 
-const PU_STATIC: c_int = 0;
-const PU_CACHE: c_int = 8;
+use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
 
 // ---------------------------------------------------------------------------
 // Globals — these are #[no_mangle] so remaining C code (g_game.c etc.)
@@ -291,8 +291,8 @@ extern "C" {
     fn G_RecordDemo(name: *mut c_char);
     fn G_BeginRecording();
     fn G_TimeDemo(name: *mut c_char);
-    fn G_CheckDemoStatus() -> boolean;
-    fn G_Responder(ev: *mut event_t) -> boolean;
+    fn G_CheckDemoStatus() -> Boolean;
+    fn G_Responder(ev: *mut event_t) -> Boolean;
     fn G_VanillaVersionCode() -> c_int;
 
     // Globals from g_game.c (still C):
@@ -321,7 +321,7 @@ extern "C" {
     static mut snd_channels: c_int;
     static mut vanilla_savegame_limit: c_int;
     static mut vanilla_demo_limit: c_int;
-    static mut setsizeneeded: c_int;
+    static mut setsizeneeded: Boolean;
     static mut showMessages: c_int;
     static mut viewheight: c_int;
     static mut scaledviewwidth: c_int;
@@ -353,14 +353,14 @@ extern "C" {
     fn I_GetTime() -> c_int;
     fn I_Sleep(ms: c_int);
     fn I_InitTimer();
-    fn I_InitSound(use_sfx_prefix: boolean);
+    fn I_InitSound(use_sfx_prefix: Boolean);
     fn I_InitMusic();
     fn I_BindSoundVariables();
     fn I_BindVideoVariables();
     fn I_BindJoystickVariables();
     fn I_Endoom(data: *mut byte);
     fn I_InitJoystick();
-    fn I_AtExit(func: extern "C" fn(), run_if_error: boolean);
+    fn I_AtExit(func: extern "C" fn(), run_if_error: Boolean);
     fn I_PrintStartupBanner(gamedescription: *mut c_char);
     fn I_PrintBanner(text: *mut c_char);
     fn I_PrintDivider();
@@ -371,8 +371,8 @@ extern "C" {
     fn I_FinishUpdate();
     fn I_SetWindowTitle(title: *mut c_char);
     fn I_CheckIsScreensaver();
-    fn I_SetGrabMouseCallback(func: extern "C" fn() -> boolean);
-    fn I_DisplayFPSDots(dots_on: boolean);
+    fn I_SetGrabMouseCallback(func: extern "C" fn() -> Boolean);
+    fn I_DisplayFPSDots(dots_on: Boolean);
     fn I_EnableLoadingDisk();
 
     // From remaining C modules:
@@ -385,7 +385,7 @@ extern "C" {
     fn D_SaveGameIWADName(gamemission: c_int) -> *mut c_char;
     fn Z_Init();
     fn Z_Malloc(size: c_int, tag: c_int, ptr: *mut c_void) -> *mut c_void;
-    fn W_ParseCommandLine() -> boolean;
+    fn W_ParseCommandLine() -> Boolean;
     static mut lumpinfo: *mut c_void;
     static mut numlumps: c_uint;
     fn W_AddFile(filename: *mut c_char) -> *mut c_void;
@@ -426,9 +426,9 @@ extern "C" {
     fn M_BindMenuControls();
     fn M_BindChatControls(num_players: c_uint);
     fn M_ApplyPlatformDefaults();
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> boolean;
-    fn M_StringEndsWith(s: *const c_char, suffix: *const c_char) -> boolean;
-    fn M_Responder(ev: *mut event_t) -> boolean;
+    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean;
+    fn M_StringEndsWith(s: *const c_char, suffix: *const c_char) -> Boolean;
+    fn M_Responder(ev: *mut event_t) -> Boolean;
     fn M_Drawer();
     fn M_Init();
     fn P_SaveGameFile(slot: c_int) -> *mut c_char;
@@ -438,7 +438,7 @@ extern "C" {
     static mut chat_macros: [*mut c_char; 10];
     static mut key_multi_msgplayer: [c_int; 8];
     fn WI_Drawer();
-    fn ST_Drawer(fullscreen: boolean, refresh: boolean);
+    fn ST_Drawer(fullscreen: Boolean, refresh: Boolean);
     fn ST_Init();
     fn AM_Drawer();
     fn P_Init();
@@ -549,7 +549,7 @@ pub extern "C" fn D_ProcessEvents() {
             if ev.is_null() {
                 false
             } else {
-                if M_Responder(ev) == 0 {
+                if M_Responder(ev).is_false() {
                     G_Responder(ev);
                 }
                 true
@@ -573,7 +573,7 @@ pub extern "C" fn D_Display() {
         let mut redrawsbar = false;
 
         // Change the view size if needed
-        if setsizeneeded != 0 {
+        if setsizeneeded.is_truthy() {
             R_ExecuteSetViewSize();
             D_DISP_OLD_GAMESTATE = -1; // force background redraw
             D_DISP_BORDERDRAWCOUNT = 3;
@@ -602,7 +602,7 @@ pub extern "C" fn D_Display() {
                 if D_DISP_INHELPSCREENS != 0 && inhelpscreens == 0 {
                     redrawsbar = true;
                 }
-                ST_Drawer((viewheight == 200) as c_int, redrawsbar as c_int);
+                ST_Drawer(Boolean::from(viewheight == 200), Boolean::from(redrawsbar));
                 D_DISP_FULLSCREEN = (viewheight == 200) as c_int;
             }
         } else if gamestate == GS_INTERMISSION {
@@ -811,22 +811,22 @@ pub extern "C" fn D_BindVariables() {
 // D_GrabMouseCallback
 // ---------------------------------------------------------------------------
 
-extern "C" fn D_GrabMouseCallback() -> boolean {
+extern "C" fn D_GrabMouseCallback() -> Boolean {
     unsafe {
         // Drone players don't need mouse focus
         if drone != 0 {
-            return 0;
+            return Boolean::FALSE;
         }
 
         // When menu is active or game is paused, release the mouse
         if menuactive != 0 || paused != 0 {
-            return 0;
+            return Boolean::FALSE;
         }
 
         // Only grab mouse when playing levels (but not demos)
         let demoplayback_val: c_int = demoplayback;
         let advancedemo_val: c_int = advancedemo;
-        (gamestate == GS_LEVEL && demoplayback_val == 0 && advancedemo_val == 0) as c_int
+        Boolean::from(gamestate == GS_LEVEL && demoplayback_val == 0 && advancedemo_val == 0)
     }
 }
 
@@ -898,8 +898,7 @@ pub extern "C" fn D_DoomLoop() {
         I_GraphicsCheckCommandLine();
 
         // Cast the Rust callback to match the C signature
-        #[allow(improper_ctypes_definitions)]
-        extern "C" fn grab_cb() -> c_int {
+        extern "C" fn grab_cb() -> Boolean {
             D_GrabMouseCallback()
         }
         I_SetGrabMouseCallback(grab_cb);
@@ -1461,10 +1460,10 @@ pub extern "C" fn D_DoomMain() {
         let mut file: [c_char; 256] = [0; 256];
         let mut demolumpname: [c_char; 9] = [0; 9];
 
-        I_AtExit(D_Endoom, 0);
+        I_AtExit(D_Endoom, Boolean::FALSE);
 
         // Print banner
-        I_PrintBanner(b"Chocolate Doom\0".as_ptr() as *mut c_char);
+        I_PrintBanner(b"Room\0".as_ptr() as *mut c_char);
 
         // Init zone memory
         println!("Z_Init: Init zone memory allocation daemon.");
@@ -1476,7 +1475,7 @@ pub extern "C" fn D_DoomMain() {
         fastparm = (M_CheckParm(b"-fast\0".as_ptr() as *const c_char) != 0) as c_int;
         devparm = (M_CheckParm(b"-devparm\0".as_ptr() as *const c_char) != 0) as c_int;
 
-        I_DisplayFPSDots((devparm != 0) as c_int);
+        I_DisplayFPSDots(Boolean::from(devparm != 0));
 
         if M_CheckParm(b"-deathmatch\0".as_ptr() as *const c_char) != 0 {
             deathmatch = 1;
@@ -1537,7 +1536,7 @@ pub extern "C" fn D_DoomMain() {
         D_BindVariables();
         M_LoadDefaults();
 
-        I_AtExit(M_SaveDefaults, 0);
+        I_AtExit(M_SaveDefaults, Boolean::FALSE);
 
         // Find main IWAD
         iwadfile = D_FindIWAD(1, &mut gamemission); // IWAD_MASK_DOOM = 1
@@ -1546,7 +1545,7 @@ pub extern "C" fn D_DoomMain() {
             i_error!("Game mode indeterminate.  No IWAD file was found.  Try\nspecifying one with the '-iwad' command line parameter.\n");
         }
 
-        modifiedgame = 0;
+        modifiedgame = Boolean::FALSE;
 
         println!("W_Init: Init WADfiles.");
         D_AddFile(iwadfile);
@@ -1629,7 +1628,7 @@ pub extern "C" fn D_DoomMain() {
         savegamedir = M_GetSaveGameDir(D_SaveGameIWADName(gamemission));
 
         // Check for -file in shareware
-        if modifiedgame != 0 {
+        if modifiedgame.is_truthy() {
             extern "C" {
                 static mut gamemode: c_int;
             }
@@ -1683,7 +1682,7 @@ pub extern "C" fn D_DoomMain() {
         I_CheckIsScreensaver();
         I_InitTimer();
         I_InitJoystick();
-        I_InitSound(1);
+        I_InitSound(Boolean::TRUE);
         I_InitMusic();
 
         // Initial netgame startup

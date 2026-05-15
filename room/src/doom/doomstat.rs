@@ -8,6 +8,7 @@ use std::ffi::{c_char, c_int};
 use std::ptr;
 
 use super::d_mode;
+use crate::types::Boolean;
 
 // Game Mode - identify IWAD as shareware, retail etc.
 #[no_mangle]
@@ -24,7 +25,7 @@ pub static mut gamedescription: *mut c_char = ptr::null_mut();
 
 // Set if homebrew PWAD stuff has been added.
 #[no_mangle]
-pub static mut modifiedgame: c_int = 0;
+pub static mut modifiedgame: Boolean = Boolean::FALSE;
 
 #[cfg(test)]
 mod tests {
@@ -41,7 +42,7 @@ mod tests {
             assert_eq!(gamemission, d_mode::doom);
             assert_eq!(gameversion, d_mode::exe_final2);
             assert!(gamedescription.is_null());
-            assert_eq!(modifiedgame, 0);
+            assert_eq!(modifiedgame, Boolean::FALSE);
         }
     }
 }

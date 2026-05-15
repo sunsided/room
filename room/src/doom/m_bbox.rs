@@ -6,10 +6,10 @@ use super::m_fixed::fixed_t;
 
 // Indices must match m_bbox.h:
 //   BOXTOP=0, BOXBOTTOM=1, BOXLEFT=2, BOXRIGHT=3
-const BOXTOP: usize = 0;
-const BOXBOTTOM: usize = 1;
-const BOXLEFT: usize = 2;
-const BOXRIGHT: usize = 3;
+pub const BOXTOP: usize = 0;
+pub const BOXBOTTOM: usize = 1;
+pub const BOXLEFT: usize = 2;
+pub const BOXRIGHT: usize = 3;
 
 /// `void M_ClearBox(fixed_t *box)` — initialises an inverted bbox so
 /// subsequent `M_AddToBox` calls shrink it to fit.

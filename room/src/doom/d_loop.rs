@@ -10,9 +10,13 @@ use std::ffi::c_char;
 use std::os::raw::c_int;
 
 use crate::i_error;
-use crate::doom::c_ffi::{FRACUNIT, TICRATE};
+use crate::types::Boolean;
+
+
 use crate::doom::d_net::{LoopInterfaceT, NetConnectDataT, NetGameSettingsT};
 use crate::doom::d_player::TiccmdT;
+use crate::doom::i_timer::TICRATE;
+use crate::doom::m_fixed::FRACUNIT;
 
 const NET_MAXPLAYERS: usize = 8;
 pub const BACKUPTICS: usize = 128;
@@ -65,7 +69,7 @@ extern "C" {
     fn I_GetTime() -> c_int;
     fn I_StartTic();
     fn I_Sleep(ms: c_int);
-    fn I_AtExit(func: extern "C" fn(), run_on_error: c_int);
+    fn I_AtExit(func: extern "C" fn(), run_on_error: Boolean);
 
     fn D_ProcessEvents();
     fn G_BuildTiccmd(cmd: *mut TiccmdT, maketic: c_int);
@@ -199,7 +203,7 @@ pub extern "C" fn D_StartNetGame(settings: *mut NetGameSettingsT, _callback: *co
 #[no_mangle]
 pub extern "C" fn D_InitNetGame(connect_data: *mut NetConnectDataT) -> c_int {
     unsafe {
-        I_AtExit(D_QuitNetGame, 1);
+        I_AtExit(D_QuitNetGame, Boolean::TRUE);
         PLAYER_CLASS = (*connect_data).player_class;
     }
     0 // false

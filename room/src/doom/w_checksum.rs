@@ -2,6 +2,8 @@
 
 use std::ffi::{c_char, c_int, c_uint, c_void};
 
+use crate::types::Boolean;
+
 use crate::doom::sha1::{
     sha1_digest_t, SHA1Context, SHA1_Final, SHA1_Init, SHA1_UpdateInt32, SHA1_UpdateString,
 };
@@ -19,7 +21,7 @@ pub struct LumpInfo {
 extern "C" {
     static mut numlumps: c_uint;
     static mut lumpinfo: *mut LumpInfo;
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, n: usize) -> c_int;
+    fn M_StringCopy(dest: *mut c_char, src: *const c_char, n: usize) -> Boolean;
 }
 
 unsafe fn get_file_number(handle: *mut c_void, open_wadfiles: &mut Vec<*mut c_void>) -> c_int {

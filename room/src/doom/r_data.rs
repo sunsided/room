@@ -6,18 +6,18 @@
 
 use crate::i_error;
 use std::ffi::{c_char, c_int, c_short, c_uint, c_ushort, c_void, CStr};
+
+use crate::types::Boolean;
 use std::ptr;
 
 use crate::doom::c_ffi::{mobj_t, sector_t, side_t};
+use crate::doom::m_fixed::FRACBITS;
 use crate::doom::p_tick::thinker_t;
+use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
 // ---------------------------------------------------------------------------
-
-const PU_STATIC: c_int = 1;
-const PU_CACHE: c_int = 8;
-const FRACBITS: u32 = 16;
 
 #[inline]
 fn SHORT(x: i16) -> i16 {
@@ -116,7 +116,7 @@ struct spritedef_t {
 extern "C" {
     fn I_ConsoleStdout() -> c_int;
 
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> c_int;
+    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean;
 
     fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
     fn Z_Free(ptr: *mut c_void);

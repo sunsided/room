@@ -9,10 +9,10 @@
 use std::ffi::{c_int, c_short, c_uchar, c_void};
 use std::ptr;
 
-use super::m_fixed::{angle_t, fixed_t, FixedMul};
+use super::m_fixed::{angle_t, fixed_t, FixedMul, FRACBITS};
 use super::r_bsp::{drawseg_t, line_t, sector_t, seg_t, side_t};
 use super::r_plane::visplane_t;
-use super::tables;
+use super::tables::{self, ANG180, ANG90, ANGLETOFINESHIFT};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -30,13 +30,9 @@ const LIGHTSEGSHIFT: u32 = 4;
 const MAXLIGHTSCALE: usize = 48;
 const LIGHTSCALESHIFT: u32 = 12;
 
-const FRACBITS: u32 = 16;
-const ANG90: angle_t = 0x4000_0000;
-const ANG180: angle_t = 0x8000_0000;
-const ANGLETOFINESHIFT: u32 = 19;
 const FINEMASK: usize = 0x1FFF;
 
-const SCREENWIDTH: usize = 320;
+const SCREENWIDTH: usize = crate::doom::i_video::SCREENWIDTH as usize;
 const MAXDRAWSEGS: usize = 256;
 
 // ---------------------------------------------------------------------------

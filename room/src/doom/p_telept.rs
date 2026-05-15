@@ -10,8 +10,7 @@ use std::os::raw::c_int;
 use crate::doom::d_player::PlayerT;
 use crate::doom::info::*;
 use crate::doom::p_tick::thinker_t;
-
-const ANGLETOFINESHIFT: u32 = 19;
+use crate::doom::tables::ANGLETOFINESHIFT;
 const SFX_TELEPT: c_int = 35; // sfx_telept enum value
 
 #[repr(C)]

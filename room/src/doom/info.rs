@@ -9,7 +9,7 @@ use std::ffi::{c_char, c_int};
 pub const NUMSTATES: usize = 967;
 pub const NUMMOBJTYPES: usize = 137;
 
-const FRACUNIT: c_int = 65536;
+use crate::doom::m_fixed::FRACUNIT;
 
 // Sprite name indices
 
@@ -480,6 +480,10 @@ pub struct MobjInfo {
 }
 
 const _: () = assert!(std::mem::size_of::<MobjInfo>() == 92);
+const _: () = assert!(std::mem::offset_of!(MobjInfo, speed) == 60);
+
+const _: () = assert!(std::mem::size_of::<State>() == 40);
+const _: () = assert!(std::mem::offset_of!(State, tics) == 8);
 
 extern "C" {
     fn A_Light0();

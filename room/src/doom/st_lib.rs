@@ -10,8 +10,7 @@ use std::os::raw::c_int;
 
 use crate::i_error;
 use crate::doom::v_video::patch_t;
-
-const PU_STATIC: c_int = 1;
+use crate::doom::z_zone::PU_STATIC;
 const ST_HEIGHT: c_int = 32;
 const ST_Y: c_int = 200 - ST_HEIGHT; // 168
 

@@ -31,7 +31,7 @@ extern "C" {
     fn M_FileLength(handle: *mut libc::c_void) -> c_long;
 }
 
-const PU_STATIC: c_int = 1;
+use crate::doom::z_zone::PU_STATIC;
 
 unsafe extern "C" fn W_StdC_OpenFile(path: *mut c_char) -> *mut wad_file_t {
     let fstream = fopen(path as *const c_char, b"rb\0".as_ptr() as *const c_char);

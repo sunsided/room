@@ -8,20 +8,24 @@
 use std::ffi::{c_char, c_int, c_short, c_uint};
 use std::ptr;
 
-use crate::doom::c_ffi::{ANG180, ANG270, ANG90, ANGLETOFINESHIFT, FRACBITS, FRACUNIT};
 use crate::doom::d_player::PlayerT;
+use crate::doom::i_video::{SCREENHEIGHT as SCREENHEIGHT_IV, SCREENWIDTH as SCREENWIDTH_IV};
+use crate::doom::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
 use crate::doom::m_fixed::{angle_t, fixed_t, FixedDiv, FixedMul};
+use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::p_telept::mobj_t;
 use crate::doom::r_bsp::{node_t, seg_t, subsector_t};
 use crate::doom::tables::{self, SlopeDiv};
+use crate::doom::tables::{ANG180, ANG270, ANG90, ANGLETOFINESHIFT};
+use crate::types::Boolean;
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const FIELDOFVIEW: c_int = 2048;
-const SCREENWIDTH: usize = 320;
-const SCREENHEIGHT: usize = 200;
+const SCREENWIDTH: usize = SCREENWIDTH_IV as usize;
+const SCREENHEIGHT: usize = SCREENHEIGHT_IV as usize;
 const LIGHTLEVELS: usize = 16;
 #[allow(dead_code)]
 const LIGHTSEGSHIFT: u32 = 4;
@@ -35,7 +39,6 @@ const DISTMAP: usize = 2;
 const DBITS: u32 = 5;
 
 type lighttable_t = u8;
-type boolean = c_int;
 
 // ---------------------------------------------------------------------------
 // Globals defined by this module
@@ -144,7 +147,7 @@ pub static mut transcolfunc: Option<unsafe extern "C" fn()> = None;
 pub static mut spanfunc: Option<unsafe extern "C" fn()> = None;
 
 #[no_mangle]
-pub static mut setsizeneeded: boolean = 0;
+pub static mut setsizeneeded: Boolean = Boolean::FALSE;
 
 #[no_mangle]
 pub static mut setblocks: c_int = 0;
@@ -205,11 +208,6 @@ extern "C" {
 // ---------------------------------------------------------------------------
 // R_AddPointToBox
 // ---------------------------------------------------------------------------
-
-const BOXTOP: usize = 0;
-const BOXBOTTOM: usize = 1;
-const BOXLEFT: usize = 2;
-const BOXRIGHT: usize = 3;
 
 #[no_mangle]
 pub unsafe extern "C" fn R_AddPointToBox(x: c_int, y: c_int, box_: *mut fixed_t) {
@@ -556,7 +554,7 @@ pub unsafe extern "C" fn R_InitLightTables() {
 
 #[no_mangle]
 pub unsafe extern "C" fn R_SetViewSize(blocks: c_int, detail: c_int) {
-    setsizeneeded = 1;
+    setsizeneeded = Boolean::TRUE;
     setblocks = blocks;
     setdetail = detail;
 }
@@ -567,7 +565,7 @@ pub unsafe extern "C" fn R_SetViewSize(blocks: c_int, detail: c_int) {
 
 #[no_mangle]
 pub unsafe extern "C" fn R_ExecuteSetViewSize() {
-    setsizeneeded = 0;
+    setsizeneeded = Boolean::FALSE;
 
     if setblocks == 11 {
         scaledviewwidth = SCREENWIDTH as c_int;

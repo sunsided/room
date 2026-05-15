@@ -9,6 +9,8 @@ use std::ffi::{c_char, c_int, c_uint, c_void, CStr};
 use std::ptr;
 
 use crate::i_error;
+use crate::types::Boolean;
+
 
 const DEFAULT_RAM: c_int = 6; // MiB
 const MIN_RAM: c_int = 6; // MiB
@@ -18,7 +20,7 @@ type atexit_func_t = extern "C" fn();
 #[repr(C)]
 struct atexit_listentry_t {
     func: atexit_func_t,
-    run_on_error: c_int,
+    run_on_error: Boolean,
     next: *mut atexit_listentry_t,
 }
 
@@ -53,7 +55,7 @@ unsafe fn AutoAllocMemory(size: *mut c_int, mut default_ram: c_int, min_ram: c_i
 }
 
 #[no_mangle]
-pub extern "C" fn I_AtExit(func: atexit_func_t, run_on_error: c_int) {
+pub extern "C" fn I_AtExit(func: atexit_func_t, run_on_error: Boolean) {
     unsafe {
         let entry =
             libc::malloc(std::mem::size_of::<atexit_listentry_t>()) as *mut atexit_listentry_t;
@@ -194,7 +196,7 @@ pub extern "C" fn I_Error(msg: *const c_char) {
 
         let mut entry = exit_funcs;
         while !entry.is_null() {
-            if (*entry).run_on_error != 0 {
+            if (*entry).run_on_error.is_truthy() {
                 ((*entry).func)();
             }
             entry = (*entry).next;
@@ -313,7 +315,7 @@ extern "C" fn dummy_atexit() {}
 
 #[no_mangle]
 pub unsafe extern "C" fn I_System_Link_Anchor() {
-    I_AtExit(dummy_atexit, 0);
+    I_AtExit(dummy_atexit, Boolean::FALSE);
     I_Tactile(0, 0, 0);
     let mut size: c_int = 0;
     I_ZoneBase(&mut size);

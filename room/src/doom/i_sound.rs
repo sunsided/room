@@ -2,6 +2,8 @@
 
 use std::ffi::{c_char, c_int, c_void};
 
+use crate::types::Boolean;
+
 #[no_mangle]
 pub static mut snd_musicdevice: c_int = 3;
 
@@ -42,7 +44,7 @@ const fn c_bytes(s: &[u8]) -> &'static [c_char] {
 }
 
 #[no_mangle]
-pub extern "C" fn I_InitSound(_use_sfx_prefix: c_int) {}
+pub extern "C" fn I_InitSound(_use_sfx_prefix: Boolean) {}
 
 #[no_mangle]
 pub extern "C" fn I_ShutdownSound() {}

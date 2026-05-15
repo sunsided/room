@@ -9,7 +9,7 @@ extern "C" {
 }
 
 #[cfg(not(test))]
-const PU_STATIC: c_int = 1;
+use crate::doom::z_zone::PU_STATIC;
 
 #[repr(C)]
 pub enum memfile_mode_t {

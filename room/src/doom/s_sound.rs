@@ -2,12 +2,14 @@
 
 use std::ffi::{c_char, c_int, c_void};
 
-use crate::doom::d_mode;
-use crate::doom::sounds::{MusicInfo, S_InitSfxLinks, S_music, S_sfx, SfxInfo, NUMMUSIC, NUMSFX};
-use crate::doom::tables::finesine;
+use crate::types::Boolean;
 
-const FRACBITS: u32 = 16;
-const FRACUNIT: c_int = 65536;
+use crate::doom::d_mode;
+use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
+use crate::doom::sounds::{MusicInfo, S_InitSfxLinks, S_music, S_sfx, SfxInfo, NUMMUSIC, NUMSFX};
+use crate::doom::tables::{finesine, ANGLETOFINESHIFT};
+use crate::doom::z_zone::PU_STATIC;
+
 const S_CLIPPING_DIST: c_int = 1200 * FRACUNIT;
 const S_CLOSE_DIST: c_int = 200 * FRACUNIT;
 const S_ATTENUATOR: c_int = (S_CLIPPING_DIST - S_CLOSE_DIST) >> FRACBITS;
@@ -15,7 +17,6 @@ const S_STEREO_SWING: c_int = 96 * FRACUNIT;
 const NORM_PITCH: c_int = 128;
 const NORM_PRIORITY: c_int = 64;
 const NORM_SEP: c_int = 128;
-const ANGLETOFINESHIFT: u32 = 19;
 
 const MAXPLAYERS: usize = 4;
 
@@ -91,8 +92,6 @@ const mus_dm2int: c_int = 67;
 const SNDDEVICE_ADLIB: c_int = 2;
 const SNDDEVICE_SB: c_int = 3;
 
-const PU_STATIC: c_int = 1;
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct channel_t {
@@ -138,7 +137,7 @@ extern "C" {
     fn I_PlaySong(handle: *mut c_void, looping: c_int);
     fn I_StopSong();
     fn I_MusicIsPlaying() -> c_int;
-    fn I_AtExit(func: extern "C" fn(), run_on_error: c_int);
+    fn I_AtExit(func: extern "C" fn(), run_on_error: Boolean);
     fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
     fn R_PointToAngle2(x1: c_int, y1: c_int, x2: c_int, y2: c_int) -> u32;
     fn FixedMul(a: c_int, b: c_int) -> c_int;
@@ -199,7 +198,7 @@ pub extern "C" fn S_Init(sfx_volume: c_int, music_volume: c_int) {
             (*S_sfx.as_mut_ptr().add(i)).usefulness = -1;
         }
 
-        I_AtExit(S_Shutdown, 1);
+        I_AtExit(S_Shutdown, Boolean::TRUE);
     }
 }
 

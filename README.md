@@ -4,30 +4,30 @@
   <img src=".readme/room.png" alt="room screenshot" />
 </div>
 
-A faithful Rust port of [doomgeneric](https://github.com/ozkl/doomgeneric) using
+A complete Rust port of [doomgeneric](https://github.com/ozkl/doomgeneric) using
 [winit](https://github.com/rust-windowing/winit) and [wgpu](https://github.com/gfx-rs/wgpu)
 for the platform layer.
 
 ## What is this?
 
-`room` is an **incremental Rust port** of the classic DOOM engine based on
-[doomgeneric](https://github.com/ozkl/doomgeneric).  Rather than rewriting
-everything at once, the project follows a **module-by-module replacement**
-strategy:
+`room` is a **complete Rust port** of the classic DOOM engine based on
+[doomgeneric](https://github.com/ozkl/doomgeneric). Every engine module has
+been rewritten in native Rust; no C engine code remains linked.
 
-1. The remaining unported C modules are compiled into a static library by
-   `doomgeneric-sys/build.rs` using the `cc` crate.
-2. Each ported module is rewritten in Rust inside `room/src/doom/` and exported
-   with `#[no_mangle] extern "C"` so the final linker picks the Rust symbol
+The port was done **module-by-module**:
+
+1. Each module was rewritten in Rust inside `room/src/doom/` and exported
+   with `#[no_mangle] extern "C"` so the linker picked the Rust symbol
    instead of the C one.
+2. Once replaced, the corresponding `.c` file was removed from
+   `doomgeneric-sys/build.rs`.
 3. The platform layer (window creation, GPU rendering, keyboard input) is
-   already pure Rust, built on [winit](https://github.com/rust-windowing/winit)
+   pure Rust, built on [winit](https://github.com/rust-windowing/winit)
    and [wgpu](https://github.com/gfx-rs/wgpu).
 
-This means the executable is a **mixed C/Rust binary**: some subsystems (e.g.
-`r_draw`, `p_setup`, `z_zone`) are now native Rust, while others (e.g.
-`g_game`, `d_main`) still run the original C code.  As each module
-is ported it is removed from `build.rs` and the C file is no longer linked.
+The `lib_sources` list in `doomgeneric-sys/build.rs` is now empty — all engine
+subsystems (`r_draw`, `p_setup`, `z_zone`, `g_game`, `d_main`, and every other
+module) are native Rust.
 
 A regression-test harness (`room/src/doom/c_tests/`) runs the original C
 functions alongside their Rust replacements to verify bit-for-bit behavioural
@@ -56,7 +56,7 @@ room/
             ├── mod.rs       Rust reimplementations of ported engine modules
             ├── c_ffi.rs     FFI declarations for still-C modules (used by tests)
             ├── c_tests/     Regression tests comparing C vs Rust behaviour
-            ├── d_main.rs    (stub – still compiled from C)
+            ├── d_main.rs    Ported main entry point and game init
             ├── r_draw.rs    Ported renderer core
             ├── p_setup.rs   Ported map loader
             ├── z_zone.rs    Ported zone memory allocator
@@ -109,17 +109,10 @@ The engine runs inside the winit event loop:
 - The renderer performs a nearest-neighbour upscale from the native 640 × 400
   resolution to the window size; the window is currently fixed at 640 × 400.
 
-## Porting progress
+## Ported modules
 
-The goal is to incrementally replace each vendored `.c` module with a native
-Rust module, preserving behaviour until the C blob is empty.
-
-A box is ticked when the `.c` file has been removed from
-`doomgeneric-sys/build.rs` and fully replaced by Rust code in the `room` crate
-(or a new sub-crate). Partially ported modules stay unticked.
-
-See [PORT.md](PORT.md) for a complexity assessment of all remaining modules and
-recommended porting order.
+All vendored `.c` modules have been removed from `doomgeneric-sys/build.rs` and
+fully replaced by Rust code in the `room` crate. Port complete.
 
 ### Engine core / game loop
 
@@ -127,7 +120,7 @@ recommended porting order.
 - [x] `d_items.c`
 - [x] `d_iwad.c`
 - [x] `d_loop.c`
-- [ ] `d_main.c`
+- [x] `d_main.c`
 - [x] `d_mode.c`
 - [x] `d_net.c`
 - [x] `doomdef.c`
@@ -138,7 +131,7 @@ recommended porting order.
 
 ### Game logic (`g_*`, `p_*`)
 
-- [ ] `g_game.c`
+- [x] `g_game.c`
 - [x] `p_ceilng.c`
 - [x] `p_doors.c`
 - [x] `p_enemy.c`
@@ -150,10 +143,10 @@ recommended porting order.
 - [x] `p_mobj.c`
 - [x] `p_plats.c`
 - [x] `p_pspr.c`
-- [ ] `p_saveg.c`
+- [x] `p_saveg.c`
 - [x] `p_setup.c`
 - [x] `p_sight.c`
-- [ ] `p_spec.c`
+- [x] `p_spec.c`
 - [x] `p_switch.c`
 - [x] `p_telept.c`
 - [x] `p_tick.c`
@@ -202,7 +195,7 @@ recommended porting order.
 - [x] `i_endoom.c`
 - [x] `i_input.c`
 - [x] `i_joystick.c`
-- [ ] `i_scale.c`
+- [x] `i_scale.c`
 - [x] `i_sound.c`
 - [x] `i_system.c`
 - [x] `i_timer.c`

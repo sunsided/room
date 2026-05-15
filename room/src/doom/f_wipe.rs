@@ -9,9 +9,8 @@ use std::os::raw::c_int;
 
 use crate::doom::m_random::M_Random;
 
-const SCREENWIDTH: c_int = 320;
-const SCREENHEIGHT: c_int = 200;
-const PU_STATIC: c_int = 1;
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
+use crate::doom::z_zone::PU_STATIC;
 
 extern "C" {
     fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;

@@ -9,20 +9,21 @@ use crate::i_error;
 use std::ffi::{c_char, c_int, c_short, c_void, CStr};
 use std::ptr;
 
-use crate::doom::c_ffi::{
-    spriteframe_t, vissprite_t, ANG45, ANGLETOFINESHIFT, BASEYCENTER, FRACBITS, FRACUNIT, MINZ,
-};
+use crate::doom::c_ffi::{spriteframe_t, vissprite_t, BASEYCENTER, MINZ};
 use crate::doom::d_player::{PlayerT, PspdefT, NUMPSPRITES};
 use crate::doom::info::*;
 use crate::doom::m_fixed::{fixed_t, FixedDiv, FixedMul};
+use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::r_bsp::{drawseg_t, sector_t, seg_t};
+use crate::doom::tables::{ANG45, ANGLETOFINESHIFT};
 use crate::doom::w_wad::lumpinfo_t;
+use crate::types::Boolean;
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const SCREENWIDTH: usize = 320;
+const SCREENWIDTH: usize = crate::doom::i_video::SCREENWIDTH as usize;
 const MAXVISSPRITES: usize = 128;
 
 const LIGHTLEVELS: usize = 16;
@@ -126,7 +127,7 @@ extern "C" {
     static mut spritetopoffset: *mut c_int;
 
     static mut lumpinfo: *mut lumpinfo_t;
-    static mut modifiedgame: c_int;
+    static mut modifiedgame: Boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -311,7 +312,7 @@ unsafe fn R_InitSpriteDefs(namelist: *mut *mut c_char) {
                 let frame = (li.name[4] as u8 - b'A') as u32;
                 let rotation = (li.name[5] as u8 - b'0') as u32;
 
-                let patched = if modifiedgame != 0 {
+                let patched = if modifiedgame.is_truthy() {
                     // Need a null-terminated copy for W_GetNumForName
                     let mut name_buf: [c_char; 9] = [0; 9];
                     ptr::copy_nonoverlapping(li.name.as_ptr(), name_buf.as_mut_ptr(), 8);

@@ -15,6 +15,7 @@
 #![allow(non_snake_case)]
 
 use crate::doom::c_ffi;
+use crate::doom::m_fixed::FRACUNIT;
 use crate::doom::p_mobj;
 
 // ---------------------------------------------------------------------------
@@ -45,7 +46,7 @@ fn friction_is_0xe800() {
 fn friction_is_less_than_fracunit() {
     // 0xe800 = 59392 < 65536 = FRACUNIT, so every tic reduces velocity.
     assert!(
-        c_ffi::FRICTION < c_ffi::FRACUNIT,
+        c_ffi::FRICTION < FRACUNIT,
         "FRICTION must be < FRACUNIT for deceleration"
     );
 }
@@ -54,9 +55,9 @@ fn friction_is_less_than_fracunit() {
 /// it represents a tiny per-tic velocity threshold.
 #[test]
 fn stopspeed_is_small_fraction_of_fracunit() {
-    assert!(c_ffi::STOPSPEED < c_ffi::FRACUNIT);
+    assert!(c_ffi::STOPSPEED < FRACUNIT);
     // 0x1000 / 0x10000 = 1/16 of a map unit per tic.
-    assert_eq!(c_ffi::FRACUNIT / c_ffi::STOPSPEED, 16);
+    assert_eq!(FRACUNIT / c_ffi::STOPSPEED, 16);
 }
 
 // ---------------------------------------------------------------------------

@@ -3,13 +3,15 @@
 use std::ffi::{c_char, c_int, c_long, c_void, CStr};
 
 use crate::i_error;
+use crate::types::Boolean;
+
 
 enum FILE {}
 
 const DIR_SEPARATOR: c_char = b'/' as c_char;
 const DIR_SEPARATOR_S: &[u8] = b"/\0";
 
-const PU_STATIC: c_int = 0;
+use crate::doom::z_zone::PU_STATIC;
 
 const SEEK_END: c_int = 2;
 const SEEK_SET: c_int = 0;
@@ -274,25 +276,25 @@ pub extern "C" fn M_StringReplace(
 }
 
 #[no_mangle]
-pub extern "C" fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> c_int {
+pub extern "C" fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean {
     unsafe {
         if dest_size >= 1 {
             *dest.add(dest_size - 1) = 0;
             strncpy(dest, src, dest_size - 1);
         } else {
-            return 0;
+            return Boolean::FALSE;
         }
         let len = strlen(dest);
-        if *src.add(len) == 0 {
-            1
-        } else {
-            0
-        }
+        Boolean::from(*src.add(len) == 0)
     }
 }
 
 #[no_mangle]
-pub extern "C" fn M_StringConcat(dest: *mut c_char, src: *const c_char, dest_size: usize) -> c_int {
+pub extern "C" fn M_StringConcat(
+    dest: *mut c_char,
+    src: *const c_char,
+    dest_size: usize,
+) -> Boolean {
     unsafe {
         let mut offset = strlen(dest);
         if offset > dest_size {
@@ -303,28 +305,20 @@ pub extern "C" fn M_StringConcat(dest: *mut c_char, src: *const c_char, dest_siz
 }
 
 #[no_mangle]
-pub extern "C" fn M_StringStartsWith(s: *const c_char, prefix: *const c_char) -> c_int {
+pub extern "C" fn M_StringStartsWith(s: *const c_char, prefix: *const c_char) -> Boolean {
     unsafe {
         let s_len = strlen(s);
         let prefix_len = strlen(prefix);
-        if s_len > prefix_len && strncmp(s, prefix, prefix_len) == 0 {
-            1
-        } else {
-            0
-        }
+        Boolean::from(s_len > prefix_len && strncmp(s, prefix, prefix_len) == 0)
     }
 }
 
 #[no_mangle]
-pub extern "C" fn M_StringEndsWith(s: *const c_char, suffix: *const c_char) -> c_int {
+pub extern "C" fn M_StringEndsWith(s: *const c_char, suffix: *const c_char) -> Boolean {
     unsafe {
         let s_len = strlen(s);
         let suffix_len = strlen(suffix);
-        if s_len >= suffix_len && strcmp(s.add(s_len - suffix_len), suffix) == 0 {
-            1
-        } else {
-            0
-        }
+        Boolean::from(s_len >= suffix_len && strcmp(s.add(s_len - suffix_len), suffix) == 0)
     }
 }
 
@@ -485,7 +479,7 @@ mod tests {
         let src = CString::new("Hello").unwrap();
         let mut dest: Vec<c_char> = vec![0; 10];
         let result = unsafe { M_StringCopy(dest.as_mut_ptr(), src.as_ptr(), dest.len()) };
-        assert_eq!(result, 1);
+        assert_eq!(result, Boolean::TRUE);
         let cstr = unsafe { CStr::from_ptr(dest.as_ptr()) };
         assert_eq!(cstr.to_str().unwrap(), "Hello");
     }
@@ -495,7 +489,7 @@ mod tests {
         let src = CString::new("Hello, World!").unwrap();
         let mut dest: Vec<c_char> = vec![0; 6];
         let result = unsafe { M_StringCopy(dest.as_mut_ptr(), src.as_ptr(), dest.len()) };
-        assert_eq!(result, 0);
+        assert_eq!(result, Boolean::FALSE);
         let cstr = unsafe { CStr::from_ptr(dest.as_ptr()) };
         assert_eq!(cstr.to_str().unwrap(), "Hello");
     }
@@ -515,7 +509,7 @@ mod tests {
         buf.resize(20, 0);
         let suffix = CString::new("World!").unwrap();
         let result = unsafe { M_StringConcat(buf.as_mut_ptr(), suffix.as_ptr(), buf.len()) };
-        assert_eq!(result, 1);
+        assert_eq!(result, Boolean::TRUE);
         let cstr = unsafe { CStr::from_ptr(buf.as_ptr()) };
         assert_eq!(cstr.to_str().unwrap(), "Hello, World!");
     }
@@ -532,7 +526,7 @@ mod tests {
         let suffix = CString::new("World!").unwrap();
         let result = unsafe { M_StringConcat(buf.as_mut_ptr(), suffix.as_ptr(), buf.len()) };
         // "Hello, " (7) + "World!" (6) = 13 chars, but buffer is 11 => truncated to "Hello, Wor"
-        assert_eq!(result, 0);
+        assert_eq!(result, Boolean::FALSE);
         let cstr = unsafe { CStr::from_ptr(buf.as_ptr()) };
         assert_eq!(cstr.to_str().unwrap(), "Hello, Wor");
     }
@@ -546,7 +540,7 @@ mod tests {
         let s = CString::new("hello world").unwrap();
         let prefix = CString::new("hello").unwrap();
         let result = unsafe { M_StringStartsWith(s.as_ptr(), prefix.as_ptr()) };
-        assert_eq!(result, 1);
+        assert_eq!(result, Boolean::TRUE);
     }
 
     /// BUG: M_StringStartsWith uses `s_len > prefix_len` (strictly greater
@@ -561,7 +555,7 @@ mod tests {
         let prefix = CString::new("hello").unwrap();
         let result = unsafe { M_StringStartsWith(s.as_ptr(), prefix.as_ptr()) };
         // BUG: should be 1 — a string starts with itself.
-        assert_eq!(result, 0);
+        assert_eq!(result, Boolean::FALSE);
     }
 
     #[test]
@@ -569,7 +563,7 @@ mod tests {
         let s = CString::new("world").unwrap();
         let prefix = CString::new("hello").unwrap();
         let result = unsafe { M_StringStartsWith(s.as_ptr(), prefix.as_ptr()) };
-        assert_eq!(result, 0);
+        assert_eq!(result, Boolean::FALSE);
     }
 
     #[test]
@@ -577,7 +571,7 @@ mod tests {
         let s = CString::new("hi").unwrap();
         let prefix = CString::new("hello").unwrap();
         let result = unsafe { M_StringStartsWith(s.as_ptr(), prefix.as_ptr()) };
-        assert_eq!(result, 0);
+        assert_eq!(result, Boolean::FALSE);
     }
 
     // -----------------------------------------------------------------------
@@ -589,7 +583,7 @@ mod tests {
         let s = CString::new("hello world").unwrap();
         let suffix = CString::new("world").unwrap();
         let result = unsafe { M_StringEndsWith(s.as_ptr(), suffix.as_ptr()) };
-        assert_eq!(result, 1);
+        assert_eq!(result, Boolean::TRUE);
     }
 
     #[test]
@@ -597,7 +591,7 @@ mod tests {
         let s = CString::new("hello").unwrap();
         let suffix = CString::new("hello").unwrap();
         let result = unsafe { M_StringEndsWith(s.as_ptr(), suffix.as_ptr()) };
-        assert_eq!(result, 1);
+        assert_eq!(result, Boolean::TRUE);
     }
 
     #[test]
@@ -605,7 +599,7 @@ mod tests {
         let s = CString::new("hello").unwrap();
         let suffix = CString::new("world").unwrap();
         let result = unsafe { M_StringEndsWith(s.as_ptr(), suffix.as_ptr()) };
-        assert_eq!(result, 0);
+        assert_eq!(result, Boolean::FALSE);
     }
 
     #[test]
@@ -613,7 +607,7 @@ mod tests {
         let s = CString::new("hi").unwrap();
         let suffix = CString::new("hello world").unwrap();
         let result = unsafe { M_StringEndsWith(s.as_ptr(), suffix.as_ptr()) };
-        assert_eq!(result, 0);
+        assert_eq!(result, Boolean::FALSE);
     }
 
     // -----------------------------------------------------------------------

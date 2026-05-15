@@ -15,7 +15,7 @@
 
 #![allow(non_snake_case)]
 
-use crate::doom::c_ffi;
+use crate::doom::i_timer::TICRATE;
 use crate::doom::p_switch;
 
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ fn buttontime_is_35() {
 /// `BUTTONTIME` equals `TICRATE` — one second of press duration.
 #[test]
 fn buttontime_equals_ticrate() {
-    assert_eq!(p_switch::BUTTONTIME, c_ffi::TICRATE);
+    assert_eq!(p_switch::BUTTONTIME, TICRATE);
 }
 
 // ---------------------------------------------------------------------------

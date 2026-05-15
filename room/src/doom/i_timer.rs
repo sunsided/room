@@ -2,7 +2,7 @@
 
 use std::ffi::c_int;
 
-const TICRATE: u32 = 35;
+pub const TICRATE: c_int = 35;
 
 static mut BASETIME: u32 = 0;
 
@@ -23,7 +23,7 @@ pub extern "C" fn I_GetTime() -> c_int {
         if BASETIME == 0 {
             BASETIME = ticks;
         }
-        ((ticks - BASETIME) * TICRATE / 1000) as c_int
+        ((ticks - BASETIME) * TICRATE as u32 / 1000) as c_int
     }
 }
 

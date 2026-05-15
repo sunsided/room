@@ -12,8 +12,10 @@ use crate::doom::c_ffi::{line_t, node_t, sector_t, seg_t, side_t, subsector_t, v
 use crate::doom::d_mode;
 use crate::doom::d_player::{consoleplayer, players, MAXPLAYERS};
 use crate::doom::info::sprnames;
-use crate::doom::m_bbox::{M_AddToBox, M_ClearBox};
+use crate::doom::m_bbox::{M_AddToBox, M_ClearBox, BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
+use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::p_tick::{leveltime, P_InitThinkers};
+use crate::doom::z_zone::{PU_LEVEL, PU_STATIC};
 
 // ---------------------------------------------------------------------------
 // Byte-order helper
@@ -30,8 +32,6 @@ fn SHORT(x: i16) -> i16 {
 // Zone-memory tags
 // ---------------------------------------------------------------------------
 
-const PU_STATIC: c_int = 1;
-const PU_LEVEL: c_int = 5;
 const PU_PURGELEVEL: c_int = 7;
 
 // ---------------------------------------------------------------------------
@@ -66,20 +66,9 @@ const ST_POSITIVE: c_int = 2;
 const ST_NEGATIVE: c_int = 3;
 
 // ---------------------------------------------------------------------------
-// Bounding-box indices
-// ---------------------------------------------------------------------------
-
-const BOXTOP: usize = 0;
-const BOXBOTTOM: usize = 1;
-const BOXLEFT: usize = 2;
-const BOXRIGHT: usize = 3;
-
-// ---------------------------------------------------------------------------
 // Misc constants
 // ---------------------------------------------------------------------------
 
-const FRACBITS: u32 = 16;
-const FRACUNIT: c_int = 1 << FRACBITS;
 const MAPBLOCKSHIFT: c_int = FRACBITS as c_int + 7;
 const MAXRADIUS: c_int = 32 * FRACUNIT;
 

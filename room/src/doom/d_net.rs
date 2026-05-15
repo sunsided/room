@@ -9,6 +9,8 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
+use crate::types::Boolean;
+
 use crate::doom::d_player::{consoleplayer, players, TiccmdT, MAXPLAYERS};
 
 const NET_MAXPLAYERS: usize = 8;
@@ -64,7 +66,7 @@ pub struct LoopInterfaceT {
 pub static mut netcmds: *mut TiccmdT = std::ptr::null_mut();
 
 extern "C" {
-    fn M_StringCopy(dst: *mut c_char, src: *const c_char, dst_size: usize) -> *mut c_char;
+    fn M_StringCopy(dst: *mut c_char, src: *const c_char, dst_size: usize) -> Boolean;
     fn M_CheckParm(parm: *const c_char) -> c_int;
     fn G_CheckDemoStatus() -> c_int;
     fn G_Ticker();

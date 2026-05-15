@@ -8,12 +8,15 @@
 
 use crate::i_error;
 use std::ffi::{c_char, c_float, c_int, c_void};
+
+use crate::types::Boolean;
 use std::mem;
 use std::ptr;
 
-const SCREENWIDTH: usize = 320;
-const SCREENHEIGHT: usize = 200;
-const PU_STATIC: c_int = 1;
+use super::z_zone::PU_STATIC;
+
+pub const SCREENWIDTH: c_int = 320;
+pub const SCREENHEIGHT: c_int = 200;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -233,11 +236,7 @@ pub unsafe extern "C" fn I_InitGraphics() {
     }
 
     // Allocate video buffer
-    I_VideoBuffer = Z_Malloc(
-        (SCREENWIDTH * SCREENHEIGHT) as c_int,
-        PU_STATIC,
-        ptr::null_mut(),
-    ) as *mut u8;
+    I_VideoBuffer = Z_Malloc(SCREENWIDTH * SCREENHEIGHT, PU_STATIC, ptr::null_mut()) as *mut u8;
 
     screenvisible = 1;
 
@@ -280,7 +279,7 @@ pub unsafe extern "C" fn I_FinishUpdate() {
     let screen_ptr = doomgeneric_sys::DG_ScreenBuffer as *mut u8;
     let mut line_out = screen_ptr.add(y_offset as usize + x_offset as usize);
 
-    for _ in 0..SCREENHEIGHT {
+    for _ in 0..SCREENHEIGHT as usize {
         for _i in 0..fb_scaling {
             line_out = line_out.add(x_offset as usize);
 
@@ -291,7 +290,7 @@ pub unsafe extern "C" fn I_FinishUpdate() {
                     + x_offset_end as usize,
             );
         }
-        line_in = line_in.add(SCREENWIDTH);
+        line_in = line_in.add(SCREENWIDTH as usize);
     }
 
     DG_DrawFrame();
@@ -299,7 +298,7 @@ pub unsafe extern "C" fn I_FinishUpdate() {
 
 #[no_mangle]
 pub unsafe extern "C" fn I_ReadScreen(scr: *mut u8) {
-    std::ptr::copy(I_VideoBuffer, scr, SCREENWIDTH * SCREENHEIGHT);
+    std::ptr::copy(I_VideoBuffer, scr, (SCREENWIDTH * SCREENHEIGHT) as usize);
 }
 
 #[no_mangle]
@@ -336,7 +335,7 @@ pub unsafe extern "C" fn I_SetWindowTitle(title: *mut c_char) {
 pub unsafe extern "C" fn I_GraphicsCheckCommandLine() {}
 
 #[no_mangle]
-pub unsafe extern "C" fn I_SetGrabMouseCallback(_func: *mut c_void) {}
+pub unsafe extern "C" fn I_SetGrabMouseCallback(_func: extern "C" fn() -> Boolean) {}
 
 #[no_mangle]
 pub unsafe extern "C" fn I_EnableLoadingDisk() {}
@@ -345,7 +344,7 @@ pub unsafe extern "C" fn I_EnableLoadingDisk() {}
 pub unsafe extern "C" fn I_BindVideoVariables() {}
 
 #[no_mangle]
-pub unsafe extern "C" fn I_DisplayFPSDots(_dots_on: c_int) {}
+pub unsafe extern "C" fn I_DisplayFPSDots(_dots_on: Boolean) {}
 
 #[no_mangle]
 pub unsafe extern "C" fn I_CheckIsScreensaver() {}
@@ -365,9 +364,12 @@ pub unsafe extern "C" fn I_Video_Link_Anchor() {
     I_EndRead();
     I_SetWindowTitle(ptr::null_mut());
     I_GraphicsCheckCommandLine();
-    I_SetGrabMouseCallback(ptr::null_mut());
+    extern "C" fn _grab_anchor() -> Boolean {
+        Boolean::FALSE
+    }
+    I_SetGrabMouseCallback(_grab_anchor);
     I_EnableLoadingDisk();
     I_BindVideoVariables();
-    I_DisplayFPSDots(0);
+    I_DisplayFPSDots(Boolean::FALSE);
     I_CheckIsScreensaver();
 }
