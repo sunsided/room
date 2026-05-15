@@ -7,10 +7,19 @@
 use std::ffi::{c_int, c_void};
 use std::os::raw::c_short;
 
+use crate::doom::c_ffi as cffi;
 use crate::doom::m_fixed::{fixed_t, FRACUNIT};
 use crate::doom::p_lights::sector_t;
-use crate::doom::p_tick::{thinker_t, P_AddThinker, P_RemoveThinker};
-use crate::doom::z_zone::PU_LEVSPEC;
+use crate::doom::p_map::P_ChangeSector;
+use crate::doom::p_setup::sectors;
+use crate::doom::p_spec::{
+    P_FindHighestFloorSurrounding, P_FindLowestCeilingSurrounding, P_FindLowestFloorSurrounding,
+    P_FindNextHighestFloor, P_FindSectorFromLineTag, getSector, getSide, twoSided,
+};
+use crate::doom::p_tick::{leveltime, thinker_t, P_AddThinker, P_RemoveThinker};
+use crate::doom::r_data::textureheight;
+use crate::doom::s_sound::S_StartSound;
+use crate::doom::z_zone::{PU_LEVSPEC, Z_Malloc};
 
 const FLOORSPEED: fixed_t = FRACUNIT;
 const INT_MAX: c_int = c_int::MAX;
@@ -96,23 +105,6 @@ mod layout_checks {
     const _: () = assert!(std::mem::offset_of!(side_t, sector) == 16);
 }
 
-extern "C" {
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn P_FindSectorFromLineTag(line: *mut line_t, start: c_int) -> c_int;
-    fn P_ChangeSector(sector: *mut sector_t, crunch: c_int) -> c_int;
-    fn P_FindNextHighestFloor(sec: *mut sector_t, currentheight: c_int) -> fixed_t;
-    fn P_FindHighestFloorSurrounding(sec: *mut sector_t) -> fixed_t;
-    fn P_FindLowestFloorSurrounding(sec: *mut sector_t) -> fixed_t;
-    fn P_FindLowestCeilingSurrounding(sec: *mut sector_t) -> fixed_t;
-    fn S_StartSound(origin: *mut c_void, sfxid: c_int);
-    fn getSide(currentSector: c_int, line: c_int, side: c_int) -> *mut side_t;
-    fn getSector(currentSector: c_int, line: c_int, side: c_int) -> *mut sector_t;
-    fn twoSided(sector: c_int, line: c_int) -> c_int;
-    static mut textureheight: *mut c_int;
-    static mut numsectors: c_int;
-    static mut sectors: *mut sector_t;
-    static mut leveltime: c_int;
-}
 
 const SFX_PSTOP: c_int = 19;
 const SFX_STNMOV: c_int = 22;
@@ -139,19 +131,19 @@ pub extern "C" fn T_MovePlane(
                         if sec.floorheight - speed < dest {
                             let lastpos = sec.floorheight;
                             sec.floorheight = dest;
-                            let flag = P_ChangeSector(sector, crush);
+                            let flag = P_ChangeSector(sector as *mut cffi::sector_t, crush);
                             if flag != 0 {
                                 sec.floorheight = lastpos;
-                                P_ChangeSector(sector, crush);
+                                P_ChangeSector(sector as *mut cffi::sector_t, crush);
                             }
                             return result_pastdest;
                         } else {
                             let lastpos = sec.floorheight;
                             sec.floorheight -= speed;
-                            let flag = P_ChangeSector(sector, crush);
+                            let flag = P_ChangeSector(sector as *mut cffi::sector_t, crush);
                             if flag != 0 {
                                 sec.floorheight = lastpos;
-                                P_ChangeSector(sector, crush);
+                                P_ChangeSector(sector as *mut cffi::sector_t, crush);
                                 return result_crushed;
                             }
                         }
@@ -161,22 +153,22 @@ pub extern "C" fn T_MovePlane(
                         if sec.floorheight + speed > dest {
                             let lastpos = sec.floorheight;
                             sec.floorheight = dest;
-                            let flag = P_ChangeSector(sector, crush);
+                            let flag = P_ChangeSector(sector as *mut cffi::sector_t, crush);
                             if flag != 0 {
                                 sec.floorheight = lastpos;
-                                P_ChangeSector(sector, crush);
+                                P_ChangeSector(sector as *mut cffi::sector_t, crush);
                             }
                             return result_pastdest;
                         } else {
                             let lastpos = sec.floorheight;
                             sec.floorheight += speed;
-                            let flag = P_ChangeSector(sector, crush);
+                            let flag = P_ChangeSector(sector as *mut cffi::sector_t, crush);
                             if flag != 0 {
                                 if crush != 0 {
                                     return result_crushed;
                                 }
                                 sec.floorheight = lastpos;
-                                P_ChangeSector(sector, crush);
+                                P_ChangeSector(sector as *mut cffi::sector_t, crush);
                                 return result_crushed;
                             }
                         }
@@ -192,22 +184,22 @@ pub extern "C" fn T_MovePlane(
                         if sec.ceilingheight - speed < dest {
                             let lastpos = sec.ceilingheight;
                             sec.ceilingheight = dest;
-                            let flag = P_ChangeSector(sector, crush);
+                            let flag = P_ChangeSector(sector as *mut cffi::sector_t, crush);
                             if flag != 0 {
                                 sec.ceilingheight = lastpos;
-                                P_ChangeSector(sector, crush);
+                                P_ChangeSector(sector as *mut cffi::sector_t, crush);
                             }
                             return result_pastdest;
                         } else {
                             let lastpos = sec.ceilingheight;
                             sec.ceilingheight -= speed;
-                            let flag = P_ChangeSector(sector, crush);
+                            let flag = P_ChangeSector(sector as *mut cffi::sector_t, crush);
                             if flag != 0 {
                                 if crush != 0 {
                                     return result_crushed;
                                 }
                                 sec.ceilingheight = lastpos;
-                                P_ChangeSector(sector, crush);
+                                P_ChangeSector(sector as *mut cffi::sector_t, crush);
                                 return result_crushed;
                             }
                         }
@@ -217,16 +209,16 @@ pub extern "C" fn T_MovePlane(
                         if sec.ceilingheight + speed > dest {
                             let lastpos = sec.ceilingheight;
                             sec.ceilingheight = dest;
-                            let flag = P_ChangeSector(sector, crush);
+                            let flag = P_ChangeSector(sector as *mut cffi::sector_t, crush);
                             if flag != 0 {
                                 sec.ceilingheight = lastpos;
-                                P_ChangeSector(sector, crush);
+                                P_ChangeSector(sector as *mut cffi::sector_t, crush);
                             }
                             return result_pastdest;
                         } else {
                             let _lastpos = sec.ceilingheight;
                             sec.ceilingheight += speed;
-                            let _flag = P_ChangeSector(sector, crush);
+                            let _flag = P_ChangeSector(sector as *mut cffi::sector_t, crush);
                             // The original C code has #if 0 here, so no crush check.
                         }
                     }
@@ -284,7 +276,7 @@ pub unsafe extern "C" fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_in
     let mut rtn: c_int = 0;
 
     while {
-        secnum = P_FindSectorFromLineTag(line, secnum);
+        secnum = P_FindSectorFromLineTag(line as *mut cffi::line_t, secnum);
         secnum
     } >= 0
     {
@@ -312,19 +304,19 @@ pub unsafe extern "C" fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_in
         match floortype {
             floor_lowerFloor => {
                 (*floor).direction = -1;
-                (*floor).sector = sec;
+                (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = FLOORSPEED;
                 (*floor).floordestheight = P_FindHighestFloorSurrounding(sec);
             }
             floor_lowerFloorToLowest => {
                 (*floor).direction = -1;
-                (*floor).sector = sec;
+                (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = FLOORSPEED;
                 (*floor).floordestheight = P_FindLowestFloorSurrounding(sec);
             }
             floor_turboLower => {
                 (*floor).direction = -1;
-                (*floor).sector = sec;
+                (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = FLOORSPEED * 4;
                 (*floor).floordestheight = P_FindHighestFloorSurrounding(sec);
                 if (*floor).floordestheight != (*sec).floorheight {
@@ -336,7 +328,7 @@ pub unsafe extern "C" fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_in
             }
             floor_raiseFloor => {
                 (*floor).direction = 1;
-                (*floor).sector = sec;
+                (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = FLOORSPEED;
                 (*floor).floordestheight = P_FindLowestCeilingSurrounding(sec);
                 if (*floor).floordestheight > (*sec).ceilingheight {
@@ -347,19 +339,19 @@ pub unsafe extern "C" fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_in
             }
             floor_raiseFloorTurbo => {
                 (*floor).direction = 1;
-                (*floor).sector = sec;
+                (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = FLOORSPEED * 4;
                 (*floor).floordestheight = P_FindNextHighestFloor(sec, (*sec).floorheight);
             }
             floor_raiseFloorToNearest => {
                 (*floor).direction = 1;
-                (*floor).sector = sec;
+                (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = FLOORSPEED;
                 (*floor).floordestheight = P_FindNextHighestFloor(sec, (*sec).floorheight);
             }
             floor_raiseFloor24 => {
                 (*floor).direction = 1;
-                (*floor).sector = sec;
+                (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = FLOORSPEED;
                 (*floor).floordestheight =
                     (*floor).sector.offset_from(sec as *mut sector_t) as fixed_t;
@@ -367,13 +359,13 @@ pub unsafe extern "C" fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_in
             }
             floor_raiseFloor512 => {
                 (*floor).direction = 1;
-                (*floor).sector = sec;
+                (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = FLOORSPEED;
                 (*floor).floordestheight = (*sec).floorheight + 512 * FRACUNIT;
             }
             floor_raiseFloor24AndChange => {
                 (*floor).direction = 1;
-                (*floor).sector = sec;
+                (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = FLOORSPEED;
                 (*floor).floordestheight = (*sec).floorheight + 24 * FRACUNIT;
                 (*sec).floorpic = (*(*line).frontsector).floorpic;
@@ -381,7 +373,7 @@ pub unsafe extern "C" fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_in
             }
             floor_raiseToTexture => {
                 (*floor).direction = 1;
-                (*floor).sector = sec;
+                (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = FLOORSPEED;
                 let mut minsize: c_int = INT_MAX;
                 for i in 0..(*sec).linecount as usize {
@@ -406,7 +398,7 @@ pub unsafe extern "C" fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_in
             }
             floor_lowerAndChange => {
                 (*floor).direction = -1;
-                (*floor).sector = sec;
+                (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = FLOORSPEED;
                 (*floor).floordestheight = P_FindLowestFloorSurrounding(sec);
                 (*floor).texture = (*sec).floorpic;
@@ -444,7 +436,7 @@ pub unsafe extern "C" fn EV_BuildStairs(line: *mut line_t, stype: c_int) -> c_in
     let mut rtn: c_int = 0;
 
     while {
-        secnum = P_FindSectorFromLineTag(line, secnum);
+        secnum = P_FindSectorFromLineTag(line as *mut cffi::line_t, secnum);
         secnum
     } >= 0
     {
@@ -467,7 +459,7 @@ pub unsafe extern "C" fn EV_BuildStairs(line: *mut line_t, stype: c_int) -> c_in
             unsafe extern "C" fn(*mut c_void),
         >(T_MoveFloor));
         (*floor).direction = 1;
-        (*floor).sector = sec;
+        (*floor).sector = sec as *mut sector_t;
 
         let (speed, stairsize): (fixed_t, fixed_t) = match stype {
             stair_build8 => (FLOORSPEED / 4, 8 * FRACUNIT),
@@ -485,20 +477,20 @@ pub unsafe extern "C" fn EV_BuildStairs(line: *mut line_t, stype: c_int) -> c_in
         loop {
             let mut ok: c_int = 0;
             for i in 0..(*sec).linecount as c_int {
-                let l = *(*sec).lines.offset(i as isize);
+                let l = *(*sec).lines.offset(i as isize) as *mut line_t;
                 if (*l).flags & ML_TWOSIDED == 0 {
                     continue;
                 }
 
                 let mut tsec = (*l).frontsector;
-                let newsecnum = tsec.offset_from(sectors) as c_int;
+                let newsecnum = tsec.offset_from(sectors as *mut sector_t) as c_int;
 
                 if secnum != newsecnum {
                     continue;
                 }
 
                 tsec = (*l).backsector;
-                let newsecnum = tsec.offset_from(sectors) as c_int;
+                let newsecnum = tsec.offset_from(sectors as *mut sector_t) as c_int;
 
                 if (*tsec).floorpic != texture {
                     continue;
@@ -510,7 +502,7 @@ pub unsafe extern "C" fn EV_BuildStairs(line: *mut line_t, stype: c_int) -> c_in
                     continue;
                 }
 
-                sec = tsec;
+                sec = tsec as *mut cffi::sector_t;
                 let _secnum_new = newsecnum;
                 floor = Z_Malloc(
                     std::mem::size_of::<floormove_t>() as c_int,
@@ -526,7 +518,7 @@ pub unsafe extern "C" fn EV_BuildStairs(line: *mut line_t, stype: c_int) -> c_in
                     unsafe extern "C" fn(*mut c_void),
                 >(T_MoveFloor));
                 (*floor).direction = 1;
-                (*floor).sector = sec;
+                (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = speed;
                 (*floor).floordestheight = height;
                 ok = 1;
