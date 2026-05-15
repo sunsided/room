@@ -523,12 +523,11 @@ unsafe fn c_str_ne_n(s1: *const c_char, s2: *const c_char, n: usize) -> bool {
     strncasecmp(s1, s2, n) != 0
 }
 
-/// Convert a C string slice to a Rust &str for printing.
-unsafe fn c_str_to_str(s: *const c_char) -> &'static str {
+unsafe fn c_str_to_str(s: *const c_char) -> String {
     if s.is_null() {
-        return "";
+        return String::new();
     }
-    std::ffi::CStr::from_ptr(s).to_str().unwrap_or("")
+    std::ffi::CStr::from_ptr(s).to_string_lossy().into_owned()
 }
 
 // ---------------------------------------------------------------------------

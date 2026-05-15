@@ -528,7 +528,12 @@ static mut EPSD2ANIMINFO: [anim_t; EPSD2_NANIM] = [
     },
 ];
 
-static NUMANIMS: [c_int; NUMEPISODES] = [EPSD0_NANIM as c_int, EPSD1_NANIM as c_int, EPSD2_NANIM as c_int, 0];
+static NUMANIMS: [c_int; NUMEPISODES] = [
+    EPSD0_NANIM as c_int,
+    EPSD1_NANIM as c_int,
+    EPSD2_NANIM as c_int,
+    0,
+];
 
 static mut ANIMS: [*mut anim_t; NUMEPISODES] = [
     addr_of_mut!(EPSD0ANIMINFO) as *mut anim_t,
