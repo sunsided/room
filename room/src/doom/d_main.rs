@@ -18,6 +18,7 @@ use crate::doom::i_video::I_StartFrame;
 use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 use crate::doom::m_config::M_SaveDefaults;
 use crate::doom::m_misc::M_snprintf_clamp;
+use crate::doom::w_wad::lumpinfo_t;
 use crate::types::Boolean;
 use crate::{c_write, i_error};
 
@@ -1147,16 +1148,13 @@ unsafe fn SetMissionForPackName(pack_name: *mut c_char) {
 pub extern "C" fn D_IdentifyVersion() {
     unsafe {
         extern "C" {
-            static mut lumpinfo: *mut c_void;
+            static mut lumpinfo: *mut lumpinfo_t;
             static mut numlumps: c_uint;
         }
 
         if gamemission == d_mode::none {
-            // lumpinfo_t struct: first 8 bytes is name (char[8])
             for i in 0..numlumps {
-                let lump_ptr =
-                    (lumpinfo as *const u8).add(i as usize * std::mem::size_of::<usize>() * 2 + 8);
-                let name_ptr = lump_ptr as *const c_char;
+                let name_ptr = (*lumpinfo.add(i as usize)).name.as_ptr();
 
                 if c_str_ne_n(name_ptr, b"MAP01\0".as_ptr() as *const c_char, 8) == false {
                     gamemission = d_mode::doom2;
@@ -1597,16 +1595,11 @@ pub extern "C" fn D_DoomMain() {
             if D_AddFile(file.as_mut_ptr()) {
                 // Copy lump name from the last loaded lump
                 extern "C" {
-                    static mut lumpinfo: *mut c_void;
+                    static mut lumpinfo: *mut lumpinfo_t;
                     static mut numlumps: c_uint;
                 }
-                let lump_ptr = (lumpinfo as *const u8)
-                    .add(((numlumps - 1) as usize) * std::mem::size_of::<usize>() * 2 + 8);
-                std::ptr::copy_nonoverlapping(
-                    lump_ptr as *const c_char,
-                    demolumpname.as_mut_ptr(),
-                    8,
-                );
+                let name = (*lumpinfo.add(numlumps as usize - 1)).name;
+                std::ptr::copy_nonoverlapping(name.as_ptr(), demolumpname.as_mut_ptr(), 8);
                 demolumpname[8] = 0;
             } else {
                 // Still continue like Vanilla Doom
