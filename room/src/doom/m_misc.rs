@@ -2,7 +2,7 @@
 
 use std::ffi::{c_char, c_int, c_long, c_void, CStr};
 
-use crate::doom::doom_bool::Boolean;
+use crate::types::Boolean;
 
 enum FILE {}
 
@@ -295,7 +295,11 @@ pub extern "C" fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size:
 }
 
 #[no_mangle]
-pub extern "C" fn M_StringConcat(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean {
+pub extern "C" fn M_StringConcat(
+    dest: *mut c_char,
+    src: *const c_char,
+    dest_size: usize,
+) -> Boolean {
     unsafe {
         let mut offset = strlen(dest);
         if offset > dest_size {

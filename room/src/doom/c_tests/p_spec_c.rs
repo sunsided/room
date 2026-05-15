@@ -15,8 +15,8 @@
 #![allow(non_snake_case)]
 
 use crate::doom::c_ffi;
-use crate::doom::m_fixed::FRACUNIT;
 use crate::doom::i_timer::TICRATE;
+use crate::doom::m_fixed::FRACUNIT;
 
 // ---------------------------------------------------------------------------
 // leveltime — current game tic within the level

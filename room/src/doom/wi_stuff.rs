@@ -19,7 +19,7 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
-use crate::doom::doom_bool::Boolean;
+use crate::types::Boolean;
 
 use crate::doom::d_event::event_t;
 use crate::doom::d_mode;

@@ -9,7 +9,6 @@ use std::ffi::{c_char, c_int, c_short, c_uint};
 use std::ptr;
 
 use crate::doom::d_player::PlayerT;
-use crate::doom::doom_bool::Boolean;
 use crate::doom::i_video::{SCREENHEIGHT as SCREENHEIGHT_IV, SCREENWIDTH as SCREENWIDTH_IV};
 use crate::doom::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
 use crate::doom::m_fixed::{angle_t, fixed_t, FixedDiv, FixedMul};
@@ -18,6 +17,7 @@ use crate::doom::p_telept::mobj_t;
 use crate::doom::r_bsp::{node_t, seg_t, subsector_t};
 use crate::doom::tables::{self, SlopeDiv};
 use crate::doom::tables::{ANG180, ANG270, ANG90, ANGLETOFINESHIFT};
+use crate::types::Boolean;
 
 // ---------------------------------------------------------------------------
 // Constants

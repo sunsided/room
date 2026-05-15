@@ -6,7 +6,7 @@
 
 use std::ffi::{c_char, c_int, c_short, c_uint, c_ushort, c_void};
 
-use crate::doom::doom_bool::Boolean;
+use crate::types::Boolean;
 use std::ptr;
 
 use crate::doom::c_ffi::{mobj_t, sector_t, side_t};

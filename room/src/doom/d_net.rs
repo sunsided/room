@@ -9,7 +9,7 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::doom::doom_bool::Boolean;
+use crate::types::Boolean;
 
 use crate::doom::d_player::{consoleplayer, players, TiccmdT, MAXPLAYERS};
 

@@ -8,7 +8,7 @@
 
 use std::ffi::{c_char, c_float, c_int, c_void};
 
-use crate::doom::doom_bool::Boolean;
+use crate::types::Boolean;
 use std::mem;
 use std::ptr;
 
@@ -367,7 +367,9 @@ pub unsafe extern "C" fn I_Video_Link_Anchor() {
     I_EndRead();
     I_SetWindowTitle(ptr::null_mut());
     I_GraphicsCheckCommandLine();
-    extern "C" fn _grab_anchor() -> Boolean { Boolean::FALSE }
+    extern "C" fn _grab_anchor() -> Boolean {
+        Boolean::FALSE
+    }
     I_SetGrabMouseCallback(_grab_anchor);
     I_EnableLoadingDisk();
     I_BindVideoVariables();

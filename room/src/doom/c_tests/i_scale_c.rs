@@ -21,7 +21,7 @@
 #![allow(non_snake_case)]
 
 use crate::doom::c_ffi;
-use crate::doom::i_video::{SCREENWIDTH, SCREENHEIGHT};
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 
 // ---------------------------------------------------------------------------
 // Screen dimension constants
@@ -142,11 +142,7 @@ fn scale_mode_heights_are_multiples_of_screenheight() {
             (5, c_ffi::mode_scale_5x.height),
         ];
         for (n, h) in modes {
-            assert_eq!(
-                h,
-                n * SCREENHEIGHT,
-                "mode_scale_{n}x height mismatch"
-            );
+            assert_eq!(h, n * SCREENHEIGHT, "mode_scale_{n}x height mismatch");
         }
     }
 }
@@ -286,11 +282,7 @@ fn stretch_mode_widths_are_n_times_screenwidth() {
             (5, c_ffi::mode_stretch_5x.width),
         ];
         for (n, w) in modes {
-            assert_eq!(
-                w,
-                n * SCREENWIDTH,
-                "mode_stretch_{n}x width mismatch"
-            );
+            assert_eq!(w, n * SCREENWIDTH, "mode_stretch_{n}x width mismatch");
         }
     }
 }
@@ -427,11 +419,7 @@ fn squash_mode_heights_are_n_times_screenheight() {
             (5, c_ffi::mode_squash_5x.height),
         ];
         for (n, h) in modes {
-            assert_eq!(
-                h,
-                n * SCREENHEIGHT,
-                "mode_squash_{n}x height mismatch"
-            );
+            assert_eq!(h, n * SCREENHEIGHT, "mode_squash_{n}x height mismatch");
         }
     }
 }

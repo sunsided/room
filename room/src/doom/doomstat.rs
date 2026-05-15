@@ -8,7 +8,7 @@ use std::ffi::{c_char, c_int};
 use std::ptr;
 
 use super::d_mode;
-use super::doom_bool::Boolean;
+use crate::types::Boolean;
 
 // Game Mode - identify IWAD as shareware, retail etc.
 #[no_mangle]

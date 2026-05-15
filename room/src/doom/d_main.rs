@@ -12,13 +12,13 @@ use std::ptr;
 use crate::doom::d_event::event_t;
 use crate::doom::d_mode;
 use crate::doom::d_player::{consoleplayer, players, PlayerT, MAXPLAYERS};
-use crate::doom::doom_bool::Boolean;
 use crate::doom::doomstat::{gamedescription, gamemission, gamemode, gameversion, modifiedgame};
 use crate::doom::i_timer::TICRATE;
 use crate::doom::i_video::I_StartFrame;
 use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 use crate::doom::m_config::M_SaveDefaults;
 use crate::doom::m_misc::M_snprintf_clamp;
+use crate::types::Boolean;
 
 // ---------------------------------------------------------------------------
 // String constants from d_englsh.h / dstrings.h

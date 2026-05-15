@@ -6,7 +6,7 @@
 
 use std::ffi::{c_char, c_int, c_uint, c_void};
 
-use crate::doom::doom_bool::Boolean;
+use crate::types::Boolean;
 use std::ptr;
 
 use crate::doom::d_mode::{

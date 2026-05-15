@@ -4,7 +4,7 @@ use std::ffi::{c_char, c_int};
 
 use libc::printf;
 
-use crate::doom::doom_bool::Boolean;
+use crate::types::Boolean;
 
 extern "C" {
     fn M_CheckParmWithArgs(check: *mut c_char, num_args: c_int) -> c_int;

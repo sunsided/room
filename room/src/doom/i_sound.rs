@@ -2,7 +2,7 @@
 
 use std::ffi::{c_char, c_int, c_void};
 
-use crate::doom::doom_bool::Boolean;
+use crate::types::Boolean;
 
 #[no_mangle]
 pub static mut snd_musicdevice: c_int = 3;

@@ -29,16 +29,7 @@ use crate::doom::tables::ANG90;
 ///   -FRACUNIT, -47000, 0, 47000}.
 #[test]
 fn xspeed_exact_values() {
-    let expected: [c_int; 8] = [
-        FRACUNIT,
-        47000,
-        0,
-        -47000,
-        -FRACUNIT,
-        -47000,
-        0,
-        47000,
-    ];
+    let expected: [c_int; 8] = [FRACUNIT, 47000, 0, -47000, -FRACUNIT, -47000, 0, 47000];
     unsafe {
         for (i, (&got, &want)) in c_ffi::xspeed.iter().zip(expected.iter()).enumerate() {
             assert_eq!(got, want, "xspeed[{i}]: got {got}, want {want}");
@@ -50,16 +41,7 @@ fn xspeed_exact_values() {
 /// Values: {0, 47000, FRACUNIT, 47000, 0, -47000, -FRACUNIT, -47000}.
 #[test]
 fn yspeed_exact_values() {
-    let expected: [c_int; 8] = [
-        0,
-        47000,
-        FRACUNIT,
-        47000,
-        0,
-        -47000,
-        -FRACUNIT,
-        -47000,
-    ];
+    let expected: [c_int; 8] = [0, 47000, FRACUNIT, 47000, 0, -47000, -FRACUNIT, -47000];
     unsafe {
         for (i, (&got, &want)) in c_ffi::yspeed.iter().zip(expected.iter()).enumerate() {
             assert_eq!(got, want, "yspeed[{i}]: got {got}, want {want}");

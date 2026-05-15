@@ -10,8 +10,8 @@
 use std::ffi::c_int;
 
 use crate::doom::c_ffi;
-use crate::doom::i_video::{SCREENWIDTH, SCREENHEIGHT};
 use crate::doom::c_tests::harness::C_GLOBAL_LOCK;
+use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 
 // ---------------------------------------------------------------------------
 // Screen / renderer constants

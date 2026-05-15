@@ -7,8 +7,8 @@
 use std::ffi::{c_char, c_void};
 use std::os::raw::{c_int, c_uint};
 
-use crate::doom::doom_bool::Boolean;
 use crate::doom::p_tick::actionf_t;
+use crate::types::Boolean;
 type boolean = Boolean;
 type size_t = usize;
 type angle_t = c_uint;

@@ -15,8 +15,8 @@
 use std::ffi::{c_int, c_short};
 
 use crate::doom::c_ffi;
-use crate::doom::m_fixed::FRACUNIT;
 use crate::doom::i_video::SCREENWIDTH;
+use crate::doom::m_fixed::FRACUNIT;
 
 // ---------------------------------------------------------------------------
 // Constants derived from r_things.c / r_defs.h

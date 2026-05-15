@@ -7,7 +7,7 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
-use crate::doom::doom_bool::Boolean;
+use crate::types::Boolean;
 
 use super::d_event::event_t;
 use super::d_mode;

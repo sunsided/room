@@ -12,7 +12,6 @@ use crate::doom::d_event::event_t;
 use crate::doom::d_items::weaponinfo;
 use crate::doom::d_mode;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS, NUMAMMO, NUMCARDS, NUMWEAPONS};
-use crate::doom::doom_bool::Boolean;
 use crate::doom::doomstat::{gamemission, gamemode, gameversion};
 use crate::doom::i_timer::TICRATE;
 use crate::doom::m_cheat::{cheatseq_t, cht_CheckCheat, cht_GetParam};
@@ -25,6 +24,7 @@ use crate::doom::st_lib::{
 use crate::doom::tables::{ANG180, ANG45};
 use crate::doom::v_video::patch_t;
 use crate::doom::v_video::{V_CopyRect, V_DrawPatch, V_RestoreBuffer, V_UseBuffer};
+use crate::types::Boolean;
 
 // ---------------------------------------------------------------------------
 // Constants

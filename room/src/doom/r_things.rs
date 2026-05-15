@@ -10,13 +10,13 @@ use std::ptr;
 
 use crate::doom::c_ffi::{spriteframe_t, vissprite_t, BASEYCENTER, MINZ};
 use crate::doom::d_player::{PlayerT, PspdefT, NUMPSPRITES};
-use crate::doom::doom_bool::Boolean;
 use crate::doom::info::*;
 use crate::doom::m_fixed::{fixed_t, FixedDiv, FixedMul};
 use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::r_bsp::{drawseg_t, sector_t, seg_t};
 use crate::doom::tables::{ANG45, ANGLETOFINESHIFT};
 use crate::doom::w_wad::lumpinfo_t;
+use crate::types::Boolean;
 
 // ---------------------------------------------------------------------------
 // Constants

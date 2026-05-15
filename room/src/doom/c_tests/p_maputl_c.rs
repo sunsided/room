@@ -9,10 +9,10 @@ use std::ffi::{c_int, c_short, c_uint, c_void};
 use std::sync::Mutex;
 
 use crate::doom::c_ffi;
-use crate::doom::m_fixed::FRACUNIT;
-use crate::doom::m_bbox::{BOXTOP, BOXBOTTOM, BOXLEFT, BOXRIGHT};
 use crate::doom::c_ffi::{divline_t, line_t, vertex_t};
 use crate::doom::c_tests::harness::C_GLOBAL_LOCK;
+use crate::doom::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
+use crate::doom::m_fixed::FRACUNIT;
 use crate::doom::p_maputl;
 
 // ---------------------------------------------------------------------------
@@ -29,20 +29,14 @@ fn aproxdist_zero() {
 #[test]
 fn aproxdist_along_x() {
     unsafe {
-        assert_eq!(
-            p_maputl::P_AproxDistance(100 * FRACUNIT, 0),
-            100 * FRACUNIT
-        );
+        assert_eq!(p_maputl::P_AproxDistance(100 * FRACUNIT, 0), 100 * FRACUNIT);
     }
 }
 
 #[test]
 fn aproxdist_along_y() {
     unsafe {
-        assert_eq!(
-            p_maputl::P_AproxDistance(0, 100 * FRACUNIT),
-            100 * FRACUNIT
-        );
+        assert_eq!(p_maputl::P_AproxDistance(0, 100 * FRACUNIT), 100 * FRACUNIT);
     }
 }
 
@@ -260,10 +254,7 @@ fn point_on_line_side_diagonal_above_left() {
     let mut v1 = vertex_t { x: 0, y: 0 };
     let mut line = make_pols_line(&mut v1, FRACUNIT, FRACUNIT);
     unsafe {
-        assert_eq!(
-            p_maputl::P_PointOnLineSide(0, FRACUNIT, &mut line),
-            1
-        );
+        assert_eq!(p_maputl::P_PointOnLineSide(0, FRACUNIT, &mut line), 1);
     }
 }
 
@@ -274,10 +265,7 @@ fn point_on_line_side_diagonal_below_right() {
     let mut v1 = vertex_t { x: 0, y: 0 };
     let mut line = make_pols_line(&mut v1, FRACUNIT, FRACUNIT);
     unsafe {
-        assert_eq!(
-            p_maputl::P_PointOnLineSide(FRACUNIT, 0, &mut line),
-            0
-        );
+        assert_eq!(p_maputl::P_PointOnLineSide(FRACUNIT, 0, &mut line), 0);
     }
 }
 
@@ -315,11 +303,7 @@ fn divline_side_horizontal_above() {
     unsafe {
         // Above the line → side 1 (back)
         assert_eq!(
-            p_maputl::P_PointOnDivlineSide(
-                FRACUNIT,
-                FRACUNIT,
-                &line as *const _ as *mut _
-            ),
+            p_maputl::P_PointOnDivlineSide(FRACUNIT, FRACUNIT, &line as *const _ as *mut _),
             1
         );
     }
@@ -331,11 +315,7 @@ fn divline_side_horizontal_below() {
     unsafe {
         // Below the line → side 0 (front)
         assert_eq!(
-            p_maputl::P_PointOnDivlineSide(
-                FRACUNIT,
-                -FRACUNIT,
-                &line as *const _ as *mut _
-            ),
+            p_maputl::P_PointOnDivlineSide(FRACUNIT, -FRACUNIT, &line as *const _ as *mut _),
             0
         );
     }
@@ -359,11 +339,7 @@ fn divline_side_vertical_left() {
     unsafe {
         // Left of the line (x <= 0) → side 1 (back)
         assert_eq!(
-            p_maputl::P_PointOnDivlineSide(
-                -FRACUNIT,
-                FRACUNIT,
-                &line as *const _ as *mut _
-            ),
+            p_maputl::P_PointOnDivlineSide(-FRACUNIT, FRACUNIT, &line as *const _ as *mut _),
             1
         );
     }
@@ -375,11 +351,7 @@ fn divline_side_vertical_right() {
     unsafe {
         // Right of the line (x > 0) → side 0 (front)
         assert_eq!(
-            p_maputl::P_PointOnDivlineSide(
-                FRACUNIT,
-                FRACUNIT,
-                &line as *const _ as *mut _
-            ),
+            p_maputl::P_PointOnDivlineSide(FRACUNIT, FRACUNIT, &line as *const _ as *mut _),
             0
         );
     }

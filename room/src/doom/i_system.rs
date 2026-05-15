@@ -8,7 +8,7 @@
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr};
 use std::ptr;
 
-use crate::doom::doom_bool::Boolean;
+use crate::types::Boolean;
 
 const DEFAULT_RAM: c_int = 6; // MiB
 const MIN_RAM: c_int = 6; // MiB

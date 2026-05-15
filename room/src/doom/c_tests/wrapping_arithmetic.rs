@@ -10,7 +10,7 @@ use std::ffi::c_uint;
 
 use crate::doom::c_ffi;
 use crate::doom::m_fixed::{FixedDiv, FixedMul, FRACUNIT};
-use crate::doom::tables::{ANG45, ANG90, ANG180, ANGLETOFINESHIFT, FINEMASK};
+use crate::doom::tables::{ANG180, ANG45, ANG90, ANGLETOFINESHIFT, FINEMASK};
 
 // ---------------------------------------------------------------------------
 // Fixed-point multiplication wrapping
@@ -52,19 +52,13 @@ fn fixedmul_min_min() {
 #[test]
 fn fixedmul_neg_one_one() {
     // -1.0 * 1.0 = -1.0  →  -65536 in 16.16
-    assert_eq!(
-        FixedMul(-FRACUNIT, FRACUNIT),
-        -FRACUNIT
-    );
+    assert_eq!(FixedMul(-FRACUNIT, FRACUNIT), -FRACUNIT);
 }
 
 #[test]
 fn fixedmul_neg_one_neg_one() {
     // -1.0 * -1.0 = 1.0  →  65536 in 16.16
-    assert_eq!(
-        FixedMul(-FRACUNIT, -FRACUNIT),
-        FRACUNIT
-    );
+    assert_eq!(FixedMul(-FRACUNIT, -FRACUNIT), FRACUNIT);
 }
 
 // ---------------------------------------------------------------------------
