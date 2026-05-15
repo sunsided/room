@@ -71,64 +71,26 @@ struct column_t {
 // ---------------------------------------------------------------------------
 
 extern "C" {
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-
-    fn W_CacheLumpNum(lumpnum: c_int, tag: c_int) -> *mut c_void;
-    fn W_GetNumForName(name: *mut c_char) -> c_int;
-
     fn strncasecmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int;
-
-    fn R_PointToAngle(x: fixed_t, y: fixed_t) -> u32;
-    fn R_PointOnSegSide(x: fixed_t, y: fixed_t, line: *const seg_t) -> c_int;
-    fn R_RenderMaskedSegRange(ds: *mut drawseg_t, x1: c_int, x2: c_int);
-
-    static mut viewx: fixed_t;
-    static mut viewy: fixed_t;
-    static mut viewz: fixed_t;
-    static mut viewangle: u32;
-    static mut viewcos: fixed_t;
-    static mut viewsin: fixed_t;
-    static mut viewwidth: c_int;
-    static mut viewheight: c_int;
-    static mut centerxfrac: fixed_t;
-    static mut centeryfrac: fixed_t;
-    static mut projection: fixed_t;
-    static mut detailshift: c_int;
-    static mut extralight: c_int;
-    static mut validcount: c_int;
-    static mut fixedcolormap: *mut u8;
-    static mut colormaps: *mut u8;
-    static mut scalelight: [[*mut u8; MAXLIGHTSCALE]; LIGHTLEVELS];
-    static mut viewplayer: *mut PlayerT;
-    static mut viewangleoffset: c_int;
-
-    static mut dc_colormap: *mut u8;
-    static mut dc_x: c_int;
-    static mut dc_yl: c_int;
-    static mut dc_yh: c_int;
-    static mut dc_iscale: c_int;
-    static mut dc_texturemid: c_int;
-    static mut dc_source: *mut u8;
-    static mut dc_translation: *mut u8;
-
-    static mut colfunc: Option<unsafe extern "C" fn()>;
-    static mut basecolfunc: Option<unsafe extern "C" fn()>;
-    static mut fuzzcolfunc: Option<unsafe extern "C" fn()>;
-    static mut transcolfunc: Option<unsafe extern "C" fn()>;
-
-    static mut ds_p: *mut drawseg_t;
-    static mut drawsegs: [drawseg_t; 256];
-
-    static mut firstspritelump: c_int;
-    static mut lastspritelump: c_int;
-
-    static mut spritewidth: *mut c_int;
-    static mut spriteoffset: *mut c_int;
-    static mut spritetopoffset: *mut c_int;
-
-    static mut lumpinfo: *mut lumpinfo_t;
-    static mut modifiedgame: Boolean;
 }
+
+use crate::doom::doomstat::modifiedgame;
+use crate::doom::r_data::{
+    colormaps, firstspritelump, lastspritelump, spriteoffset, spritetopoffset, spritewidth,
+};
+use crate::doom::r_draw::{
+    dc_colormap, dc_iscale, dc_source, dc_texturemid, dc_translation, dc_x, dc_yh, dc_yl,
+    viewheight, viewwidth,
+};
+use crate::doom::r_main::{
+    basecolfunc, centerxfrac, centeryfrac, colfunc, detailshift, extralight, fixedcolormap,
+    fuzzcolfunc, projection, scalelight, transcolfunc, validcount, viewangle, viewangleoffset,
+    viewcos, viewplayer, viewsin, viewx, viewy, viewz, R_PointOnSegSide, R_PointToAngle,
+};
+use crate::doom::r_bsp::{drawsegs, ds_p};
+use crate::doom::r_segs::R_RenderMaskedSegRange;
+use crate::doom::w_wad::{lumpinfo, W_CacheLumpNum, W_GetNumForName};
+use crate::doom::z_zone::Z_Malloc;
 
 // ---------------------------------------------------------------------------
 // Globals defined by this module
