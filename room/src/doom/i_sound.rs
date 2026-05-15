@@ -1,5 +1,6 @@
 #![allow(non_upper_case_globals, non_snake_case)]
 
+use crate::doom::m_config::M_BindVariable;
 use std::ffi::{c_char, c_int, c_void};
 
 use crate::types::Boolean;
@@ -115,51 +116,48 @@ pub extern "C" fn I_MusicIsPlaying() -> c_int {
     0
 }
 
-extern "C" {
-    fn M_BindVariable(name: *const c_char, variable: *mut c_void);
-}
 
 #[no_mangle]
 pub extern "C" fn I_BindSoundVariables() {
     unsafe {
         M_BindVariable(
-            c_bytes(b"snd_musicdevice\0").as_ptr(),
+            c_bytes(b"snd_musicdevice\0").as_ptr() as *mut c_char,
             &mut snd_musicdevice as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            c_bytes(b"snd_sfxdevice\0").as_ptr(),
+            c_bytes(b"snd_sfxdevice\0").as_ptr() as *mut c_char,
             &mut snd_sfxdevice as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            c_bytes(b"snd_sbport\0").as_ptr(),
+            c_bytes(b"snd_sbport\0").as_ptr() as *mut c_char,
             &mut snd_sbport as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            c_bytes(b"snd_sbirq\0").as_ptr(),
+            c_bytes(b"snd_sbirq\0").as_ptr() as *mut c_char,
             &mut snd_sbirq as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            c_bytes(b"snd_sbdma\0").as_ptr(),
+            c_bytes(b"snd_sbdma\0").as_ptr() as *mut c_char,
             &mut snd_sbdma as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            c_bytes(b"snd_mport\0").as_ptr(),
+            c_bytes(b"snd_mport\0").as_ptr() as *mut c_char,
             &mut snd_mport as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            c_bytes(b"snd_maxslicetime_ms\0").as_ptr(),
+            c_bytes(b"snd_maxslicetime_ms\0").as_ptr() as *mut c_char,
             &mut snd_maxslicetime_ms as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            c_bytes(b"snd_musiccmd\0").as_ptr(),
+            c_bytes(b"snd_musiccmd\0").as_ptr() as *mut c_char,
             &mut snd_musiccmd as *mut *mut c_char as *mut c_void,
         );
         M_BindVariable(
-            c_bytes(b"snd_samplerate\0").as_ptr(),
+            c_bytes(b"snd_samplerate\0").as_ptr() as *mut c_char,
             &mut snd_samplerate as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            c_bytes(b"snd_cachesize\0").as_ptr(),
+            c_bytes(b"snd_cachesize\0").as_ptr() as *mut c_char,
             &mut snd_cachesize as *mut c_int as *mut c_void,
         );
     }
