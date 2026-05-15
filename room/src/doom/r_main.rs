@@ -156,54 +156,24 @@ pub static mut setblocks: c_int = 0;
 pub static mut setdetail: c_int = 0;
 
 // ---------------------------------------------------------------------------
-// Externs from other modules
+// Imports from other modules
 // ---------------------------------------------------------------------------
 
-extern "C" {
-    static mut screenblocks: c_int;
-    static mut detailLevel: c_int;
-
-    static mut viewwidth: c_int;
-    static mut viewheight: c_int;
-    static mut scaledviewwidth: c_int;
-
-    static mut pspritescale: fixed_t;
-    static mut pspriteiscale: fixed_t;
-    static mut screenheightarray: [c_short; SCREENWIDTH];
-
-    static mut numnodes: c_int;
-    static mut subsectors: *mut subsector_t;
-    static mut nodes: *mut node_t;
-
-    static mut rw_distance: fixed_t;
-    static mut rw_normalangle: angle_t;
-
-    static mut colormaps: *mut lighttable_t;
-    static mut walllights: *mut *mut lighttable_t;
-
-    fn R_InitData();
-    fn R_InitTranslationTables();
-    fn R_InitBuffer(scaledviewwidth: c_int, viewheight: c_int);
-    fn R_InitPlanes();
-
-    fn R_DrawColumn();
-    fn R_DrawFuzzColumn();
-    fn R_DrawTranslatedColumn();
-    fn R_DrawSpan();
-    fn R_DrawColumnLow();
-    fn R_DrawFuzzColumnLow();
-    fn R_DrawTranslatedColumnLow();
-    fn R_DrawSpanLow();
-
-    fn R_ClearClipSegs();
-    fn R_ClearDrawSegs();
-    fn R_ClearPlanes();
-    fn R_ClearSprites();
-    fn NetUpdate();
-    fn R_RenderBSPNode(bspnum: c_int);
-    fn R_DrawPlanes();
-    fn R_DrawMasked();
-}
+use crate::doom::d_loop::NetUpdate;
+use crate::doom::m_menu::{detailLevel, screenblocks};
+use crate::doom::p_setup::{numnodes, nodes, subsectors};
+use crate::doom::r_bsp::{R_ClearClipSegs, R_ClearDrawSegs, R_RenderBSPNode};
+use crate::doom::r_data::{colormaps, R_InitData};
+use crate::doom::r_draw::{
+    scaledviewwidth, viewheight, viewwidth, R_DrawColumn, R_DrawColumnLow, R_DrawFuzzColumn,
+    R_DrawFuzzColumnLow, R_DrawSpan, R_DrawSpanLow, R_DrawTranslatedColumn,
+    R_DrawTranslatedColumnLow, R_InitBuffer, R_InitTranslationTables,
+};
+use crate::doom::r_plane::{R_ClearPlanes, R_DrawPlanes, R_InitPlanes};
+use crate::doom::r_segs::{rw_distance, rw_normalangle, walllights};
+use crate::doom::r_things::{
+    pspriteiscale, pspritescale, screenheightarray, R_ClearSprites, R_DrawMasked,
+};
 
 // ---------------------------------------------------------------------------
 // R_AddPointToBox
@@ -680,18 +650,18 @@ const NF_SUBSECTOR: u32 = 0x8000;
 pub unsafe extern "C" fn R_PointInSubsector(x: fixed_t, y: fixed_t) -> *mut subsector_t {
     // single subsector is a special case
     if numnodes == 0 {
-        return subsectors;
+        return subsectors as *mut subsector_t;
     }
 
     let mut nodenum = numnodes - 1;
 
     while (nodenum as u32) & NF_SUBSECTOR == 0 {
-        let node = nodes.add(nodenum as usize);
+        let node = nodes.add(nodenum as usize) as *const node_t;
         let side = R_PointOnSide(x, y, node);
         nodenum = (*node).children[side as usize] as c_int;
     }
 
-    subsectors.add((nodenum as u32 & !NF_SUBSECTOR) as usize)
+    subsectors.add((nodenum as u32 & !NF_SUBSECTOR) as usize) as *mut subsector_t
 }
 
 // ---------------------------------------------------------------------------
