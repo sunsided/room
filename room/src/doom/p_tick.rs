@@ -8,6 +8,12 @@ use std::ffi::c_void;
 use std::os::raw::c_int;
 
 use crate::doom::d_player::{consoleplayer, players, PlayerT, MAXPLAYERS};
+use crate::doom::g_game::{demoplayback, netgame, paused, playeringame};
+use crate::doom::m_menu::menuactive;
+use crate::doom::p_mobj::P_RespawnSpecials;
+use crate::doom::p_spec::P_UpdateSpecials;
+use crate::doom::p_user::P_PlayerThink;
+use crate::doom::z_zone::Z_Free;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -46,18 +52,6 @@ pub static mut thinkercap: thinker_t = thinker_t {
     next: std::ptr::null_mut::<thinker_t>(),
     function: actionf_t { acv: None },
 };
-
-extern "C" {
-    fn Z_Free(ptr: *mut c_void);
-    fn P_PlayerThink(player: *mut PlayerT);
-    fn P_UpdateSpecials();
-    fn P_RespawnSpecials();
-    static mut paused: c_int;
-    static mut netgame: c_int;
-    static mut menuactive: c_int;
-    static mut demoplayback: c_int;
-    static mut playeringame: [c_int; MAXPLAYERS];
-}
 
 #[no_mangle]
 pub extern "C" fn P_InitThinkers() {
