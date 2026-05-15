@@ -68,32 +68,19 @@ const DEH_DEFAULT_SPECIES_INFIGHTING: c_int = 0;
 // Extern functions from other modules
 // ---------------------------------------------------------------------------
 
-extern "C" {
-    fn P_SpawnMobj(x: fixed_t, y: fixed_t, z: fixed_t, type_: c_int) -> *mut mobj_t;
-    fn P_RemoveMobj(mobj: *mut mobj_t);
-    fn P_SetMobjState(mobj: *mut mobj_t, state: c_int) -> c_int;
-    fn P_SpawnPuff(x: fixed_t, y: fixed_t, z: fixed_t);
-    fn P_SpawnBlood(x: fixed_t, y: fixed_t, z: fixed_t, damage: c_int);
-    fn P_DamageMobj(
-        target: *mut mobj_t,
-        inflictor: *mut mobj_t,
-        source: *mut mobj_t,
-        damage: c_int,
-    );
-    fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut mobj_t);
-    fn P_UseSpecialLine(thing: *mut mobj_t, line: *mut line_t, side: c_int) -> c_uint;
-    fn P_ShootSpecialLine(thing: *mut mobj_t, line: *mut line_t);
-    fn P_CrossSpecialLine(linenum: c_int, side: c_int, thing: *mut mobj_t);
-    fn P_SubstNullMobj(mobj: *mut mobj_t) -> *mut mobj_t;
-    fn S_StartSound(origin: *mut c_void, sfx_id: c_int);
-    fn M_CheckParmWithArgs(check: *mut c_char, num_args: c_int) -> c_int;
-    fn M_StrToInt(str: *const c_char, result: *mut c_int) -> c_int;
+use crate::doom::g_game::gamemap;
+use crate::doom::m_argv::{myargv, M_CheckParmWithArgs};
+use crate::doom::m_misc::M_StrToInt;
+use crate::doom::p_inter::{P_DamageMobj, P_TouchSpecialThing};
+use crate::doom::p_mobj::{P_RemoveMobj, P_SetMobjState, P_SpawnBlood, P_SpawnMobj, P_SpawnPuff, P_SubstNullMobj};
+use crate::doom::p_spec::{P_CrossSpecialLine, P_ShootSpecialLine};
+use crate::doom::p_switch::P_UseSpecialLine;
+use crate::doom::p_tick::leveltime;
+use crate::doom::r_sky::skyflatnum;
+use crate::doom::s_sound::S_StartSound;
 
-    static mut gamemap: c_int;
-    static mut leveltime: c_int;
-    static mut skyflatnum: c_int;
-    static mut myargv: *mut *mut c_char;
-}
+// Type aliases for cross-module pointer casts (all #[repr(C)] identical layouts).
+type TeleptMobj = crate::doom::p_telept::mobj_t;
 
 // ---------------------------------------------------------------------------
 // Movement scratchpad globals
@@ -147,7 +134,7 @@ pub unsafe extern "C" fn PIT_StompThing(thing: *mut mobj_t) -> c_uint {
     if (*tmthing).player.is_null() && gamemap != 30 {
         return 0;
     }
-    P_DamageMobj(thing as *const _ as *mut mobj_t, tmthing, tmthing, 10000);
+    P_DamageMobj(thing as *const _ as *mut TeleptMobj, tmthing as *mut TeleptMobj, tmthing as *mut TeleptMobj, 10000);
     1
 }
 
@@ -262,12 +249,12 @@ pub unsafe extern "C" fn PIT_CheckThing(thing: *mut mobj_t) -> c_uint {
     // check for skulls slamming into things
     if (*tmthing).flags & MF_SKULLFLY != 0 {
         let damage = ((P_Random() % 8) + 1) * (*((*tmthing).info as *mut MobjInfo)).damage;
-        P_DamageMobj(thing as *const _ as *mut mobj_t, tmthing, tmthing, damage);
+        P_DamageMobj(thing as *const _ as *mut TeleptMobj, tmthing as *mut TeleptMobj, tmthing as *mut TeleptMobj, damage);
         (*tmthing).flags &= !MF_SKULLFLY;
         (*tmthing).momx = 0;
         (*tmthing).momy = 0;
         (*tmthing).momz = 0;
-        P_SetMobjState(tmthing, (*((*tmthing).info as *mut MobjInfo)).spawnstate);
+        P_SetMobjState(tmthing as *mut TeleptMobj, (*((*tmthing).info as *mut MobjInfo)).spawnstate);
         return 0;
     }
 
@@ -299,8 +286,8 @@ pub unsafe extern "C" fn PIT_CheckThing(thing: *mut mobj_t) -> c_uint {
             return (thing.flags & MF_SOLID == 0) as c_uint;
         }
         let damage = ((P_Random() % 8) + 1) * (*((*tmthing).info as *mut MobjInfo)).damage;
-        let target = (*tmthing).target as *mut mobj_t;
-        P_DamageMobj(thing as *const _ as *mut mobj_t, tmthing, target, damage);
+        let target = (*tmthing).target as *mut TeleptMobj;
+        P_DamageMobj(thing as *const _ as *mut TeleptMobj, tmthing as *mut TeleptMobj, target, damage);
         return 0;
     }
 
@@ -308,7 +295,7 @@ pub unsafe extern "C" fn PIT_CheckThing(thing: *mut mobj_t) -> c_uint {
     if thing.flags & MF_SPECIAL != 0 {
         let solid = thing.flags & MF_SOLID;
         if tmflags & MF_PICKUP != 0 {
-            P_TouchSpecialThing(thing as *const _ as *mut mobj_t, tmthing);
+            P_TouchSpecialThing(thing as *const _ as *mut TeleptMobj, tmthing as *mut TeleptMobj);
         }
         return (solid == 0) as c_uint;
     }
@@ -760,7 +747,7 @@ pub unsafe extern "C" fn PTR_ShootTraverse(in_: *mut intercept_t) -> c_uint {
         P_SpawnBlood(x, y, z, la_damage);
     }
     if la_damage != 0 {
-        P_DamageMobj(th, shootthing, shootthing, la_damage);
+        P_DamageMobj(th as *mut TeleptMobj, shootthing as *mut TeleptMobj, shootthing as *mut TeleptMobj, la_damage);
     }
     0
 }
@@ -789,7 +776,7 @@ pub unsafe extern "C" fn P_AimLineAttack(
     angle: c_uint,
     distance: fixed_t,
 ) -> fixed_t {
-    let t1 = P_SubstNullMobj(t1);
+    let t1 = P_SubstNullMobj(t1 as *mut TeleptMobj) as *mut mobj_t;
     let angle = (angle >> ANGLETOFINESHIFT) as usize;
     shootthing = t1;
     let x2 = (*t1).x + ((distance >> FRACBITS) as c_int) * *finecosine.0.add(angle);
@@ -861,7 +848,7 @@ pub unsafe extern "C" fn PTR_UseTraverse(in_: *mut intercept_t) -> c_uint {
     if P_PointOnLineSide((*usething).x, (*usething).y, in_.d.line) == 1 {
         side = 1;
     }
-    P_UseSpecialLine(usething, in_.d.line, side);
+    P_UseSpecialLine(usething as *mut c_void, in_.d.line as *mut crate::doom::p_lights::line_t, side);
     0
 }
 
@@ -912,9 +899,9 @@ pub unsafe extern "C" fn PIT_RadiusAttack(thing: *mut mobj_t) -> c_uint {
     let pt_bombspot = bombspot as *mut crate::doom::p_telept::mobj_t;
     if P_CheckSight(pt_mobj_t, pt_bombspot) != 0 {
         P_DamageMobj(
-            thing as *const _ as *mut mobj_t,
-            bombspot,
-            bombsource,
+            thing as *const _ as *mut TeleptMobj,
+            bombspot as *mut TeleptMobj,
+            bombsource as *mut TeleptMobj,
             bombdamage - dist,
         );
     }
@@ -954,14 +941,14 @@ pub unsafe extern "C" fn PIT_ChangeSector(thing: *mut mobj_t) -> c_uint {
     }
     let thing = &mut *thing;
     if thing.health <= 0 {
-        P_SetMobjState(thing as *const _ as *mut mobj_t, S_GIBS);
+        P_SetMobjState(thing as *const _ as *mut TeleptMobj, S_GIBS);
         thing.flags &= !MF_SOLID;
         thing.height = 0;
         thing.radius = 0;
         return 1;
     }
     if thing.flags & MF_DROPPED != 0 {
-        P_RemoveMobj(thing as *const _ as *mut mobj_t);
+        P_RemoveMobj(thing as *const _ as *mut TeleptMobj);
         return 1;
     }
     if thing.flags & MF_SHOOTABLE == 0 {
@@ -970,7 +957,7 @@ pub unsafe extern "C" fn PIT_ChangeSector(thing: *mut mobj_t) -> c_uint {
     nofit = 1;
     if crushchange != 0 && leveltime & 3 == 0 {
         P_DamageMobj(
-            thing as *const _ as *mut mobj_t,
+            thing as *const _ as *mut TeleptMobj,
             ptr::null_mut(),
             ptr::null_mut(),
             10,
