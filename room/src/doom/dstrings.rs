@@ -7,6 +7,8 @@
 use std::ffi::c_char;
 
 // `*const c_char` does not implement `Sync`, so wrap it.
+// `repr(transparent)` guarantees ABI compatibility with `*const c_char` for C interop.
+#[repr(transparent)]
 struct Ptr(*const c_char);
 unsafe impl Sync for Ptr {}
 
