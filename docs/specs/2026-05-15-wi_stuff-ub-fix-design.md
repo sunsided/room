@@ -55,10 +55,12 @@ static mut EPSD2ANIMINFO: [anim_t; 6]  = [...];
 **2. Change `ANIMS` element type to `*mut anim_t`:**
 
 ```rust
+// addr_of_mut! is used instead of .as_mut_ptr() because .as_mut_ptr()
+// requires a mutable reference, which is not allowed in const context.
 static mut ANIMS: [*mut anim_t; NUMEPISODES] = [
-    EPSD0ANIMINFO.as_mut_ptr(),
-    EPSD1ANIMINFO.as_mut_ptr(),
-    EPSD2ANIMINFO.as_mut_ptr(),
+    addr_of_mut!(EPSD0ANIMINFO) as *mut anim_t,
+    addr_of_mut!(EPSD1ANIMINFO) as *mut anim_t,
+    addr_of_mut!(EPSD2ANIMINFO) as *mut anim_t,
     ptr::null_mut(),
 ];
 ```
@@ -84,7 +86,7 @@ let base = ANIMS[epsd] as *const anim_t;
 
 **5. Remove `unsafe impl Sync for anim_t`:**
 
-`static mut` requires `Send`, not `Sync`. Raw pointers implement `Send` already, so the impl is no longer needed.
+Shared `static T` requires `T: Sync` (because it can be aliased across threads). `static mut T` carries no such bound — access is guarded by `unsafe` instead. Since these tables are now `static mut`, the compiler no longer requires `anim_t: Sync`, so the impl is no longer needed.
 
 ### Files changed
 

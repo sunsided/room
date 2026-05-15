@@ -163,10 +163,12 @@ static mut ANIMS: [*const anim_t; NUMEPISODES] = [
 to:
 
 ```rust
+// addr_of_mut! is required here: .as_mut_ptr() is not stable-const-safe
+// for static mut arrays in a static initializer context.
 static mut ANIMS: [*mut anim_t; NUMEPISODES] = [
-    EPSD0ANIMINFO.as_mut_ptr(),
-    EPSD1ANIMINFO.as_mut_ptr(),
-    EPSD2ANIMINFO.as_mut_ptr(),
+    addr_of_mut!(EPSD0ANIMINFO) as *mut anim_t,
+    addr_of_mut!(EPSD1ANIMINFO) as *mut anim_t,
+    addr_of_mut!(EPSD2ANIMINFO) as *mut anim_t,
     ptr::null_mut(),
 ];
 ```
