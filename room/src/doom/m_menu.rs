@@ -142,7 +142,7 @@ extern "C" {
     fn S_StartSound(origin: *mut c_void, sfx_id: c_int);
     fn S_SetSfxVolume(volume: c_int);
     fn S_SetMusicVolume(volume: c_int);
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> c_int;
+    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean;
     fn snprintf(s: *mut c_char, n: usize, format: *const c_char, ...) -> c_int;
 }
 

@@ -5,6 +5,8 @@
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
 use std::ffi::{c_char, c_int, c_short, c_uint, c_ushort, c_void};
+
+use crate::doom::doom_bool::Boolean;
 use std::ptr;
 
 use crate::doom::c_ffi::{mobj_t, sector_t, side_t};
@@ -114,7 +116,7 @@ extern "C" {
     fn I_Error(format: *const c_char, ...);
     fn I_ConsoleStdout() -> c_int;
 
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> c_int;
+    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean;
 
     fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
     fn Z_Free(ptr: *mut c_void);

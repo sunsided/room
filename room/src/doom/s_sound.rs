@@ -2,6 +2,8 @@
 
 use std::ffi::{c_char, c_int, c_void};
 
+use crate::doom::doom_bool::Boolean;
+
 use crate::doom::d_mode;
 use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::sounds::{MusicInfo, S_InitSfxLinks, S_music, S_sfx, SfxInfo, NUMMUSIC, NUMSFX};
@@ -136,7 +138,7 @@ extern "C" {
     fn I_StopSong();
     fn I_MusicIsPlaying() -> c_int;
     fn I_Error(fmt: *const c_char, ...);
-    fn I_AtExit(func: extern "C" fn(), run_on_error: c_int);
+    fn I_AtExit(func: extern "C" fn(), run_on_error: Boolean);
     fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
     fn R_PointToAngle2(x1: c_int, y1: c_int, x2: c_int, y2: c_int) -> u32;
     fn FixedMul(a: c_int, b: c_int) -> c_int;
@@ -198,7 +200,7 @@ pub extern "C" fn S_Init(sfx_volume: c_int, music_volume: c_int) {
             (*S_sfx.as_mut_ptr().add(i)).usefulness = -1;
         }
 
-        I_AtExit(S_Shutdown, 1);
+        I_AtExit(S_Shutdown, Boolean::TRUE);
     }
 }
 

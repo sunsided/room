@@ -2,6 +2,8 @@
 
 use std::ffi::{c_char, c_int, c_long, c_void, CStr};
 
+use crate::doom::doom_bool::Boolean;
+
 enum FILE {}
 
 const DIR_SEPARATOR: c_char = b'/' as c_char;
@@ -279,25 +281,21 @@ pub extern "C" fn M_StringReplace(
 }
 
 #[no_mangle]
-pub extern "C" fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> c_int {
+pub extern "C" fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean {
     unsafe {
         if dest_size >= 1 {
             *dest.add(dest_size - 1) = 0;
             strncpy(dest, src, dest_size - 1);
         } else {
-            return 0;
+            return Boolean::FALSE;
         }
         let len = strlen(dest);
-        if *src.add(len) == 0 {
-            1
-        } else {
-            0
-        }
+        Boolean::from(*src.add(len) == 0)
     }
 }
 
 #[no_mangle]
-pub extern "C" fn M_StringConcat(dest: *mut c_char, src: *const c_char, dest_size: usize) -> c_int {
+pub extern "C" fn M_StringConcat(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean {
     unsafe {
         let mut offset = strlen(dest);
         if offset > dest_size {
@@ -308,28 +306,20 @@ pub extern "C" fn M_StringConcat(dest: *mut c_char, src: *const c_char, dest_siz
 }
 
 #[no_mangle]
-pub extern "C" fn M_StringStartsWith(s: *const c_char, prefix: *const c_char) -> c_int {
+pub extern "C" fn M_StringStartsWith(s: *const c_char, prefix: *const c_char) -> Boolean {
     unsafe {
         let s_len = strlen(s);
         let prefix_len = strlen(prefix);
-        if s_len > prefix_len && strncmp(s, prefix, prefix_len) == 0 {
-            1
-        } else {
-            0
-        }
+        Boolean::from(s_len > prefix_len && strncmp(s, prefix, prefix_len) == 0)
     }
 }
 
 #[no_mangle]
-pub extern "C" fn M_StringEndsWith(s: *const c_char, suffix: *const c_char) -> c_int {
+pub extern "C" fn M_StringEndsWith(s: *const c_char, suffix: *const c_char) -> Boolean {
     unsafe {
         let s_len = strlen(s);
         let suffix_len = strlen(suffix);
-        if s_len >= suffix_len && strcmp(s.add(s_len - suffix_len), suffix) == 0 {
-            1
-        } else {
-            0
-        }
+        Boolean::from(s_len >= suffix_len && strcmp(s.add(s_len - suffix_len), suffix) == 0)
     }
 }
 
@@ -438,7 +428,7 @@ mod tests {
         let src = CString::new("Hello, World!").unwrap();
         let mut dest: Vec<c_char> = vec![0; 6];
         let result = unsafe { M_StringCopy(dest.as_mut_ptr(), src.as_ptr(), dest.len()) };
-        assert_eq!(result, 0);
+        assert_eq!(result, Boolean::FALSE);
         let cstr = unsafe { CStr::from_ptr(dest.as_ptr()) };
         assert_eq!(cstr.to_str().unwrap(), "Hello");
     }
@@ -455,7 +445,7 @@ mod tests {
         let suffix = CString::new("World!").unwrap();
         let result = unsafe { M_StringConcat(buf.as_mut_ptr(), suffix.as_ptr(), buf.len()) };
         // "Hello, " (7) + "World!" (6) = 13 chars, but buffer is 11 => truncated to "Hello, Wor"
-        assert_eq!(result, 0);
+        assert_eq!(result, Boolean::FALSE);
         let cstr = unsafe { CStr::from_ptr(buf.as_ptr()) };
         assert_eq!(cstr.to_str().unwrap(), "Hello, Wor");
     }

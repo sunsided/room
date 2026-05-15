@@ -5,6 +5,8 @@
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
 use std::ffi::{c_char, c_int, c_uint, c_void};
+
+use crate::doom::doom_bool::Boolean;
 use std::ptr;
 
 use crate::doom::d_mode::{
@@ -530,7 +532,7 @@ extern "C" {
     fn M_StartControlPanel();
 
     // m_misc.rs
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, maxlen: usize) -> c_int;
+    fn M_StringCopy(dest: *mut c_char, src: *const c_char, maxlen: usize) -> Boolean;
     fn M_WriteFile(name: *mut c_char, source: *mut c_void, length: c_int) -> c_int;
     fn M_TempFile(s: *mut c_char) -> *mut c_char;
     fn M_snprintf_clamp(buf: *mut c_char, len: usize, result: c_int) -> c_int;

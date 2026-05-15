@@ -19,6 +19,8 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
+use crate::doom::doom_bool::Boolean;
+
 use crate::doom::d_event::event_t;
 use crate::doom::d_mode;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS};
@@ -600,7 +602,7 @@ extern "C" {
     fn snprintf(buf: *mut c_char, len: usize, fmt: *const c_char, ...) -> c_int;
     fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
     fn M_Random() -> c_int;
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> *mut c_char;
+    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean;
     fn W_CheckNumForName(name: *const c_char) -> c_int;
     fn W_CacheLumpName(name: *mut c_char, tag: c_int) -> *mut c_void;
     fn W_ReleaseLumpName(name: *mut c_char);

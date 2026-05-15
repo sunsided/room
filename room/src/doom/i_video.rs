@@ -7,6 +7,8 @@
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
 use std::ffi::{c_char, c_float, c_int, c_void};
+
+use crate::doom::doom_bool::Boolean;
 use std::mem;
 use std::ptr;
 
@@ -336,7 +338,7 @@ pub unsafe extern "C" fn I_SetWindowTitle(title: *mut c_char) {
 pub unsafe extern "C" fn I_GraphicsCheckCommandLine() {}
 
 #[no_mangle]
-pub unsafe extern "C" fn I_SetGrabMouseCallback(_func: *mut c_void) {}
+pub unsafe extern "C" fn I_SetGrabMouseCallback(_func: extern "C" fn() -> Boolean) {}
 
 #[no_mangle]
 pub unsafe extern "C" fn I_EnableLoadingDisk() {}
@@ -345,7 +347,7 @@ pub unsafe extern "C" fn I_EnableLoadingDisk() {}
 pub unsafe extern "C" fn I_BindVideoVariables() {}
 
 #[no_mangle]
-pub unsafe extern "C" fn I_DisplayFPSDots(_dots_on: c_int) {}
+pub unsafe extern "C" fn I_DisplayFPSDots(_dots_on: Boolean) {}
 
 #[no_mangle]
 pub unsafe extern "C" fn I_CheckIsScreensaver() {}
@@ -365,9 +367,10 @@ pub unsafe extern "C" fn I_Video_Link_Anchor() {
     I_EndRead();
     I_SetWindowTitle(ptr::null_mut());
     I_GraphicsCheckCommandLine();
-    I_SetGrabMouseCallback(ptr::null_mut());
+    extern "C" fn _grab_anchor() -> Boolean { Boolean::FALSE }
+    I_SetGrabMouseCallback(_grab_anchor);
     I_EnableLoadingDisk();
     I_BindVideoVariables();
-    I_DisplayFPSDots(0);
+    I_DisplayFPSDots(Boolean::FALSE);
     I_CheckIsScreensaver();
 }
