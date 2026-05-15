@@ -4,7 +4,8 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::{c_char, c_int, c_uint, c_void};
+use crate::i_error;
+use std::ffi::{c_char, c_int, c_uint, c_void, CStr};
 use std::ptr;
 
 use crate::doom::w_file::{wad_file_t, W_OpenFile, W_Read};
@@ -45,7 +46,6 @@ pub static mut numlumps: c_uint = 0;
 static mut lumphash: *mut *mut lumpinfo_t = ptr::null_mut();
 
 extern "C" {
-    fn I_Error(format: *const c_char, ...);
     fn I_BeginRead();
     fn I_EndRead();
 
@@ -74,7 +74,7 @@ unsafe fn ExtendLumpInfo(newnumlumps: c_uint) {
     let newlumpinfo =
         calloc(newnumlumps as usize, std::mem::size_of::<lumpinfo_t>()) as *mut lumpinfo_t;
     if newlumpinfo.is_null() {
-        I_Error(b"Couldn't realloc lumpinfo\0".as_ptr() as *const c_char);
+        i_error!("Couldn't realloc lumpinfo");
     }
 
     for i in 0..numlumps.min(newnumlumps) {
@@ -167,9 +167,9 @@ pub extern "C" fn W_AddFile(filename: *mut c_char) -> *mut wad_file_t {
                     4,
                 ) != 0
                 {
-                    I_Error(
-                        b"Wad file %s doesn't have IWAD or PWAD id\n\0".as_ptr() as *const c_char,
-                        filename,
+                    i_error!(
+                        "Wad file {} doesn't have IWAD or PWAD id",
+                        CStr::from_ptr(filename).to_string_lossy()
                     );
                 }
             }
@@ -253,9 +253,9 @@ pub extern "C" fn W_GetNumForName(name: *mut c_char) -> c_int {
     unsafe {
         let i = W_CheckNumForName(name);
         if i < 0 {
-            I_Error(
-                b"W_GetNumForName: %s not found!\0".as_ptr() as *const c_char,
-                name,
+            i_error!(
+                "W_GetNumForName: {} not found!",
+                CStr::from_ptr(name).to_string_lossy()
             );
         }
         i
@@ -266,10 +266,7 @@ pub extern "C" fn W_GetNumForName(name: *mut c_char) -> c_int {
 pub extern "C" fn W_LumpLength(lump: c_uint) -> c_int {
     unsafe {
         if lump >= numlumps {
-            I_Error(
-                b"W_LumpLength: %i >= numlumps\0".as_ptr() as *const c_char,
-                lump as c_int,
-            );
+            i_error!("W_LumpLength: {} >= numlumps", lump as c_int);
         }
         (*lumpinfo.add(lump as usize)).size
     }
@@ -279,10 +276,7 @@ pub extern "C" fn W_LumpLength(lump: c_uint) -> c_int {
 pub extern "C" fn W_ReadLump(lump: c_uint, dest: *mut c_void) {
     unsafe {
         if lump >= numlumps {
-            I_Error(
-                b"W_ReadLump: %i >= numlumps\0".as_ptr() as *const c_char,
-                lump as c_int,
-            );
+            i_error!("W_ReadLump: {} >= numlumps", lump as c_int);
         }
         let l = lumpinfo.add(lump as usize);
         I_BeginRead();
@@ -302,11 +296,11 @@ pub extern "C" fn W_ReadLump(lump: c_uint, dest: *mut c_void) {
             );
         }
         if c < (*l).size as usize {
-            I_Error(
-                b"W_ReadLump: only read %i of %i on lump %i\0".as_ptr() as *const c_char,
+            i_error!(
+                "W_ReadLump: only read {} of {} on lump {}",
                 c as c_int,
                 (*l).size,
-                lump as c_int,
+                lump as c_int
             );
         }
         I_EndRead();
@@ -317,10 +311,7 @@ pub extern "C" fn W_ReadLump(lump: c_uint, dest: *mut c_void) {
 pub extern "C" fn W_CacheLumpNum(lumpnum: c_int, tag: c_int) -> *mut c_void {
     unsafe {
         if lumpnum < 0 || (lumpnum as c_uint) >= numlumps {
-            I_Error(
-                b"W_CacheLumpNum: %i >= numlumps\0".as_ptr() as *const c_char,
-                lumpnum,
-            );
+            i_error!("W_CacheLumpNum: {} >= numlumps", lumpnum);
         }
         let lump = lumpinfo.add(lumpnum as usize);
 
@@ -354,10 +345,7 @@ pub extern "C" fn W_CacheLumpName(name: *mut c_char, tag: c_int) -> *mut c_void 
 pub extern "C" fn W_ReleaseLumpNum(lumpnum: c_int) {
     unsafe {
         if lumpnum < 0 || (lumpnum as c_uint) >= numlumps {
-            I_Error(
-                b"W_ReleaseLumpNum: %i >= numlumps\0".as_ptr() as *const c_char,
-                lumpnum,
-            );
+            i_error!("W_ReleaseLumpNum: {} >= numlumps", lumpnum);
         }
         let lump = lumpinfo.add(lumpnum as usize);
         if !(*(*lump).wad_file).mapped.is_null() {
@@ -429,14 +417,13 @@ pub extern "C" fn W_CheckCorrectIWAD(mission: c_int) {
             if mission != ul.mission {
                 let lumpnum = W_CheckNumForName(ul.lumpname.as_ptr() as *mut c_char);
                 if lumpnum >= 0 {
-                    I_Error(
-                        b"\nYou are trying to use a %s IWAD file with the %s%s binary.\nThis isn't going to work.\nYou probably want to use the %s%s binary.\0"
-                            .as_ptr() as *const c_char,
-                        D_SuggestGameName(ul.mission, 4), // indetermined
-                        b"doomgeneric\0".as_ptr() as *const c_char,
-                        D_GameMissionString(mission),
-                        b"doomgeneric\0".as_ptr() as *const c_char,
-                        D_GameMissionString(ul.mission),
+                    i_error!(
+                        "\nYou are trying to use a {} IWAD file with the {}{}binary.\nThis isn't going to work.\nYou probably want to use the {}{}binary.",
+                        CStr::from_ptr(D_SuggestGameName(ul.mission, 4)).to_string_lossy(),
+                        "doomgeneric",
+                        CStr::from_ptr(D_GameMissionString(mission)).to_string_lossy(),
+                        "doomgeneric",
+                        CStr::from_ptr(D_GameMissionString(ul.mission)).to_string_lossy()
                     );
                 }
             }

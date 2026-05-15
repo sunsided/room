@@ -4,6 +4,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::i_error;
 use std::os::raw::c_int;
 
 use crate::doom::m_fixed::{FixedDiv, FixedMul};
@@ -137,7 +138,6 @@ extern "C" {
     static mut rejectmatrix: *mut u8;
     static mut numsectors: c_int;
     static mut sectors: *mut sector_t;
-    fn I_Error(format: *const i8, ...) -> !;
 }
 // Reuse the authoritative mobj_t mirror from p_telept.rs to guarantee
 // field offsets match the C layout (x=24, subsector=88, height=108).
@@ -201,10 +201,10 @@ fn P_InterceptVector2(v2: &divline_t, v1: &divline_t) -> c_int {
 fn P_CrossSubsector(num: c_int) -> bool {
     unsafe {
         if num >= numsubsectors {
-            I_Error(
-                b"P_CrossSubsector: ss %i with numss = %i\0".as_ptr() as *const i8,
+            i_error!(
+                "P_CrossSubsector: ss {} with numss = {}",
                 num,
-                numsubsectors,
+                numsubsectors
             );
         }
 

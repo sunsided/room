@@ -4,6 +4,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::i_error;
 use std::ffi::{c_char, c_void};
 use std::os::raw::c_int;
 use std::ptr;
@@ -63,7 +64,6 @@ extern "C" {
     fn P_AimLineAttack(t1: *mut mobj_t, angle: u32, distance: fixed_t) -> fixed_t;
     fn G_PlayerReborn(player: c_int);
     fn ST_Start();
-    fn I_Error(format: *const c_char, ...);
 
     static mut ceilingline: *mut c_void;
     static mut linetarget: *mut mobj_t;
@@ -663,11 +663,11 @@ pub unsafe extern "C" fn P_SpawnMapThing(mthing: *mut mapthing_t) {
     }
 
     if i == NUMMOBJTYPES {
-        I_Error(
-            b"P_SpawnMapThing: Unknown type %i at (%i, %i)\0".as_ptr() as *const c_char,
+        i_error!(
+            "P_SpawnMapThing: Unknown type {} at ({}, {})",
             mthing.r#type as c_int,
             mthing.x as c_int,
-            mthing.y as c_int,
+            mthing.y as c_int
         );
     }
 

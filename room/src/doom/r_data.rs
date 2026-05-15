@@ -4,7 +4,8 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::{c_char, c_int, c_short, c_uint, c_ushort, c_void};
+use crate::i_error;
+use std::ffi::{c_char, c_int, c_short, c_uint, c_ushort, c_void, CStr};
 use std::ptr;
 
 use crate::doom::c_ffi::{mobj_t, sector_t, side_t};
@@ -113,7 +114,6 @@ struct spritedef_t {
 // ---------------------------------------------------------------------------
 
 extern "C" {
-    fn I_Error(format: *const c_char, ...);
     fn I_ConsoleStdout() -> c_int;
 
     fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> c_int;
@@ -353,10 +353,7 @@ pub unsafe extern "C" fn R_GenerateLookup(texnum: c_int) {
             *colofs.add(x as usize) = *texturecompositesize.add(texnum as usize) as c_ushort;
 
             if *texturecompositesize.add(texnum as usize) > 0x10000 - (*texture).height as c_int {
-                I_Error(
-                    b"R_GenerateLookup: texture %i is >64k\0".as_ptr() as *const c_char,
-                    texnum,
-                );
+                i_error!("R_GenerateLookup: texture {} is >64k", texnum);
             }
             *texturecompositesize.add(texnum as usize) += (*texture).height as c_int;
         }
@@ -535,7 +532,7 @@ pub unsafe extern "C" fn R_InitTextures() {
         directory = directory.add(1);
 
         if offset > maxoff as isize {
-            I_Error(b"R_InitTextures: bad texture directory\0".as_ptr() as *const c_char);
+            i_error!("R_InitTextures: bad texture directory");
         }
 
         let mtexture = (maptex as *mut u8).offset(offset) as *mut maptexture_t;
@@ -561,9 +558,9 @@ pub unsafe extern "C" fn R_InitTextures() {
             (*patch).originy = SHORT((*mpatch).originy);
             (*patch).patch = *patchlookup.add(SHORT((*mpatch).patch) as usize);
             if (*patch).patch == -1 {
-                I_Error(
-                    b"R_InitTextures: Missing patch in texture %s\0".as_ptr() as *const c_char,
-                    (*texture).name.as_ptr(),
+                i_error!(
+                    "R_InitTextures: Missing patch in texture {}",
+                    CStr::from_ptr((*texture).name.as_ptr()).to_string_lossy()
                 );
             }
         }
@@ -704,9 +701,9 @@ pub unsafe extern "C" fn R_FlatNumForName(name: *mut c_char) -> c_int {
     if i == -1 {
         let mut namet: [c_char; 9] = [0; 9];
         std::ptr::copy_nonoverlapping(name, namet.as_mut_ptr(), 8);
-        I_Error(
-            b"R_FlatNumForName: %s not found\0".as_ptr() as *const c_char,
-            namet.as_ptr(),
+        i_error!(
+            "R_FlatNumForName: {} not found",
+            CStr::from_ptr(namet.as_ptr()).to_string_lossy()
         );
     }
     i - firstflat
@@ -743,9 +740,9 @@ pub unsafe extern "C" fn R_CheckTextureNumForName(name: *mut c_char) -> c_int {
 pub unsafe extern "C" fn R_TextureNumForName(name: *mut c_char) -> c_int {
     let i = R_CheckTextureNumForName(name);
     if i == -1 {
-        I_Error(
-            b"R_TextureNumForName: %s not found\0".as_ptr() as *const c_char,
-            name,
+        i_error!(
+            "R_TextureNumForName: {} not found",
+            CStr::from_ptr(name).to_string_lossy()
         );
     }
     i

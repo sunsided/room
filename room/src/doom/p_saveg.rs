@@ -4,6 +4,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::i_error;
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
@@ -72,7 +73,6 @@ extern "C" {
     fn P_SetThingPosition(thing: *mut c_void);
     fn P_RemoveMobj(th: *mut c_void);
     fn G_VanillaVersionCode() -> c_int;
-    fn I_Error(format: *const c_char, ...);
 
     static mut sectors: *mut sector_t;
     static mut lines: *mut line_t;
@@ -1345,10 +1345,7 @@ pub unsafe extern "C" fn P_UnArchiveThinkers() {
                 P_AddThinker(&mut (*thinker_ptr));
             }
             _ => {
-                I_Error(
-                    b"Unknown tclass %i in savegame\0".as_ptr() as *const c_char,
-                    tclass as c_int,
-                );
+                i_error!("Unknown tclass {} in savegame", tclass as c_int);
             }
         }
     }
@@ -1560,10 +1557,9 @@ pub unsafe extern "C" fn P_UnArchiveSpecials() {
                 P_AddThinker(&mut (*glow).thinker);
             }
             _ => {
-                I_Error(
-                    b"P_UnarchiveSpecials:Unknown tclass %i in savegame\0".as_ptr()
-                        as *const c_char,
-                    tclass as c_int,
+                i_error!(
+                    "P_UnarchiveSpecials:Unknown tclass {} in savegame",
+                    tclass as c_int
                 );
             }
         }

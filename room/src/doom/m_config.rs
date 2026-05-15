@@ -1,6 +1,7 @@
 #![allow(non_upper_case_globals, non_snake_case, static_mut_refs)]
 #![allow(clippy::manual_c_str_literals)]
 
+use crate::i_error;
 use std::ffi::{c_char, c_float, c_int, c_void, CStr};
 use std::ptr;
 
@@ -42,7 +43,6 @@ const fn cfg(name: &'static [u8], ty: DefaultType) -> Default {
 }
 
 extern "C" {
-    fn I_Error(fmt: *const c_char, ...);
     fn M_CheckParmWithArgs(check: *const c_char, num_args: c_int) -> c_int;
     fn M_StringJoinA(strs: *const *const c_char) -> *mut c_char;
     fn M_MakeDirectory(path: *mut c_char);
@@ -471,9 +471,9 @@ unsafe fn get_default_for_name(name: *const c_char) -> *mut Default {
         result = search_collection(&extra_defaults, name);
     }
     if result.is_null() {
-        I_Error(
-            b"Unknown configuration variable: '%s'\0".as_ptr() as *const c_char,
-            name,
+        i_error!(
+            "Unknown configuration variable: '{}'",
+            std::ffi::CStr::from_ptr(name).to_string_lossy()
         );
     }
     result
