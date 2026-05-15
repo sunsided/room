@@ -980,7 +980,7 @@ unsafe fn saveg_write_glow_t(str: *const glow_t) {
 
 fn fill_save_filename(buf: &mut [u8], dir: &str, slot: c_int) -> usize {
     assert!(!buf.is_empty(), "fill_save_filename: buffer must have at least 1 byte");
-    let full = format!("{}{}{}.dsg\0", dir, SAVEGAMENAME, slot);
+    let full = format!("{}{}{}.dsg", dir, SAVEGAMENAME, slot);
     let bytes = full.as_bytes();
     let len = std::cmp::min(bytes.len(), buf.len() - 1);
     buf[..len].copy_from_slice(&bytes[..len]);
@@ -1763,7 +1763,7 @@ mod tests {
             .unwrap()
             .to_str()
             .unwrap();
-        let expected = format!("{}{}3.dsg", long_dir, SAVEGAMENAME);
+        let expected = format!("{}{}{}.dsg", long_dir, SAVEGAMENAME, slot);
         assert_eq!(
             result, expected,
             "save path was truncated for long directory"
