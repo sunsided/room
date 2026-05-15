@@ -49,36 +49,23 @@ const PST_REBORN: c_int = 2;
 
 const exe_ultimate: c_int = 6;
 
-extern "C" {
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn P_TryMove(thing: *mut mobj_t, x: c_int, y: c_int) -> c_int;
-    fn P_SlideMove(mo: *mut mobj_t);
-    fn P_CheckPosition(thing: *mut mobj_t, x: c_int, y: c_int) -> c_int;
-    fn P_AimLineAttack(t1: *mut mobj_t, angle: u32, distance: fixed_t) -> fixed_t;
-    fn G_PlayerReborn(player: c_int);
-    fn ST_Start();
+use crate::doom::d_main::nomonsters;
+use crate::doom::doomstat::gameversion;
+use crate::doom::g_game::{
+    consoleplayer, deathmatch, gameskill, netgame, playeringame, players, respawnmonsters,
+    totalitems, totalkills,
+};
+use crate::doom::p_map::{attackrange, ceilingline, linetarget, P_AimLineAttack, P_CheckPosition, P_SlideMove, P_TryMove};
+use crate::doom::p_setup::{deathmatch_p, deathmatchstarts, playerstarts};
+use crate::doom::p_tick::leveltime;
+use crate::doom::r_sky::skyflatnum;
+use crate::doom::g_game::G_PlayerReborn;
+use crate::doom::st_stuff::ST_Start;
+use crate::doom::z_zone::Z_Malloc;
 
-    static mut ceilingline: *mut c_void;
-    static mut linetarget: *mut mobj_t;
-    static mut attackrange: fixed_t;
-    static mut nomonsters: c_int;
-    static mut gameversion: c_int;
-    static mut gameskill: c_int;
-    static mut respawnmonsters: c_int;
-    static mut netgame: c_int;
-    static mut deathmatch: c_int;
-    static mut consoleplayer: c_int;
-    static mut totalkills: c_int;
-    static mut totalitems: c_int;
-    static mut leveltime: c_int;
-    static mut players: [PlayerT; MAXPLAYERS];
-    static mut playeringame: [c_int; MAXPLAYERS];
-    static mut skyflatnum: c_int;
-
-    static mut deathmatch_p: *mut mapthing_t;
-    static mut deathmatchstarts: [mapthing_t; 10];
-    static mut playerstarts: [mapthing_t; MAXPLAYERS];
-}
+// Type aliases for cross-module pointer casts (all #[repr(C)] identical layouts).
+type CffiMobj = crate::doom::c_ffi::mobj_t;
+type SetupMapThing = crate::doom::p_setup::mapthing_t;
 
 #[no_mangle]
 pub static mut itemrespawnque: [mapthing_t; ITEMQUESIZE] = [mapthing_t {
@@ -199,9 +186,9 @@ pub unsafe extern "C" fn P_XYMovement(mo: *mut mobj_t) {
             ymove = 0;
         }
 
-        if P_TryMove(mo as *mut mobj_t, ptryx, ptryy) == 0 {
+        if P_TryMove(mo as *mut _ as *mut CffiMobj, ptryx, ptryy) == 0 {
             if !mo.player.is_null() {
-                P_SlideMove(mo as *mut mobj_t);
+                P_SlideMove(mo as *mut _ as *mut CffiMobj);
             } else if mo.flags & MF_MISSILE != 0 {
                 let cl = ceilingline;
                 if !cl.is_null() {
@@ -352,7 +339,7 @@ pub unsafe extern "C" fn P_NightmareRespawn(mobj: *mut mobj_t) {
     let y = (mobj.spawnpoint.y as c_int) << FRACBITS;
     let z: c_int;
 
-    if P_CheckPosition(mobj as *mut mobj_t, x, y) == 0 {
+    if P_CheckPosition(mobj as *mut _ as *mut CffiMobj, x, y) == 0 {
         return;
     }
 
@@ -610,7 +597,7 @@ pub unsafe extern "C" fn P_SpawnMapThing(mthing: *mut mapthing_t) {
 
     if mthing.r#type as c_int == 11 {
         if deathmatch_p < std::ptr::addr_of_mut!(deathmatchstarts[0]).add(10) {
-            *deathmatch_p = *mthing;
+            *deathmatch_p = *(mthing as *mut _ as *mut SetupMapThing);
             deathmatch_p = deathmatch_p.add(1);
         }
         return;
@@ -741,7 +728,7 @@ pub unsafe extern "C" fn P_CheckMissileSpawn(th: *mut mobj_t) {
     th.x += th.momx >> 1;
     th.y += th.momy >> 1;
     th.z += th.momz >> 1;
-    if P_TryMove(th as *mut mobj_t, th.x, th.y) == 0 {
+    if P_TryMove(th as *mut _ as *mut CffiMobj, th.x, th.y) == 0 {
         P_ExplodeMissile(th as *mut mobj_t);
     }
 }
@@ -796,14 +783,14 @@ pub unsafe extern "C" fn P_SpawnMissile(
 pub unsafe extern "C" fn P_SpawnPlayerMissile(source: *mut mobj_t, type_: c_int) {
     let source = &mut *source;
     let mut an = source.angle;
-    let mut slope = P_AimLineAttack(source as *mut mobj_t, an, 16 * 64 * FRACUNIT);
+    let mut slope = P_AimLineAttack(source as *mut _ as *mut CffiMobj, an, 16 * 64 * FRACUNIT);
 
     if linetarget.is_null() {
         an = an.wrapping_add(1 << 26);
-        slope = P_AimLineAttack(source as *mut mobj_t, an, 16 * 64 * FRACUNIT);
+        slope = P_AimLineAttack(source as *mut _ as *mut CffiMobj, an, 16 * 64 * FRACUNIT);
         if linetarget.is_null() {
             an = an.wrapping_sub(2 << 26);
-            slope = P_AimLineAttack(source as *mut mobj_t, an, 16 * 64 * FRACUNIT);
+            slope = P_AimLineAttack(source as *mut _ as *mut CffiMobj, an, 16 * 64 * FRACUNIT);
             if linetarget.is_null() {
                 an = source.angle;
                 slope = 0;
