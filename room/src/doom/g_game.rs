@@ -420,200 +420,110 @@ static mut DEMOVERSIONBUF: [c_char; 16] = [0; 16];
 // ---------------------------------------------------------------------------
 
 extern "C" {
-    // d_loop.rs
-    static mut gametic: c_int;
-    static mut ticdup: c_int;
-
-    // d_main.rs
-    static mut wipegamestate: c_int;
-    static mut respawnparm: c_int;
-    static mut fastparm: c_int;
-    static mut nomonsters: c_int;
-
-    // doomstat.rs
-    // gamemode, gamemission, gameversion imported via `use` above
-
-    // am_map.rs
-    static mut automapactive: c_int;
-
-    // d_net.rs
-    static mut netcmds: *mut TiccmdT;
-
-    // p_saveg.rs
-    static mut save_stream: *mut libc::FILE;
-    static mut savegame_error: c_int;
-    fn P_ReadSaveGameHeader() -> boolean;
-    fn P_ReadSaveGameEOF() -> boolean;
-    fn P_WriteSaveGameHeader(description: *mut c_char);
-    fn P_WriteSaveGameEOF();
-    fn P_UnArchivePlayers();
-    fn P_UnArchiveWorld();
-    fn P_UnArchiveThinkers();
-    fn P_UnArchiveSpecials();
-    fn P_ArchivePlayers();
-    fn P_ArchiveWorld();
-    fn P_ArchiveThinkers();
-    fn P_ArchiveSpecials();
-    fn P_TempSaveGameFile() -> *mut c_char;
-    fn P_SaveGameFile(slot: c_int) -> *mut c_char;
-
-    // p_setup.rs
-    fn P_SetupLevel(episode: c_int, map: c_int, playermask: c_int, skill: c_int);
-    fn P_SpawnPlayer(mthing: *mut mapthing_t);
-
-    // p_map.rs
-    fn P_CheckPosition(mo: *mut mobj_t, x: fixed_t, y: fixed_t) -> boolean;
-
-    // p_mobj.rs
-    fn P_RemoveMobj(mo: *mut mobj_t);
-    fn P_SpawnMobj(x: fixed_t, y: fixed_t, z: fixed_t, type_: c_int) -> *mut mobj_t;
-
-    // r_main.rs
-    fn R_PointInSubsector(x: fixed_t, y: fixed_t) -> *mut subsector_t;
-    fn R_ExecuteSetViewSize();
-    static mut setsizeneeded: boolean;
-
-    // r_data.rs
-    fn R_FlatNumForName(name: *const c_char) -> c_int;
-    fn R_TextureNumForName(name: *const c_char) -> c_int;
-
-    // r_sky.rs (or r_data.rs)
-    static mut skyflatnum: c_int;
-    static mut skytexture: c_int;
-
-    // r_draw.rs
-    fn R_FillBackScreen();
-
-    // z_zone.rs
-    fn Z_CheckHeap();
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn Z_Free(ptr: *mut c_void);
-
-    // p_tick.rs
-    fn P_Ticker();
-    static mut leveltime: c_int;
-
-    // p_saveg.rs
-
-    // st_stuff.rs
-    fn ST_Ticker();
-    fn ST_Responder(ev: *mut event_t) -> boolean;
-
-    // am_map.rs
-    fn AM_Ticker();
-    fn AM_Responder(ev: *mut event_t) -> boolean;
-    fn AM_Stop();
-
-    // hu_stuff.rs
-    fn HU_Ticker();
-    fn HU_Responder(ev: *mut event_t) -> boolean;
-    fn HU_dequeueChatChar() -> c_char;
-
-    // wi_stuff.rs
-    fn WI_Ticker();
-    fn WI_Start(wbstartstruct: *mut wbstartstruct_t);
-    fn WI_End();
-
-    // f_finale.rs
-    fn F_Ticker();
-    fn F_Responder(ev: *mut event_t) -> boolean;
-    fn F_StartFinale();
-
-    // d_main.rs
-    fn D_PageTicker();
-    fn D_AdvanceDemo();
-
-    // s_sound.rs
-    fn S_PauseSound();
-    fn S_ResumeSound();
-    fn S_StartSound(origin: *mut c_void, sfx_id: c_int);
-
-    // m_menu.rs
-    fn M_StartControlPanel();
-
-    // m_misc.rs
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, maxlen: usize) -> Boolean;
-    fn M_WriteFile(name: *mut c_char, source: *mut c_void, length: c_int) -> c_int;
-    fn M_TempFile(s: *mut c_char) -> *mut c_char;
-    fn M_snprintf_clamp(buf: *mut c_char, len: usize, result: c_int) -> c_int;
+    // libc
     fn snprintf(buf: *mut c_char, len: usize, fmt: *const c_char, ...) -> c_int;
 
-    // m_argv.rs
-    fn M_CheckParm(check: *const c_char) -> c_int;
-    fn M_CheckParmWithArgs(check: *const c_char, num_args: c_int) -> c_int;
-    static mut myargv: *mut *mut c_char;
-
-    // m_random.rs
-    fn M_ClearRandom();
-    static mut rndindex: c_int;
-
-    // statdump.rs
-    fn StatCopy(wbinfo: *mut wbstartstruct_t);
-
-    // v_video.rs
-    fn V_ScreenShot(path: *mut c_char);
-
-    // i_system.rs
+    // i_system.rs — keep as variadic extern because call sites pass format args
     fn I_Error(format: *const c_char, ...) -> !;
     fn I_Quit() -> !;
-
-    // i_timer.rs
-    fn I_GetTime() -> c_int;
-
-    // w_wad.rs
-    fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void;
-    fn W_ReleaseLumpName(name: *const c_char);
-    fn W_CheckNumForName(name: *const c_char) -> c_int;
-
-    // m_controls.rs
-    static mut key_right: c_int;
-    static mut key_left: c_int;
-    static mut key_up: c_int;
-    static mut key_down: c_int;
-    static mut key_strafeleft: c_int;
-    static mut key_straferight: c_int;
-    static mut key_fire: c_int;
-    static mut key_use: c_int;
-    static mut key_strafe: c_int;
-    static mut key_speed: c_int;
-    static mut key_weapon1: c_int;
-    static mut key_weapon2: c_int;
-    static mut key_weapon3: c_int;
-    static mut key_weapon4: c_int;
-    static mut key_weapon5: c_int;
-    static mut key_weapon6: c_int;
-    static mut key_weapon7: c_int;
-    static mut key_weapon8: c_int;
-    static mut key_prevweapon: c_int;
-    static mut key_nextweapon: c_int;
-    static mut key_spy: c_int;
-    static mut key_pause: c_int;
-    static mut key_demo_quit: c_int;
-    static mut mousebfire: c_int;
-    static mut mousebstrafe: c_int;
-    static mut mousebforward: c_int;
-    static mut mousebbackward: c_int;
-    static mut mousebuse: c_int;
-    static mut mousebprevweapon: c_int;
-    static mut mousebnextweapon: c_int;
-    static mut mousebstrafeleft: c_int;
-    static mut mousebstraferight: c_int;
-    static mut joybfire: c_int;
-    static mut joybuse: c_int;
-    static mut joybspeed: c_int;
-    static mut joybstrafe: c_int;
-    static mut joybprevweapon: c_int;
-    static mut joybnextweapon: c_int;
-    static mut joybstrafeleft: c_int;
-    static mut joybstraferight: c_int;
-    static mut dclick_use: c_int;
-    static mut mouseSensitivity: c_int;
-
-    // m_config.rs / other
-    static mut player_names: [*mut c_char; 4];
-
-    // Zone memory tags (from z_zone.h)
 }
+
+// d_loop.rs
+use crate::doom::d_loop::{gametic, ticdup};
+
+// d_main.rs
+use crate::doom::d_main::{D_AdvanceDemo, D_PageTicker, fastparm, nomonsters, respawnparm, wipegamestate};
+
+// am_map.rs
+use crate::doom::am_map::{automapactive, AM_Responder, AM_Stop, AM_Ticker};
+
+// d_net.rs
+use crate::doom::d_net::netcmds;
+
+// p_saveg.rs
+use crate::doom::p_saveg::{
+    save_stream, savegame_error, P_ArchivePlayers, P_ArchiveSpecials, P_ArchiveThinkers,
+    P_ArchiveWorld, P_ReadSaveGameEOF, P_ReadSaveGameHeader, P_SaveGameFile, P_TempSaveGameFile,
+    P_UnArchivePlayers, P_UnArchiveSpecials, P_UnArchiveThinkers, P_UnArchiveWorld,
+    P_WriteSaveGameEOF, P_WriteSaveGameHeader,
+};
+
+// p_setup.rs
+use crate::doom::p_setup::P_SetupLevel;
+
+// p_mobj.rs
+use crate::doom::p_mobj::{P_RemoveMobj, P_SpawnMobj, P_SpawnPlayer};
+
+// p_map.rs
+use crate::doom::p_map::P_CheckPosition;
+
+// r_main.rs
+use crate::doom::r_main::{setsizeneeded, R_ExecuteSetViewSize, R_PointInSubsector};
+
+// r_data.rs
+use crate::doom::r_data::{R_FlatNumForName, R_TextureNumForName};
+
+// r_sky.rs
+use crate::doom::r_sky::{skyflatnum, skytexture};
+
+// r_draw.rs
+use crate::doom::r_draw::R_FillBackScreen;
+
+// z_zone.rs
+use crate::doom::z_zone::{Z_CheckHeap, Z_Free, Z_Malloc};
+
+// p_tick.rs
+use crate::doom::p_tick::{leveltime, P_Ticker};
+
+// st_stuff.rs
+use crate::doom::st_stuff::{ST_Responder, ST_Ticker};
+
+// hu_stuff.rs
+use crate::doom::hu_stuff::{player_names, HU_dequeueChatChar, HU_Responder, HU_Ticker};
+
+// wi_stuff.rs
+use crate::doom::wi_stuff::{WI_End, WI_Start, WI_Ticker};
+
+// f_finale.rs
+use crate::doom::f_finale::{F_Responder, F_StartFinale, F_Ticker};
+
+// s_sound.rs
+use crate::doom::s_sound::{S_PauseSound, S_ResumeSound, S_StartSound};
+
+// m_menu.rs
+use crate::doom::m_menu::{mouseSensitivity, M_StartControlPanel};
+
+// m_misc.rs
+use crate::doom::m_misc::{M_StringCopy, M_TempFile, M_WriteFile, M_snprintf_clamp};
+
+// m_argv.rs
+use crate::doom::m_argv::{myargv, M_CheckParm, M_CheckParmWithArgs};
+
+// m_random.rs
+use crate::doom::m_random::{rndindex, M_ClearRandom};
+
+// statdump.rs
+use crate::doom::statdump::StatCopy;
+
+// v_video.rs
+use crate::doom::v_video::V_ScreenShot;
+
+// i_timer.rs
+use crate::doom::i_timer::I_GetTime;
+
+// w_wad.rs
+use crate::doom::w_wad::{W_CacheLumpName, W_CheckNumForName, W_ReleaseLumpName};
+
+// m_controls.rs
+use crate::doom::m_controls::{
+    dclick_use, joybfire, joybprevweapon, joybspeed, joybstrafe, joybstrafeleft, joybstraferight,
+    joybuse, joybnextweapon, key_demo_quit, key_down, key_fire, key_left, key_nextweapon,
+    key_pause, key_prevweapon, key_right, key_speed, key_spy, key_strafe, key_strafeleft,
+    key_straferight, key_up, key_use, key_weapon1, key_weapon2, key_weapon3, key_weapon4,
+    key_weapon5, key_weapon6, key_weapon7, key_weapon8, mousebbackward, mousebfire,
+    mousebforward, mousebnextweapon, mousebprevweapon, mousebstrafe, mousebstrafeleft,
+    mousebstraferight, mousebuse,
+};
 
 use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
 
@@ -1406,7 +1316,7 @@ pub unsafe extern "C" fn G_CheckSpot(playernum: c_int, mthing: *mut mapthing_t) 
     let x = ((*mthing).x as fixed_t) << 16;
     let y = ((*mthing).y as fixed_t) << 16;
 
-    if P_CheckPosition(players[playernum as usize].mo as *mut mobj_t, x, y) == 0 {
+    if P_CheckPosition(players[playernum as usize].mo as *mut crate::doom::c_ffi::mobj_t, x, y) == 0 {
         return 0;
     }
 
@@ -1546,7 +1456,7 @@ pub unsafe extern "C" fn G_ExitLevel() {
 
 #[no_mangle]
 pub unsafe extern "C" fn G_SecretExitLevel() {
-    if gamemode == commercial && W_CheckNumForName(b"map31\0".as_ptr() as *const c_char) < 0 {
+    if gamemode == commercial && W_CheckNumForName(b"map31\0".as_ptr() as *mut c_char) < 0 {
         secretexit = 0;
     } else {
         secretexit = 1;
@@ -1665,7 +1575,7 @@ pub unsafe extern "C" fn G_DoCompleted() {
     viewactive = 0;
     automapactive = 0;
 
-    StatCopy(&mut wminfo);
+    StatCopy(&mut wminfo as *mut _ as *mut crate::doom::statdump::wbstartstruct_t);
     WI_Start(&mut wminfo);
 }
 
@@ -1749,7 +1659,7 @@ pub unsafe extern "C" fn G_DoLoadGame() {
 
     libc::fclose(save_stream);
 
-    if setsizeneeded != 0 {
+    if setsizeneeded.is_truthy() {
         R_ExecuteSetViewSize();
     }
 
@@ -2169,7 +2079,7 @@ pub unsafe extern "C" fn G_RecordDemo(name: *mut c_char) {
         ),
     );
     let mut maxsize: c_int = 0x20000;
-    let i = M_CheckParmWithArgs(b"-maxdemo\0".as_ptr() as *const c_char, 1);
+    let i = M_CheckParmWithArgs(b"-maxdemo\0".as_ptr() as *mut c_char, 1);
     if i != 0 {
         maxsize = libc::atoi(*myargv.add(i as usize + 1) as *const libc::c_char);
         maxsize *= 1024;
@@ -2202,7 +2112,7 @@ fn g_vanilla_version_code_for(gv: c_int) -> c_int {
 pub unsafe extern "C" fn G_BeginRecording() {
     use crate::doom::c_ffi::DOOM_191_VERSION;
 
-    longtics = (M_CheckParm(b"-longtics\0".as_ptr() as *const c_char) != 0) as boolean;
+    longtics = (M_CheckParm(b"-longtics\0".as_ptr() as *mut c_char) != 0) as boolean;
     lowres_turn = (longtics == 0) as boolean;
 
     demo_p = demobuffer;
@@ -2335,8 +2245,8 @@ pub unsafe extern "C" fn G_DoPlayDemo() {
     }
 
     if playeringame[1] != 0
-        || M_CheckParm(b"-solo-net\0".as_ptr() as *const c_char) > 0
-        || M_CheckParm(b"-netdemo\0".as_ptr() as *const c_char) > 0
+        || M_CheckParm(b"-solo-net\0".as_ptr() as *mut c_char) > 0
+        || M_CheckParm(b"-netdemo\0".as_ptr() as *mut c_char) > 0
     {
         netgame = 1;
         netdemo = 1;
@@ -2357,7 +2267,7 @@ pub unsafe extern "C" fn G_DoPlayDemo() {
 
 #[no_mangle]
 pub unsafe extern "C" fn G_TimeDemo(name: *mut c_char) {
-    nodrawers = M_CheckParm(b"-nodraw\0".as_ptr() as *const c_char);
+    nodrawers = M_CheckParm(b"-nodraw\0".as_ptr() as *mut c_char);
     timingdemo = 1;
     use crate::doom::d_loop::singletics;
     singletics = 1;
