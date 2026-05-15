@@ -15,7 +15,14 @@ use crate::doom::d_mode::{
 };
 use crate::doom::d_player::{PlayerT, TiccmdT, MAXPLAYERS};
 use crate::doom::doomstat::{gamemission, gamemode, gameversion};
+use crate::doom::m_random::P_Random;
+use crate::doom::p_inter::maxammo;
+use crate::doom::p_setup::{
+    deathmatch_p, deathmatchstarts, playerstarts,
+    mapthing_t as SetupMapThing,
+};
 use crate::doom::p_telept::{mapthing_t, mobj_t, sector_t, subsector_t};
+use crate::doom::tables::{finecosine, finesine, finetangent};
 use crate::doom::wi_stuff::{wbplayerstruct_t, wbstartstruct_t};
 
 // ---------------------------------------------------------------------------
@@ -1352,7 +1359,7 @@ pub unsafe extern "C" fn G_CheckSpot(playernum: c_int, mthing: *mut mapthing_t) 
             ya = finetangent[3072];
         }
         0 | 1024 | 2048 | 3072 => {
-            xa = finecosine[an_raw as usize];
+            xa = unsafe { *finecosine.0.add(an_raw as usize) };
             ya = finesine[an_raw as usize];
         }
         _ => {
@@ -1390,13 +1397,17 @@ pub unsafe extern "C" fn G_DeathMatchSpawnPlayer(playernum: c_int) {
 
     for _ in 0..20 {
         let i = (P_Random() % selections as c_int) as usize;
-        if G_CheckSpot(playernum, &mut deathmatchstarts[i]) != 0 {
+        if G_CheckSpot(
+            playernum,
+            &mut deathmatchstarts[i] as *mut SetupMapThing as *mut mapthing_t,
+        ) != 0
+        {
             deathmatchstarts[i].r#type = (playernum + 1) as i16;
-            P_SpawnPlayer(&mut deathmatchstarts[i]);
+            P_SpawnPlayer(&mut deathmatchstarts[i] as *mut SetupMapThing as *mut mapthing_t);
             return;
         }
     }
-    P_SpawnPlayer(&mut playerstarts[playernum as usize]);
+    P_SpawnPlayer(&mut playerstarts[playernum as usize] as *mut SetupMapThing as *mut mapthing_t);
 }
 
 // ---------------------------------------------------------------------------
@@ -1418,20 +1429,34 @@ pub unsafe extern "C" fn G_DoReborn(playernum: c_int) {
             return;
         }
 
-        if G_CheckSpot(playernum, &mut playerstarts[playernum as usize]) != 0 {
-            P_SpawnPlayer(&mut playerstarts[playernum as usize]);
+        if G_CheckSpot(
+            playernum,
+            &mut playerstarts[playernum as usize] as *mut SetupMapThing as *mut mapthing_t,
+        ) != 0
+        {
+            P_SpawnPlayer(
+                &mut playerstarts[playernum as usize] as *mut SetupMapThing as *mut mapthing_t,
+            );
             return;
         }
 
         for i in 0..MAXPLAYERS as c_int {
-            if G_CheckSpot(playernum, &mut playerstarts[i as usize]) != 0 {
+            if G_CheckSpot(
+                playernum,
+                &mut playerstarts[i as usize] as *mut SetupMapThing as *mut mapthing_t,
+            ) != 0
+            {
                 playerstarts[i as usize].r#type = (playernum + 1) as i16;
-                P_SpawnPlayer(&mut playerstarts[i as usize]);
+                P_SpawnPlayer(
+                    &mut playerstarts[i as usize] as *mut SetupMapThing as *mut mapthing_t,
+                );
                 playerstarts[i as usize].r#type = (i + 1) as i16;
                 return;
             }
         }
-        P_SpawnPlayer(&mut playerstarts[playernum as usize]);
+        P_SpawnPlayer(
+            &mut playerstarts[playernum as usize] as *mut SetupMapThing as *mut mapthing_t,
+        );
     }
 }
 
@@ -1885,33 +1910,6 @@ unsafe fn set_fast_monsters(fast: bool) {
     }
 }
 
-extern "C" {
-    // Tables from tables.rs
-    fn get_finecosine(idx: c_uint) -> fixed_t;
-    fn get_finesine(idx: c_uint) -> fixed_t;
-    fn get_finetangent(idx: c_uint) -> fixed_t;
-
-    // P_Random from m_random.rs
-    fn P_Random() -> c_int;
-
-    // p_setup.rs spawn arrays
-    static mut deathmatchstarts: [mapthing_t; 10];
-    static mut deathmatch_p: *mut mapthing_t;
-    static mut playerstarts: [mapthing_t; MAXPLAYERS];
-
-    // p_inter.rs
-    static mut maxammo: [c_int; 4];
-
-    // r_sky.rs
-    // (skyflatnum, skytexture declared above)
-}
-
-// Convenience raw-pointer table accessors (tables.rs exports finecosine/finesine arrays)
-extern "C" {
-    static finecosine: [fixed_t; 4096]; // FINEANGLES/2
-    static finesine: [fixed_t; 10240]; // FINEANGLES + FINEANGLES/4
-    static finetangent: [fixed_t; 4096];
-}
 
 // ---------------------------------------------------------------------------
 // G_SetFastMonsters — adjusts state tics and monster shot speeds

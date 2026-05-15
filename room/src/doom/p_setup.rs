@@ -145,11 +145,11 @@ struct mapnode_t {
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 pub struct mapthing_t {
-    x: i16,
-    y: i16,
-    angle: i16,
-    r#type: i16,
-    options: i16,
+    pub x: i16,
+    pub y: i16,
+    pub angle: i16,
+    pub r#type: i16,
+    pub options: i16,
 }
 
 // ---------------------------------------------------------------------------
