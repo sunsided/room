@@ -9,14 +9,22 @@ use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
 use crate::c_write;
+use crate::doom::am_map::automapactive;
 use crate::doom::d_event::event_t;
 use crate::doom::d_items::weaponinfo;
 use crate::doom::d_mode;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS, NUMAMMO, NUMCARDS, NUMWEAPONS};
 use crate::doom::doomstat::{gamemission, gamemode, gameversion};
+use crate::doom::g_game::{consoleplayer, deathmatch, gameskill, netgame, players};
+use crate::doom::g_game::G_DeferedInitNew;
 use crate::doom::i_timer::TICRATE;
+use crate::doom::i_video::I_SetPalette;
 use crate::doom::m_cheat::{cheatseq_t, cht_CheckCheat, cht_GetParam};
+use crate::doom::m_random::M_Random;
+use crate::doom::p_inter::P_GivePower;
 use crate::doom::p_telept::mobj_t;
+use crate::doom::r_main::R_PointToAngle2;
+use crate::doom::s_sound::S_ChangeMusic;
 use crate::doom::st_lib::{
     st_binicon_t, st_multicon_t, st_number_t, st_percent_t, STlib_init, STlib_initBinIcon,
     STlib_initMultIcon, STlib_initNum, STlib_initPercent, STlib_updateBinIcon,
@@ -25,13 +33,13 @@ use crate::doom::st_lib::{
 use crate::doom::tables::{ANG180, ANG45};
 use crate::doom::v_video::patch_t;
 use crate::doom::v_video::{V_CopyRect, V_DrawPatch, V_RestoreBuffer, V_UseBuffer};
+use crate::doom::w_wad::{W_CacheLumpName, W_CacheLumpNum, W_GetNumForName, W_ReleaseLumpName};
+use crate::doom::z_zone::{PU_CACHE, PU_STATIC, Z_Malloc};
 use crate::types::Boolean;
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
 
 const ST_HEIGHT: c_int = 32;
 const ST_WIDTH: c_int = 320;
@@ -193,31 +201,6 @@ const fn cheat(seq: &[u8], params: c_int) -> cheatseq_t {
         param_chars_read: 0,
         parameter_buf: [0; 5],
     }
-}
-
-// ---------------------------------------------------------------------------
-// Externs from remaining C modules
-// ---------------------------------------------------------------------------
-
-extern "C" {
-    static mut gameskill: c_int;
-    static mut netgame: c_int;
-    static mut deathmatch: c_int;
-    static mut automapactive: c_int;
-    static mut consoleplayer: c_int;
-    static mut players: [PlayerT; MAXPLAYERS];
-
-    fn I_SetPalette(palette: *mut u8);
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn G_DeferedInitNew(skill: c_int, episode: c_int, map: c_int);
-    fn S_ChangeMusic(musicnum: c_int, looping: c_int);
-    fn R_PointToAngle2(x1: c_int, y1: c_int, x2: c_int, y2: c_int) -> u32;
-    fn P_GivePower(player: *mut PlayerT, power: c_int) -> c_int;
-    fn M_Random() -> c_int;
-    fn W_CacheLumpName(name: *mut c_char, tag: c_int) -> *mut c_void;
-    fn W_CacheLumpNum(lump: c_int, tag: c_int) -> *mut c_void;
-    fn W_GetNumForName(name: *mut c_char) -> c_int;
-    fn W_ReleaseLumpName(name: *mut c_char);
 }
 
 // ---------------------------------------------------------------------------
