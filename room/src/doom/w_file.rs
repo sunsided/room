@@ -25,13 +25,8 @@ struct stdc_wad_file_t {
     fstream: *mut FILE,
 }
 
-extern "C" {
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn Z_Free(ptr: *mut c_void);
-    fn M_FileLength(handle: *mut libc::c_void) -> c_long;
-}
-
-use crate::doom::z_zone::PU_STATIC;
+use crate::doom::z_zone::{PU_STATIC, Z_Free, Z_Malloc};
+use crate::doom::m_misc::{M_FileLength, FILE as MiscFILE};
 
 unsafe extern "C" fn W_StdC_OpenFile(path: *mut c_char) -> *mut wad_file_t {
     let fstream = fopen(path as *const c_char, b"rb\0".as_ptr() as *const c_char);
@@ -52,7 +47,7 @@ unsafe extern "C" fn W_StdC_OpenFile(path: *mut c_char) -> *mut wad_file_t {
 
     (*result).wad.file_class = ptr::addr_of_mut!(stdc_wad_file);
     (*result).wad.mapped = ptr::null_mut();
-    (*result).wad.length = M_FileLength(fstream as *mut libc::c_void) as c_uint;
+    (*result).wad.length = M_FileLength(fstream as *mut MiscFILE) as c_uint;
     (*result).fstream = fstream;
 
     &mut (*result).wad
