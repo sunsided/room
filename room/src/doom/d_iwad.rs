@@ -8,6 +8,7 @@ use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
 use crate::doom::d_mode;
+use crate::i_error;
 
 const MAX_IWAD_DIRS: usize = 128;
 const DIR_SEPARATOR: c_char = b'/' as c_char;
@@ -20,7 +21,6 @@ macro_rules! cstr {
 }
 
 extern "C" {
-    fn I_Error(fmt: *const c_char, ...);
     fn printf(fmt: *const c_char, ...) -> c_int;
 
     fn M_FileExists(filename: *mut c_char) -> c_int;
@@ -290,10 +290,7 @@ pub unsafe extern "C" fn D_FindIWAD(mask: c_int, mission: *mut c_int) -> *mut c_
         let result = D_FindWADByName(iwadfile);
 
         if result.is_null() {
-            I_Error(
-                b"IWAD file '%s' not found!\0".as_ptr() as *const c_char,
-                iwadfile,
-            );
+            i_error!("IWAD file '{}' not found!", std::ffi::CStr::from_ptr(iwadfile).to_string_lossy());
         }
 
         *mission = IdentifyIWADByName(result, mask);

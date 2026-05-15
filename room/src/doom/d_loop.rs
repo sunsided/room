@@ -9,6 +9,7 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
+use crate::i_error;
 use crate::doom::c_ffi::{FRACUNIT, TICRATE};
 use crate::doom::d_net::{LoopInterfaceT, NetConnectDataT, NetGameSettingsT};
 use crate::doom::d_player::TiccmdT;
@@ -64,7 +65,6 @@ extern "C" {
     fn I_GetTime() -> c_int;
     fn I_StartTic();
     fn I_Sleep(ms: c_int);
-    fn I_Error(msg: *const c_char);
     fn I_AtExit(func: extern "C" fn(), run_on_error: c_int);
 
     fn D_ProcessEvents();
@@ -149,7 +149,7 @@ pub extern "C" fn NetUpdate() {
 
 unsafe fn d_disconnected() {
     if drone != 0 {
-        I_Error(b"Disconnected from server in drone mode.\0".as_ptr() as *const c_char);
+        i_error!("Disconnected from server in drone mode.");
     }
 }
 
@@ -331,7 +331,7 @@ pub extern "C" fn TryRunTics() {
             lowtic = get_low_tic();
 
             if lowtic < gametic / ticdup {
-                I_Error(b"TryRunTics: lowtic < gametic\0".as_ptr() as *const c_char);
+                i_error!("TryRunTics: lowtic < gametic");
             }
 
             if I_GetTime() / ticdup - entertic > 0 {
@@ -356,7 +356,7 @@ pub extern "C" fn TryRunTics() {
 
             for _ in 0..ticdup {
                 if gametic / ticdup > lowtic {
-                    I_Error(b"gametic>lowtic\0".as_ptr() as *const c_char);
+                    i_error!("gametic>lowtic");
                 }
 
                 for i in 0..NET_MAXPLAYERS {

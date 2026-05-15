@@ -1,5 +1,6 @@
 #![allow(non_upper_case_globals, non_snake_case)]
 
+use crate::i_error;
 use std::ffi::{c_char, c_int, c_long, c_void};
 
 enum FILE {}
@@ -23,10 +24,6 @@ extern "C" {
     fn strrchr(s: *const c_char, c: c_int) -> *mut c_char;
     fn isspace(c: c_int) -> c_int;
     fn printf(format: *const c_char, ...) -> c_int;
-}
-
-extern "C" {
-    fn I_Error(fmt: *const c_char, ...);
 }
 
 extern "C" {
@@ -81,10 +78,7 @@ unsafe fn LoadResponseFile(argv_index: c_int) {
     while i < size as usize {
         let k: usize = fread(file.add(i) as *mut c_void, 1, size as usize - i, handle);
         if k == 0 {
-            I_Error(
-                b"Failed to read full contents of '%s'\0".as_ptr() as *const c_char,
-                response_filename,
-            );
+            i_error!("Failed to read full contents of '{}'", std::ffi::CStr::from_ptr(response_filename as *const c_char).to_string_lossy());
         }
         i += k;
     }
@@ -128,10 +122,7 @@ unsafe fn LoadResponseFile(argv_index: c_int) {
                 k += 1;
             }
             if (k as c_long) >= size || *infile.add(k) == b'\n' as c_char {
-                I_Error(
-                    b"Quotes unclosed in response file '%s'\0".as_ptr() as *const c_char,
-                    response_filename,
-                );
+                i_error!("Quotes unclosed in response file '{}'", std::ffi::CStr::from_ptr(response_filename as *const c_char).to_string_lossy());
             }
             *infile.add(k) = 0;
             k += 1;
