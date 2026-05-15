@@ -7,6 +7,8 @@ use crate::types::Boolean;
 use crate::doom::sha1::{
     sha1_digest_t, SHA1Context, SHA1_Final, SHA1_Init, SHA1_UpdateInt32, SHA1_UpdateString,
 };
+use crate::doom::w_wad::{lumpinfo, lumpinfo_t, numlumps};
+use crate::doom::m_misc::M_StringCopy;
 
 #[repr(C)]
 pub struct LumpInfo {
@@ -16,12 +18,6 @@ pub struct LumpInfo {
     pub size: c_int,
     pub cache: *mut c_void,
     pub next: *mut LumpInfo,
-}
-
-extern "C" {
-    static mut numlumps: c_uint;
-    static mut lumpinfo: *mut LumpInfo;
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, n: usize) -> Boolean;
 }
 
 unsafe fn get_file_number(handle: *mut c_void, open_wadfiles: &mut Vec<*mut c_void>) -> c_int {
@@ -63,7 +59,7 @@ pub unsafe extern "C" fn W_Checksum(digest: *mut sha1_digest_t) {
     let mut open_wadfiles: Vec<*mut c_void> = Vec::new();
 
     for i in 0..numlumps {
-        let lump = lumpinfo.add(i as usize);
+        let lump = lumpinfo.add(i as usize) as *mut LumpInfo;
         checksum_add_lump(sha1_context.as_mut_ptr(), lump, &mut open_wadfiles);
     }
 
