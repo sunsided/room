@@ -285,60 +285,14 @@ static PACKS: [PackDesc; 3] = [
 // ---------------------------------------------------------------------------
 
 extern "C" {
-    // From g_game.c (still C):
-    fn G_InitNew(skill: skill_t, episode: c_int, map: c_int);
-    fn G_DeferedPlayDemo(demo: *const c_char);
-    fn G_LoadGame(name: *mut c_char);
-    fn G_RecordDemo(name: *mut c_char);
-    fn G_BeginRecording();
-    fn G_TimeDemo(name: *mut c_char);
-    fn G_CheckDemoStatus() -> Boolean;
-    fn G_Responder(ev: *mut event_t) -> Boolean;
-    fn G_VanillaVersionCode() -> c_int;
-
-    // Globals from g_game.c (still C):
-    static mut gameaction: c_int;
-    static mut deathmatch: c_int;
-    static mut displayplayer: c_int;
-    static mut usergame: c_int;
-    static mut demoplayback: c_int;
-    static mut demorecording: c_int;
-    static mut singledemo: c_int;
-    static mut gamestate: c_int;
-    static mut paused: c_int;
-
-    // From other ported modules (declared extern for clarity):
-    static mut mouseSensitivity: c_int;
-    static mut sfxVolume: c_int;
-    static mut musicVolume: c_int;
-    static mut automapactive: c_int;
-    static mut menuactive: c_int;
-    static mut viewactive: c_int;
-    static mut nodrawers: c_int;
-    static mut testcontrols: c_int;
-    static mut testcontrols_mousespeed: c_int;
-    static mut screenblocks: c_int;
-    static mut detailLevel: c_int;
-    static mut snd_channels: c_int;
-    static mut vanilla_savegame_limit: c_int;
-    static mut vanilla_demo_limit: c_int;
-    static mut setsizeneeded: Boolean;
-    static mut showMessages: c_int;
-    static mut viewheight: c_int;
-    static mut scaledviewwidth: c_int;
-    static mut viewwindowx: c_int;
-    static mut viewwindowy: c_int;
-    static mut screenvisible: c_int;
-    static mut inhelpscreens: c_int;
-    static mut drone: c_int;
-
-    // From net_dedicated.c (stub since FEATURE_MULTIPLAYER is not defined):
+    // net_dedicated.c / net_query.c — not yet ported:
     fn NET_DedicatedServer();
-
-    // From net_query.c (stub):
     fn NET_MasterQuery();
     fn NET_QueryAddress(addr: *mut c_char);
     fn NET_LANQuery();
+
+    // d_loop.rs — drone not yet exported as pub static:
+    static mut drone: c_int;
 
     // C standard library:
     fn strlen(s: *const c_char) -> usize;
@@ -349,109 +303,135 @@ extern "C" {
     fn exit(status: c_int) -> !;
     fn isspace(c: c_int) -> c_int;
     fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
-
-    // From doomgeneric C (i_timer, i_system, etc. still have some C parts):
-    fn I_GetTime() -> c_int;
-    fn I_Sleep(ms: c_int);
-    fn I_InitTimer();
-    fn I_InitSound(use_sfx_prefix: Boolean);
-    fn I_InitMusic();
-    fn I_BindSoundVariables();
-    fn I_BindVideoVariables();
-    fn I_BindJoystickVariables();
-    fn I_Endoom(data: *mut byte);
-    fn I_InitJoystick();
-    fn I_AtExit(func: extern "C" fn(), run_if_error: Boolean);
-    fn I_PrintStartupBanner(gamedescription: *mut c_char);
-    fn I_PrintBanner(text: *mut c_char);
-    fn I_PrintDivider();
-    fn I_InitGraphics();
-    fn I_GraphicsCheckCommandLine();
-    fn I_SetPalette(palette: *mut byte);
-    fn I_UpdateNoBlit();
-    fn I_FinishUpdate();
-    fn I_SetWindowTitle(title: *mut c_char);
-    fn I_CheckIsScreensaver();
-    fn I_SetGrabMouseCallback(func: extern "C" fn() -> Boolean);
-    fn I_DisplayFPSDots(dots_on: Boolean);
-    fn I_EnableLoadingDisk();
-
-    // From remaining C modules:
-    fn NetUpdate();
-    fn TryRunTics();
-    fn D_StartGameLoop();
-
-    // From ported modules (extern for clarity):
-    fn D_FindIWAD(mask: c_int, mission: *mut c_int) -> *mut c_char;
-    fn D_SaveGameIWADName(gamemission: c_int) -> *mut c_char;
-    fn Z_Init();
-    fn Z_Malloc(size: c_int, tag: c_int, ptr: *mut c_void) -> *mut c_void;
-    fn W_ParseCommandLine() -> Boolean;
-    static mut lumpinfo: *mut c_void;
-    static mut numlumps: c_uint;
-    fn W_AddFile(filename: *mut c_char) -> *mut c_void;
-    fn W_CheckNumForName(name: *const c_char) -> c_int;
-    fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void;
-    fn W_GenerateHashTable();
-    fn W_CheckCorrectIWAD(mission: c_int);
-    fn S_Init(sfxVolume: c_int, musicVolume: c_int);
-    fn S_StartMusic(music_id: c_int);
-    fn S_UpdateSounds(listener: *mut c_void);
-    fn V_Init();
-    fn V_DrawPatch(x: c_int, y: c_int, patch: *mut c_void);
-    fn V_DrawPatchDirect(x: c_int, y: c_int, patch: *mut c_void);
-    fn V_RestoreBuffer();
-    fn V_DrawMouseSpeedBox(speed: c_int);
-    fn D_PopEvent() -> *mut event_t;
-    fn F_Drawer();
-    fn wipe_StartScreen(x: c_int, y: c_int, width: c_int, height: c_int) -> c_int;
-    fn wipe_EndScreen(x: c_int, y: c_int, width: c_int, height: c_int) -> c_int;
-    fn wipe_ScreenWipe(
-        wipeno: c_int,
-        x: c_int,
-        y: c_int,
-        width: c_int,
-        height: c_int,
-        ticks: c_int,
-    ) -> c_int;
-    fn M_CheckParm(check: *const c_char) -> c_int;
-    fn M_CheckParmWithArgs(check: *const c_char, num_args: c_int) -> c_int;
-    fn M_LoadDefaults();
-    fn M_SetConfigDir(dir: *mut c_char);
-    fn M_BindVariable(name: *mut c_char, variable: *mut c_void);
-    fn M_SetConfigFilenames(main_config: *const c_char, extra_config: *const c_char);
-    fn M_GetSaveGameDir(iwadname: *const c_char) -> *mut c_char;
-    fn M_BindBaseControls();
-    fn M_BindWeaponControls();
-    fn M_BindMapControls();
-    fn M_BindMenuControls();
-    fn M_BindChatControls(num_players: c_uint);
-    fn M_ApplyPlatformDefaults();
-    fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean;
-    fn M_StringEndsWith(s: *const c_char, suffix: *const c_char) -> Boolean;
-    fn M_Responder(ev: *mut event_t) -> Boolean;
-    fn M_Drawer();
-    fn M_Init();
-    fn P_SaveGameFile(slot: c_int) -> *mut c_char;
-    fn HU_Init();
-    fn HU_Drawer();
-    fn HU_Erase();
-    static mut chat_macros: [*mut c_char; 10];
-    static mut key_multi_msgplayer: [c_int; 8];
-    fn WI_Drawer();
-    fn ST_Drawer(fullscreen: Boolean, refresh: Boolean);
-    fn ST_Init();
-    fn AM_Drawer();
-    fn P_Init();
-    fn R_RenderPlayerView(player: *mut c_void);
-    fn R_Init();
-    fn R_FillBackScreen();
-    fn R_DrawViewBorder();
-    fn StatDump();
-    fn D_ConnectNetGame();
-    fn D_CheckNetGame();
-    fn R_ExecuteSetViewSize();
 }
+
+// g_game.rs
+use crate::doom::g_game::{
+    deathmatch, demoplayback, demorecording, displayplayer, forwardmove, gameaction, gamestate,
+    netgame, nodrawers, paused, sidemove, singledemo, testcontrols, testcontrols_mousespeed,
+    usergame, vanilla_demo_limit, vanilla_savegame_limit, viewactive, G_BeginRecording,
+    G_CheckDemoStatus, G_DeferedPlayDemo, G_InitNew, G_LoadGame, G_RecordDemo, G_Responder,
+    G_TimeDemo, G_VanillaVersionCode,
+};
+
+// am_map.rs
+use crate::doom::am_map::{automapactive, AM_Drawer};
+
+// m_menu.rs
+use crate::doom::m_menu::{
+    detailLevel, inhelpscreens, menuactive, mouseSensitivity, screenblocks, showMessages,
+};
+
+// s_sound.rs
+use crate::doom::s_sound::{musicVolume, sfxVolume, snd_channels, S_Init, S_StartMusic, S_UpdateSounds};
+
+// r_main.rs
+use crate::doom::r_main::{setsizeneeded, R_ExecuteSetViewSize, R_Init, R_RenderPlayerView};
+
+// r_draw.rs
+use crate::doom::r_draw::{scaledviewwidth, viewheight, viewwindowx, viewwindowy, R_DrawViewBorder, R_FillBackScreen};
+
+// i_video.rs
+use crate::doom::i_video::{screenvisible, screensaver_mode};
+
+// w_wad.rs
+use crate::doom::w_wad::{
+    lumpinfo, numlumps, W_AddFile, W_CacheLumpName, W_CheckCorrectIWAD, W_CheckNumForName,
+    W_GenerateHashTable,
+};
+
+// hu_stuff.rs
+use crate::doom::hu_stuff::{chat_macros, HU_Drawer, HU_Erase, HU_Init};
+
+// m_controls.rs
+use crate::doom::m_controls::key_multi_msgplayer;
+
+// wi_stuff.rs
+use crate::doom::wi_stuff::WI_Drawer;
+
+// st_stuff.rs
+use crate::doom::st_stuff::{ST_Drawer, ST_Init};
+
+// p_setup.rs
+use crate::doom::p_setup::P_Init;
+
+// p_saveg.rs
+use crate::doom::p_saveg::P_SaveGameFile;
+
+// statdump.rs
+use crate::doom::statdump::StatDump;
+
+// d_net.rs
+use crate::doom::d_net::{D_CheckNetGame, D_ConnectNetGame};
+
+// d_event.rs
+use crate::doom::d_event::D_PopEvent;
+
+// d_loop.rs
+use crate::doom::d_loop::{gametic, D_StartGameLoop, NetUpdate, TryRunTics};
+
+// d_iwad.rs
+use crate::doom::d_iwad::{D_FindIWAD, D_SaveGameIWADName};
+
+// z_zone.rs
+use crate::doom::z_zone::{Z_Init, Z_Malloc};
+
+// w_main.rs
+use crate::doom::w_main::W_ParseCommandLine;
+
+// v_video.rs
+use crate::doom::v_video::{patch_t, V_DrawMouseSpeedBox, V_DrawPatch, V_DrawPatchDirect, V_Init, V_RestoreBuffer};
+
+// f_finale.rs
+use crate::doom::f_finale::F_Drawer;
+
+// f_wipe.rs
+use crate::doom::f_wipe::{wipe_EndScreen, wipe_ScreenWipe, wipe_StartScreen};
+
+// m_argv.rs
+use crate::doom::m_argv::{myargc, myargv, M_CheckParm, M_CheckParmWithArgs};
+
+// m_config.rs
+use crate::doom::m_config::{
+    M_BindVariable, M_GetSaveGameDir, M_LoadDefaults, M_SetConfigDir, M_SetConfigFilenames,
+};
+
+// m_controls.rs
+use crate::doom::m_controls::{
+    M_ApplyPlatformDefaults, M_BindBaseControls, M_BindChatControls, M_BindMapControls,
+    M_BindMenuControls, M_BindWeaponControls,
+};
+
+// m_misc.rs
+use crate::doom::m_misc::{M_StringCopy, M_StringEndsWith};
+
+// m_menu.rs
+use crate::doom::m_menu::{M_Drawer, M_Init, M_Responder};
+
+// i_timer.rs
+use crate::doom::i_timer::I_GetTime;
+
+// i_system.rs
+use crate::doom::i_system::{I_AtExit, I_PrintBanner, I_PrintDivider, I_PrintStartupBanner};
+
+// i_sound.rs
+use crate::doom::i_sound::{I_BindSoundVariables, I_InitMusic, I_InitSound};
+
+// i_video.rs
+use crate::doom::i_video::{
+    I_BindVideoVariables, I_CheckIsScreensaver, I_DisplayFPSDots, I_EnableLoadingDisk,
+    I_FinishUpdate, I_GraphicsCheckCommandLine, I_InitGraphics, I_SetGrabMouseCallback,
+    I_SetPalette, I_SetWindowTitle, I_UpdateNoBlit,
+};
+
+// i_timer.rs
+use crate::doom::i_timer::{I_InitTimer, I_Sleep};
+
+// i_joystick.rs
+use crate::doom::i_joystick::{I_BindJoystickVariables, I_InitJoystick};
+
+// i_endoom.rs
+use crate::doom::i_endoom::I_Endoom;
 
 // ---------------------------------------------------------------------------
 // Constants for lump name checks (IWAD detection)
@@ -587,9 +567,6 @@ pub extern "C" fn D_Display() {
 
         // Buffered drawing based on game state
         if gamestate == GS_LEVEL {
-            extern "C" {
-                static mut gametic: c_int;
-            }
             if gametic == 0 {
                 // Skip level rendering
             } else {
@@ -618,13 +595,10 @@ pub extern "C" fn D_Display() {
 
         // Draw the view directly
         if gamestate == GS_LEVEL && automapactive == 0 {
-            extern "C" {
-                static mut gametic: c_int;
-            }
             if gametic != 0 {
                 let dp = displayplayer as usize;
                 if dp < MAXPLAYERS {
-                    R_RenderPlayerView(std::ptr::addr_of_mut!(players[dp]) as *mut c_void);
+                    R_RenderPlayerView(std::ptr::addr_of_mut!(players[dp]));
                 }
                 HU_Drawer();
             }
@@ -633,7 +607,7 @@ pub extern "C" fn D_Display() {
         // Set palette on state change (non-level states)
         if gamestate != GS_LEVEL && gamestate != D_DISP_OLD_GAMESTATE {
             I_SetPalette(W_CacheLumpName(
-                DEH_String(b"PLAYPAL\0".as_ptr() as *const c_char),
+                DEH_String(b"PLAYPAL\0".as_ptr() as *const c_char) as *mut c_char,
                 PU_CACHE,
             ) as *mut byte);
         }
@@ -677,7 +651,8 @@ pub extern "C" fn D_Display() {
             V_DrawPatchDirect(
                 viewwindowx + (scaledviewwidth - 68) / 2,
                 y,
-                W_CacheLumpName(DEH_String(b"M_PAUSE\0".as_ptr() as *const c_char), PU_CACHE),
+                W_CacheLumpName(DEH_String(b"M_PAUSE\0".as_ptr() as *const c_char) as *mut c_char, PU_CACHE)
+                    as *mut patch_t,
             );
         }
 
@@ -837,10 +812,6 @@ extern "C" fn D_GrabMouseCallback() -> Boolean {
 #[no_mangle]
 pub extern "C" fn doomgeneric_Tick() {
     unsafe {
-        extern "C" {
-            static mut gametic: c_int;
-        }
-
         // Frame synchronous IO operations
         I_StartFrame();
 
@@ -853,7 +824,7 @@ pub extern "C" fn doomgeneric_Tick() {
         } else {
             std::ptr::null_mut()
         };
-        S_UpdateSounds(mo as *mut c_void);
+        S_UpdateSounds(mo as *mut crate::doom::s_sound::MobjStub);
 
         // Update display
         if screenvisible != 0 {
@@ -873,9 +844,6 @@ pub extern "C" fn D_DoomLoop() {
         if bfgedition != 0 {
             let is_recording = demorecording;
             let is_playdemo = gameaction == ga_playdemo;
-            extern "C" {
-                static mut netgame: c_int;
-            }
             if is_recording != 0 || is_playdemo || netgame != 0 {
                 eprintln!(
                     " WARNING: You are playing using one of the Doom Classic\n\
@@ -938,7 +906,7 @@ pub extern "C" fn D_PageTicker() {
 #[no_mangle]
 pub extern "C" fn D_PageDrawer() {
     unsafe {
-        V_DrawPatch(0, 0, W_CacheLumpName(pagename, PU_CACHE));
+        V_DrawPatch(0, 0, W_CacheLumpName(pagename, PU_CACHE) as *mut patch_t);
     }
 }
 
@@ -965,15 +933,8 @@ pub extern "C" fn D_DoAdvanceDemo() {
         paused = 0;
         gameaction = ga_nothing;
 
-        extern "C" {
-            static mut netgame: c_int;
-        }
-
         // Demo sequence: 7 for ultimate/final, 6 for others
         let max_seq = {
-            extern "C" {
-                static mut gameversion: c_int;
-            }
             if gameversion == d_mode::exe_ultimate || gameversion == d_mode::exe_final {
                 7
             } else {
@@ -981,10 +942,6 @@ pub extern "C" fn D_DoAdvanceDemo() {
             }
         };
         demosequence = (demosequence + 1) % max_seq;
-
-        extern "C" {
-            static mut gamemode: c_int;
-        }
 
         match demosequence {
             0 => {
@@ -1039,7 +996,7 @@ pub extern "C" fn D_DoAdvanceDemo() {
 
         // BFG Edition workaround: TITLEPIC missing, use INTERPIC
         if bfgedition != 0 && c_str_eq(pagename, b"TITLEPIC\0".as_ptr() as *const c_char) {
-            if W_CheckNumForName(b"titlepic\0".as_ptr() as *const c_char) < 0 {
+            if W_CheckNumForName(b"titlepic\0".as_ptr() as *mut c_char) < 0 {
                 pagename = b"INTERPIC\0".as_ptr() as *mut c_char;
             }
         }
@@ -1076,7 +1033,7 @@ unsafe fn GetGameName(gamename: *mut c_char) -> *mut c_char {
             let version = G_VanillaVersionCode();
             // Dynamic format string from DEH_String — cannot use c_write! (not a literal).
             extern "C" {
-                fn snprintf(s: *mut c_char, n: usize, format: *const c_char, ...) -> c_int;
+                fn snprintf(s: *mut c_char, n: usize, fmt: *const c_char, ...) -> c_int;
             }
             let result = snprintf(
                 expanded,
@@ -1147,11 +1104,6 @@ unsafe fn SetMissionForPackName(pack_name: *mut c_char) {
 #[no_mangle]
 pub extern "C" fn D_IdentifyVersion() {
     unsafe {
-        extern "C" {
-            static mut lumpinfo: *mut lumpinfo_t;
-            static mut numlumps: c_uint;
-        }
-
         if gamemission == d_mode::none {
             for i in 0..numlumps {
                 let name_ptr = (*lumpinfo.add(i as usize)).name.as_ptr();
@@ -1171,16 +1123,12 @@ pub extern "C" fn D_IdentifyVersion() {
         }
 
         // Make sure gamemode is set up correctly
-        extern "C" {
-            fn W_CheckNumForName(name: *const c_char) -> c_int;
-        }
-
         let logical_mission = logical_gamemission();
         if logical_mission == d_mode::doom {
             // Doom 1. But which version?
-            if W_CheckNumForName(b"E4M1\0".as_ptr() as *const c_char) > 0 {
+            if W_CheckNumForName(b"E4M1\0".as_ptr() as *mut c_char) > 0 {
                 gamemode = d_mode::retail;
-            } else if W_CheckNumForName(b"E3M1\0".as_ptr() as *const c_char) > 0 {
+            } else if W_CheckNumForName(b"E3M1\0".as_ptr() as *mut c_char) > 0 {
                 gamemode = d_mode::registered;
             } else {
                 gamemode = d_mode::shareware;
@@ -1190,12 +1138,8 @@ pub extern "C" fn D_IdentifyVersion() {
             gamemode = d_mode::commercial;
 
             // Manually override gamemission with -pack
-            let p = M_CheckParmWithArgs(b"-pack\0".as_ptr() as *const c_char, 1);
+            let p = M_CheckParmWithArgs(b"-pack\0".as_ptr() as *mut c_char, 1);
             if p > 0 {
-                extern "C" {
-                    static mut myargc: c_int;
-                    static mut myargv: *mut *mut c_char;
-                }
                 SetMissionForPackName(*myargv.add((p + 1) as usize));
             }
         }
@@ -1221,12 +1165,8 @@ unsafe fn logical_gamemission() -> c_int {
 #[no_mangle]
 pub extern "C" fn D_SetGameDescription() {
     unsafe {
-        extern "C" {
-            fn W_CheckNumForName(name: *const c_char) -> c_int;
-        }
-
-        let is_freedoom = W_CheckNumForName(b"FREEDOOM\0".as_ptr() as *const c_char) >= 0;
-        let is_freedm = W_CheckNumForName(b"FREEDM\0".as_ptr() as *const c_char) >= 0;
+        let is_freedoom = W_CheckNumForName(b"FREEDOOM\0".as_ptr() as *mut c_char) >= 0;
+        let is_freedm = W_CheckNumForName(b"FREEDM\0".as_ptr() as *mut c_char) >= 0;
 
         gamedescription = b"Unknown\0".as_ptr() as *mut c_char;
 
@@ -1323,13 +1263,9 @@ unsafe fn PrintDehackedBanners() {
 
 /// Initialize the game version.
 unsafe fn InitGameVersion() {
-    let p = M_CheckParmWithArgs(b"-gameversion\0".as_ptr() as *const c_char, 1);
+    let p = M_CheckParmWithArgs(b"-gameversion\0".as_ptr() as *mut c_char, 1);
 
     if p > 0 {
-        extern "C" {
-            static mut myargc: c_int;
-            static mut myargv: *mut *mut c_char;
-        }
         let arg = *myargv.add((p + 1) as usize);
 
         let mut found = false;
@@ -1426,20 +1362,17 @@ extern "C" fn D_Endoom() {
         // Only show it once the game has actually started.
         if show_endoom == 0
             || main_loop_started == 0
-            || M_CheckParm(b"-testcontrols\0".as_ptr() as *const c_char) > 0
+            || M_CheckParm(b"-testcontrols\0".as_ptr() as *mut c_char) > 0
         {
             return;
         }
 
-        extern "C" {
-            static mut screensaver_mode: c_int;
-        }
         if screensaver_mode != 0 {
             return;
         }
 
-        let endoom = W_CacheLumpName(DEH_String(b"ENDOOM\0".as_ptr() as *const c_char), PU_STATIC)
-            as *mut byte;
+        let endoom = W_CacheLumpName(DEH_String(b"ENDOOM\0".as_ptr() as *const c_char) as *mut c_char, PU_STATIC)
+            as *mut c_char;
         I_Endoom(endoom);
 
         exit(0);
@@ -1467,18 +1400,18 @@ pub extern "C" fn D_DoomMain() {
         Z_Init();
 
         // Check command-line flags
-        nomonsters = (M_CheckParm(b"-nomonsters\0".as_ptr() as *const c_char) != 0) as c_int;
-        respawnparm = (M_CheckParm(b"-respawn\0".as_ptr() as *const c_char) != 0) as c_int;
-        fastparm = (M_CheckParm(b"-fast\0".as_ptr() as *const c_char) != 0) as c_int;
-        devparm = (M_CheckParm(b"-devparm\0".as_ptr() as *const c_char) != 0) as c_int;
+        nomonsters = (M_CheckParm(b"-nomonsters\0".as_ptr() as *mut c_char) != 0) as c_int;
+        respawnparm = (M_CheckParm(b"-respawn\0".as_ptr() as *mut c_char) != 0) as c_int;
+        fastparm = (M_CheckParm(b"-fast\0".as_ptr() as *mut c_char) != 0) as c_int;
+        devparm = (M_CheckParm(b"-devparm\0".as_ptr() as *mut c_char) != 0) as c_int;
 
         I_DisplayFPSDots(Boolean::from(devparm != 0));
 
-        if M_CheckParm(b"-deathmatch\0".as_ptr() as *const c_char) != 0 {
+        if M_CheckParm(b"-deathmatch\0".as_ptr() as *mut c_char) != 0 {
             deathmatch = 1;
         }
 
-        if M_CheckParm(b"-altdeath\0".as_ptr() as *const c_char) != 0 {
+        if M_CheckParm(b"-altdeath\0".as_ptr() as *mut c_char) != 0 {
             deathmatch = 2;
         }
 
@@ -1490,17 +1423,9 @@ pub extern "C" fn D_DoomMain() {
         M_SetConfigDir(ptr::null_mut());
 
         // Turbo mode
-        let p = M_CheckParm(b"-turbo\0".as_ptr() as *const c_char);
+        let p = M_CheckParm(b"-turbo\0".as_ptr() as *mut c_char);
         if p > 0 {
             let mut scale: c_int = 200;
-            extern "C" {
-                static mut myargc: c_int;
-                static mut myargv: *mut *mut c_char;
-            }
-            extern "C" {
-                static mut forwardmove: [c_int; 2];
-                static mut sidemove: [c_int; 2];
-            }
 
             if p < myargc - 1 {
                 scale = atoi(*myargv.add((p + 1) as usize));
@@ -1527,8 +1452,8 @@ pub extern "C" fn D_DoomMain() {
         // Load configuration
         println!("M_LoadDefaults: Load system defaults.");
         M_SetConfigFilenames(
-            b"default.cfg\0".as_ptr() as *const c_char,
-            b"doom.cfg\0".as_ptr() as *const c_char,
+            b"default.cfg\0".as_ptr() as *mut c_char,
+            b"doom.cfg\0".as_ptr() as *mut c_char,
         );
         D_BindVariables();
         M_LoadDefaults();
@@ -1554,7 +1479,7 @@ pub extern "C" fn D_DoomMain() {
         InitGameVersion();
 
         // BFG Edition check
-        if W_CheckNumForName(b"dmenupic\0".as_ptr() as *const c_char) >= 0 {
+        if W_CheckNumForName(b"dmenupic\0".as_ptr() as *mut c_char) >= 0 {
             println!("BFG Edition: Using workarounds as needed.");
             bfgedition = 1;
 
@@ -1566,10 +1491,10 @@ pub extern "C" fn D_DoomMain() {
         modifiedgame = W_ParseCommandLine();
 
         // Check for -playdemo / -timedemo
-        let p = M_CheckParmWithArgs(b"-playdemo\0".as_ptr() as *const c_char, 1);
+        let p = M_CheckParmWithArgs(b"-playdemo\0".as_ptr() as *mut c_char, 1);
         let mut is_timedemo = false;
         let p = if p == 0 {
-            let tp = M_CheckParmWithArgs(b"-timedemo\0".as_ptr() as *const c_char, 1);
+            let tp = M_CheckParmWithArgs(b"-timedemo\0".as_ptr() as *mut c_char, 1);
             if tp > 0 {
                 is_timedemo = true;
             }
@@ -1579,9 +1504,6 @@ pub extern "C" fn D_DoomMain() {
         };
 
         if p > 0 {
-            extern "C" {
-                static mut myargv: *mut *mut c_char;
-            }
             let arg = *myargv.add((p + 1) as usize);
 
             // Copy demo name, handle .lmp extension
@@ -1594,10 +1516,6 @@ pub extern "C" fn D_DoomMain() {
 
             if D_AddFile(file.as_mut_ptr()) {
                 // Copy lump name from the last loaded lump
-                extern "C" {
-                    static mut lumpinfo: *mut lumpinfo_t;
-                    static mut numlumps: c_uint;
-                }
                 let name = (*lumpinfo.add(numlumps as usize - 1)).name;
                 std::ptr::copy_nonoverlapping(name.as_ptr(), demolumpname.as_mut_ptr(), 8);
                 demolumpname[8] = 0;
@@ -1621,20 +1539,14 @@ pub extern "C" fn D_DoomMain() {
 
         // Check for -file in shareware
         if modifiedgame.is_truthy() {
-            extern "C" {
-                static mut gamemode: c_int;
-            }
             if gamemode == d_mode::shareware {
                 i_error!("\nYou cannot -file with the shareware version. Register!");
             }
 
             // Check for fake IWAD
             if gamemode == d_mode::registered {
-                extern "C" {
-                    fn W_CheckNumForName(name: *const c_char) -> c_int;
-                }
                 for i in 0..23 {
-                    if W_CheckNumForName(IWAD_CHECK_NAMES[i].0) < 0 {
+                    if W_CheckNumForName(IWAD_CHECK_NAMES[i].0 as *mut c_char) < 0 {
                         i_error!("\nThis is not the registered version.");
                     }
                 }
@@ -1642,8 +1554,8 @@ pub extern "C" fn D_DoomMain() {
         }
 
         // Warning about modified sprites
-        if W_CheckNumForName(b"SS_START\0".as_ptr() as *const c_char) >= 0
-            || W_CheckNumForName(b"FF_END\0".as_ptr() as *const c_char) >= 0
+        if W_CheckNumForName(b"SS_START\0".as_ptr() as *mut c_char) >= 0
+            || W_CheckNumForName(b"FF_END\0".as_ptr() as *mut c_char) >= 0
         {
             println!(
                 " WARNING: The loaded WAD file contains modified sprites or\n\
@@ -1657,8 +1569,8 @@ pub extern "C" fn D_DoomMain() {
         PrintDehackedBanners();
 
         // Freedoom warning
-        if W_CheckNumForName(b"FREEDOOM\0".as_ptr() as *const c_char) >= 0
-            && W_CheckNumForName(b"FREEDM\0".as_ptr() as *const c_char) < 0
+        if W_CheckNumForName(b"FREEDOOM\0".as_ptr() as *mut c_char) >= 0
+            && W_CheckNumForName(b"FREEDM\0".as_ptr() as *mut c_char) < 0
         {
             println!(
                 " WARNING: You are playing using one of the Freedoom IWAD\n\
@@ -1687,21 +1599,15 @@ pub extern "C" fn D_DoomMain() {
         autostart = 0;
 
         // -skill
-        let p = M_CheckParmWithArgs(b"-skill\0".as_ptr() as *const c_char, 1);
+        let p = M_CheckParmWithArgs(b"-skill\0".as_ptr() as *mut c_char, 1);
         if p > 0 {
-            extern "C" {
-                static mut myargv: *mut *mut c_char;
-            }
             startskill = *(*myargv.add((p + 1) as usize) as *const u8) as c_int - '1' as i32;
             autostart = 1;
         }
 
         // -episode
-        let p = M_CheckParmWithArgs(b"-episode\0".as_ptr() as *const c_char, 1);
+        let p = M_CheckParmWithArgs(b"-episode\0".as_ptr() as *mut c_char, 1);
         if p > 0 {
-            extern "C" {
-                static mut myargv: *mut *mut c_char;
-            }
             startepisode = *(*myargv.add((p + 1) as usize) as *const u8) as c_int - '0' as i32;
             startmap = 1;
             autostart = 1;
@@ -1710,30 +1616,19 @@ pub extern "C" fn D_DoomMain() {
         let mut timelimit: c_int = 0;
 
         // -timer
-        let p = M_CheckParmWithArgs(b"-timer\0".as_ptr() as *const c_char, 1);
+        let p = M_CheckParmWithArgs(b"-timer\0".as_ptr() as *mut c_char, 1);
         if p > 0 {
-            extern "C" {
-                static mut myargv: *mut *mut c_char;
-            }
             timelimit = atoi(*myargv.add((p + 1) as usize));
         }
 
         // -avg
-        if M_CheckParm(b"-avg\0".as_ptr() as *const c_char) != 0 {
+        if M_CheckParm(b"-avg\0".as_ptr() as *mut c_char) != 0 {
             timelimit = 20;
         }
 
         // -warp
-        let p = M_CheckParmWithArgs(b"-warp\0".as_ptr() as *const c_char, 1);
+        let p = M_CheckParmWithArgs(b"-warp\0".as_ptr() as *mut c_char, 1);
         if p > 0 {
-            extern "C" {
-                static mut myargv: *mut *mut c_char;
-                static mut myargc: c_int;
-            }
-            extern "C" {
-                static mut gamemode: c_int;
-            }
-
             if gamemode == d_mode::commercial {
                 startmap = atoi(*myargv.add((p + 1) as usize));
             } else {
@@ -1748,7 +1643,7 @@ pub extern "C" fn D_DoomMain() {
         }
 
         // -testcontrols
-        if M_CheckParm(b"-testcontrols\0".as_ptr() as *const c_char) > 0 {
+        if M_CheckParm(b"-testcontrols\0".as_ptr() as *mut c_char) > 0 {
             startepisode = 1;
             startmap = 1;
             autostart = 1;
@@ -1756,11 +1651,8 @@ pub extern "C" fn D_DoomMain() {
         }
 
         // -loadgame
-        let p = M_CheckParmWithArgs(b"-loadgame\0".as_ptr() as *const c_char, 1);
+        let p = M_CheckParmWithArgs(b"-loadgame\0".as_ptr() as *mut c_char, 1);
         if p > 0 {
-            extern "C" {
-                static mut myargv: *mut *mut c_char;
-            }
             startloadgame = atoi(*myargv.add((p + 1) as usize));
         } else {
             startloadgame = -1;
@@ -1793,28 +1685,25 @@ pub extern "C" fn D_DoomMain() {
 
         // Store demo check
         if gamemode == d_mode::commercial
-            && W_CheckNumForName(b"map01\0".as_ptr() as *const c_char) < 0
+            && W_CheckNumForName(b"map01\0".as_ptr() as *mut c_char) < 0
         {
             storedemo = 1;
         }
 
         // -statdump
-        if M_CheckParmWithArgs(b"-statdump\0".as_ptr() as *const c_char, 1) > 0 {
+        if M_CheckParmWithArgs(b"-statdump\0".as_ptr() as *mut c_char, 1) > 0 {
             println!("External statistics registered.");
         }
 
         // -record
-        let p = M_CheckParmWithArgs(b"-record\0".as_ptr() as *const c_char, 1);
+        let p = M_CheckParmWithArgs(b"-record\0".as_ptr() as *mut c_char, 1);
         if p > 0 {
-            extern "C" {
-                static mut myargv: *mut *mut c_char;
-            }
             G_RecordDemo(*myargv.add((p + 1) as usize));
             autostart = 1;
         }
 
         // -playdemo
-        let p = M_CheckParmWithArgs(b"-playdemo\0".as_ptr() as *const c_char, 1);
+        let p = M_CheckParmWithArgs(b"-playdemo\0".as_ptr() as *mut c_char, 1);
         if p > 0 {
             singledemo = 1;
             G_DeferedPlayDemo(demolumpname.as_ptr());
@@ -1823,7 +1712,7 @@ pub extern "C" fn D_DoomMain() {
         }
 
         // -timedemo
-        let p = M_CheckParmWithArgs(b"-timedemo\0".as_ptr() as *const c_char, 1);
+        let p = M_CheckParmWithArgs(b"-timedemo\0".as_ptr() as *mut c_char, 1);
         if p > 0 {
             G_TimeDemo(demolumpname.as_mut_ptr());
             D_DoomLoop();
@@ -1837,9 +1726,6 @@ pub extern "C" fn D_DoomMain() {
         }
 
         // Start new game or title screen
-        extern "C" {
-            static mut netgame: c_int;
-        }
         if gameaction != ga_loadgame {
             if autostart != 0 || netgame != 0 {
                 G_InitNew(startskill, startepisode, startmap);
