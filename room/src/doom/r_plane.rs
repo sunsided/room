@@ -201,62 +201,21 @@ pub static mut cachedxstep: [fixed_t; SCREENHEIGHT] = [0; SCREENHEIGHT];
 pub static mut cachedystep: [fixed_t; SCREENHEIGHT] = [0; SCREENHEIGHT];
 
 // ---------------------------------------------------------------------------
-// Extern C symbols from other modules
+// Imports from other modules
 // ---------------------------------------------------------------------------
 
-// From r_draw.h
-extern "C" {
-    static mut ds_y: c_int;
-    static mut ds_x1: c_int;
-    static mut ds_x2: c_int;
-    static mut ds_colormap: *const lighttable_t;
-    static mut ds_xfrac: fixed_t;
-    static mut ds_yfrac: fixed_t;
-    static mut ds_xstep: fixed_t;
-    static mut ds_ystep: fixed_t;
-    static mut ds_source: *const c_uchar;
-
-    static mut dc_x: c_int;
-    static mut dc_yl: c_int;
-    static mut dc_yh: c_int;
-    static mut dc_iscale: fixed_t;
-    static mut dc_texturemid: fixed_t;
-    static mut dc_source: *const c_uchar;
-    static mut dc_colormap: *const lighttable_t;
-
-    static mut colfunc: Option<unsafe extern "C" fn()>;
-    static mut spanfunc: Option<unsafe extern "C" fn()>;
-
-    fn R_GetColumn(tex: c_int, col: c_int) -> *const c_uchar;
-}
-
-// From r_main.h / r_state.h
-extern "C" {
-    static mut viewwidth: c_int;
-    static mut viewheight: c_int;
-    static mut viewx: fixed_t;
-    static mut viewy: fixed_t;
-    static mut viewz: fixed_t;
-    static mut viewangle: angle_t;
-    static mut centerxfrac: fixed_t;
-    static mut fixedcolormap: *const lighttable_t;
-    static mut colormaps: *const lighttable_t;
-    static mut zlight: [[*const lighttable_t; MAXLIGHTZ]; LIGHTLEVELS];
-    static mut extralight: c_int;
-    static mut detailshift: c_int;
-    static mut xtoviewangle: [angle_t; SCREENWIDTH + 1];
-
-    static mut drawsegs: *const c_void; // drawseg_t array, opaque here
-    static mut ds_p: *const c_void;
-
-    static mut firstflat: c_int;
-    static mut flattranslation: *const c_int;
-
-    fn W_CacheLumpNum(lumpnum: c_int, tag: c_int) -> *const c_void;
-    fn W_ReleaseLumpNum(lumpnum: c_int);
-
-    fn I_Error(format: *const i8, ...);
-}
+use crate::doom::r_data::{colormaps, firstflat, flattranslation, R_GetColumn};
+use crate::doom::r_draw::{
+    dc_colormap, dc_iscale, dc_source, dc_texturemid, dc_x, dc_yh, dc_yl, ds_colormap, ds_source,
+    ds_x1, ds_x2, ds_xfrac, ds_xstep, ds_y, ds_yfrac, ds_ystep, viewheight, viewwidth,
+};
+use crate::doom::r_main::{
+    colfunc, centerxfrac, detailshift, extralight, fixedcolormap, spanfunc, viewangle, viewx,
+    viewy, viewz, xtoviewangle, zlight,
+};
+use crate::doom::r_sky::{skytexture, skytexturemid};
+use crate::doom::r_things::pspriteiscale;
+use crate::doom::w_wad::{W_CacheLumpNum, W_ReleaseLumpNum};
 
 // ---------------------------------------------------------------------------
 // R_InitPlanes — called once at game startup
@@ -313,7 +272,7 @@ pub extern "C" fn R_MapPlane(y: c_int, x1: c_int, x2: c_int) {
             if index >= MAXLIGHTZ {
                 index = MAXLIGHTZ - 1;
             }
-            ds_colormap = *planezlight.add(index);
+            ds_colormap = *planezlight.add(index) as *mut u8;
         }
 
         ds_y = y;
@@ -512,13 +471,6 @@ use crate::doom::z_zone::PU_STATIC;
 #[no_mangle]
 pub extern "C" fn R_DrawPlanes() {
     unsafe {
-        // Sky constants (local to match C)
-        extern "C" {
-            static mut skytexture: c_int;
-            static mut skytexturemid: fixed_t;
-            static mut pspriteiscale: fixed_t;
-        }
-
         let mut pl = visplanes.as_mut_ptr();
         let end = lastvisplane;
 
@@ -559,7 +511,7 @@ pub extern "C" fn R_DrawPlanes() {
             // Regular flat
             let flat_idx = *flattranslation.offset((*pl).picnum as isize);
             let lumpnum = firstflat + flat_idx;
-            ds_source = W_CacheLumpNum(lumpnum, PU_STATIC) as *const c_uchar;
+            ds_source = W_CacheLumpNum(lumpnum, PU_STATIC) as *mut u8;
 
             planeheight = ((*pl).height.wrapping_sub(viewz)).abs();
             let mut light = ((*pl).lightlevel >> LIGHTSEGSHIFT) as c_int + extralight;
@@ -575,7 +527,7 @@ pub extern "C" fn R_DrawPlanes() {
             // a pointer into zlight[light]
             let light_usize = light as usize;
             if light_usize < LIGHTLEVELS {
-                planezlight = zlight[light_usize].as_ptr();
+                planezlight = zlight[light_usize].as_ptr() as *const *const lighttable_t;
             }
 
             // Set sentinel values at the visplane boundaries. The C code does
