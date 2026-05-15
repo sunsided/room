@@ -975,6 +975,19 @@ unsafe fn saveg_write_glow_t(str: *const glow_t) {
 }
 
 // ---------------------------------------------------------------------------
+// Save filename helpers
+// ---------------------------------------------------------------------------
+
+fn fill_save_filename(buf: &mut [u8], dir: &str, slot: c_int) -> usize {
+    let full = format!("{}{}{}.dsg\0", dir, SAVEGAMENAME, slot);
+    let bytes = full.as_bytes();
+    let len = std::cmp::min(bytes.len(), buf.len() - 1);
+    buf[..len].copy_from_slice(&bytes[..len]);
+    buf[len] = 0;
+    len
+}
+
+// ---------------------------------------------------------------------------
 // Static filename buffers
 // ---------------------------------------------------------------------------
 
@@ -1003,20 +1016,18 @@ pub unsafe extern "C" fn P_TempSaveGameFile() -> *mut c_char {
 
 #[no_mangle]
 pub unsafe extern "C" fn P_SaveGameFile(slot: c_int) -> *mut c_char {
+    let dir_len = std::ffi::CStr::from_ptr(savegamedir).to_bytes().len();
+    let alloc_size = dir_len + 32;
+
     if SAVE_FILENAME.is_null() {
-        let dir_len = std::ffi::CStr::from_ptr(savegamedir).to_bytes().len();
-        let alloc_size = dir_len + 32;
         SAVE_FILENAME =
             std::alloc::alloc(std::alloc::Layout::from_size_align(alloc_size, 1).unwrap())
                 as *mut c_char;
     }
 
     let dir_str = std::ffi::CStr::from_ptr(savegamedir).to_str().unwrap();
-    let full = format!("{}{}{}.dsg\0", dir_str, SAVEGAMENAME, slot);
-    let bytes = full.as_bytes();
-    let len = std::cmp::min(bytes.len(), 31);
-    std::ptr::copy_nonoverlapping(bytes.as_ptr(), SAVE_FILENAME as *mut u8, len);
-    *SAVE_FILENAME.add(len) = 0;
+    let buf = std::slice::from_raw_parts_mut(SAVE_FILENAME as *mut u8, alloc_size);
+    fill_save_filename(buf, dir_str, slot);
 
     SAVE_FILENAME
 }
@@ -1735,5 +1746,23 @@ mod tests {
                 "zero function pointer in mobj thinker must deserialize as None, not Some(NULL)"
             );
         }
+    }
+
+    #[test]
+    fn save_game_path_not_truncated_for_long_directory() {
+        let long_dir = "/very/long/savegame/directory/path/"; // 35 chars — forces path > 31 chars
+        let slot = 3i32;
+        let alloc_size = long_dir.len() + 32;
+        let mut buf = vec![0u8; alloc_size];
+        fill_save_filename(&mut buf, long_dir, slot);
+        let result = std::ffi::CStr::from_bytes_until_nul(&buf)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        let expected = format!("{}{}3.dsg", long_dir, SAVEGAMENAME);
+        assert_eq!(
+            result, expected,
+            "save path was truncated for long directory"
+        );
     }
 }
