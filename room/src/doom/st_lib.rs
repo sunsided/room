@@ -68,28 +68,16 @@ pub struct st_binicon_t {
 #[no_mangle]
 pub static mut sttminus: *mut patch_t = std::ptr::null_mut();
 
-extern "C" {
-    fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void;
-    fn V_CopyRect(
-        srcx: c_int,
-        srcy: c_int,
-        srcscr: *mut u8,
-        width: c_int,
-        height: c_int,
-        destx: c_int,
-        desty: c_int,
-    );
-    fn V_DrawPatch(x: c_int, y: c_int, patch: *mut patch_t);
-    static mut st_backing_screen: *mut u8;
-    static mut automapactive: c_int;
-}
+use crate::doom::w_wad::W_CacheLumpName;
+use crate::doom::v_video::{V_CopyRect, V_DrawPatch};
+use crate::doom::st_stuff::st_backing_screen;
 
 #[no_mangle]
 pub extern "C" fn STlib_init() {
     unsafe {
         // DEH_String("STTMINUS") is identity — just pass the string.
         sttminus =
-            W_CacheLumpName(b"STTMINUS\0".as_ptr() as *const c_char, PU_STATIC) as *mut patch_t;
+            W_CacheLumpName(b"STTMINUS\0".as_ptr() as *mut c_char, PU_STATIC) as *mut patch_t;
     }
 }
 
