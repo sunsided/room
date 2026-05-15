@@ -344,19 +344,17 @@ pub static mut buttonlist: [button_t; MAXBUTTONS] = [button_t {
 // External declarations (unported C functions)
 // ---------------------------------------------------------------------------
 
-extern "C" {
-    fn R_TextureNumForName(name: *mut c_char) -> c_int;
-    fn S_StartSound(origin: *mut c_void, sfxid: c_int);
-    fn EV_VerticalDoor(line: *mut line_t, thing: *mut c_void);
-    fn EV_DoDoor(line: *mut line_t, dtype: c_int) -> c_int;
-    fn EV_DoLockedDoor(line: *mut line_t, dtype: c_int, thing: *mut c_void) -> c_int;
-    fn G_ExitLevel();
-    fn G_SecretExitLevel();
-    fn EV_DoDonut(line: *mut line_t) -> c_int;
+use crate::doom::doomstat::gamemode;
+use crate::doom::g_game::{G_ExitLevel, G_SecretExitLevel};
+use crate::doom::p_doors::{EV_DoDoor, EV_DoLockedDoor, EV_VerticalDoor};
+use crate::doom::p_setup::sides;
+use crate::doom::p_spec::EV_DoDonut;
+use crate::doom::r_data::R_TextureNumForName;
+use crate::doom::s_sound::S_StartSound;
 
-    static mut gamemode: c_int;
-    static mut sides: *mut side_t;
-}
+// Type aliases for cross-module pointer casts (all #[repr(C)] identical layouts).
+type CffiLine = crate::doom::c_ffi::line_t;
+type CffiMobj = crate::doom::c_ffi::mobj_t;
 
 // ---------------------------------------------------------------------------
 // P_InitSwitchList
@@ -503,7 +501,7 @@ pub unsafe extern "C" fn P_UseSpecialLine(
     match (*line).special {
         // MANUALS
         1 | 26 | 27 | 28 | 31 | 32 | 33 | 34 | 117 | 118 => {
-            EV_VerticalDoor(line, thing);
+            EV_VerticalDoor(line, thing as *mut CffiMobj);
         }
 
         // SWITCHES
@@ -513,7 +511,7 @@ pub unsafe extern "C" fn P_UseSpecialLine(
             }
         }
         9 => {
-            if EV_DoDonut(line) != 0 {
+            if EV_DoDonut(line as *mut CffiLine) != 0 {
                 P_ChangeSwitchTexture(line, 0);
             }
         }
@@ -631,7 +629,7 @@ pub unsafe extern "C" fn P_UseSpecialLine(
             }
         }
         133 | 135 | 137 => {
-            if EV_DoLockedDoor(line, vld_blazeOpen, thing) != 0 {
+            if EV_DoLockedDoor(line, vld_blazeOpen, thing as *mut CffiMobj) != 0 {
                 P_ChangeSwitchTexture(line, 0);
             }
         }
@@ -738,7 +736,7 @@ pub unsafe extern "C" fn P_UseSpecialLine(
             }
         }
         99 | 134 | 136 => {
-            if EV_DoLockedDoor(line, vld_blazeOpen, thing) != 0 {
+            if EV_DoLockedDoor(line, vld_blazeOpen, thing as *mut CffiMobj) != 0 {
                 P_ChangeSwitchTexture(line, 1);
             }
         }
