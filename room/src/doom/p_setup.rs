@@ -248,67 +248,22 @@ pub static mut playerstarts: [mapthing_t; MAXPLAYERS] = [mapthing_t {
 // Extern declarations for still-unported C modules
 // ---------------------------------------------------------------------------
 
-extern "C" {
-    fn W_LumpLength(lump: c_int) -> c_int;
-    fn W_CacheLumpNum(lumpnum: c_int, tag: c_int) -> *mut c_void;
-    fn W_ReleaseLumpNum(lumpnum: c_int);
-    fn W_ReadLump(lump: c_int, dest: *mut c_void);
-    fn W_GetNumForName(name: *mut c_char) -> c_int;
-
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn Z_FreeTags(lowtag: c_int, hightag: c_int);
-
-    fn R_FlatNumForName(name: *mut c_char) -> c_int;
-    fn R_TextureNumForName(name: *mut c_char) -> c_int;
-    fn R_PrecacheLevel();
-
-    fn P_SpawnMapThing(mthing: *mut mapthing_t);
-    fn S_Start();
-    fn G_DeathMatchSpawnPlayer(playernum: c_int);
-    fn P_SpawnSpecials();
-    fn P_InitSwitchList();
-    fn P_InitPicAnims();
-    fn R_InitSprites(sprnames: *mut *mut c_char);
-
-    fn I_GetMemoryValue(offset: c_uint, dest: *mut c_void, size: c_int);
-    fn M_CheckParm(check: *const c_char) -> c_int;
-
-    fn FixedDiv(a: c_int, b: c_int) -> c_int;
-
-    static mut gamemode: c_int;
-    static mut deathmatch: c_int;
-    static mut playeringame: [c_int; MAXPLAYERS];
-
-    static mut totalkills: c_int;
-    static mut totalitems: c_int;
-    static mut totalsecret: c_int;
-
-    static mut precache: c_int;
-    static mut bodyqueslot: c_int;
-    static mut iquehead: c_int;
-    static mut iquetail: c_int;
-
-    static mut wminfo: wbstartstruct_t;
-}
-
-// ---------------------------------------------------------------------------
-// wbstartstruct_t — only the fields we touch from p_setup.c
-// ---------------------------------------------------------------------------
-
-#[repr(C)]
-struct wbstartstruct_t {
-    epsd: c_int,
-    didsecret: c_int,
-    last: c_int,
-    next: c_int,
-    maxkills: c_int,
-    maxitems: c_int,
-    maxsecret: c_int,
-    maxfrags: c_int,
-    partime: c_int,
-    pnum: c_int,
-    // plyr omitted — not accessed from p_setup.c
-}
+use crate::doom::doomstat::gamemode;
+use crate::doom::g_game::{
+    bodyqueslot, deathmatch, playeringame, precache, totalkills, totalitems, totalsecret, wminfo,
+    G_DeathMatchSpawnPlayer,
+};
+use crate::doom::i_system::I_GetMemoryValue;
+use crate::doom::m_argv::M_CheckParm;
+use crate::doom::m_fixed::FixedDiv;
+use crate::doom::p_mobj::{iquehead, iquetail, P_SpawnMapThing};
+use crate::doom::p_spec::{P_InitPicAnims, P_SpawnSpecials};
+use crate::doom::p_switch::P_InitSwitchList;
+use crate::doom::r_data::{R_FlatNumForName, R_PrecacheLevel, R_TextureNumForName};
+use crate::doom::r_things::R_InitSprites;
+use crate::doom::s_sound::S_Start;
+use crate::doom::w_wad::{W_CacheLumpNum, W_GetNumForName, W_LumpLength, W_ReadLump, W_ReleaseLumpNum};
+use crate::doom::z_zone::{Z_FreeTags, Z_Malloc};
 
 // ---------------------------------------------------------------------------
 // GetSectorAtNullAddress
@@ -345,7 +300,7 @@ pub extern "C" fn GetSectorAtNullAddress() -> *mut sector_t {
 #[no_mangle]
 pub extern "C" fn P_LoadVertexes(lump: c_int) {
     unsafe {
-        numvertexes = W_LumpLength(lump) / std::mem::size_of::<mapvertex_t>() as c_int;
+        numvertexes = W_LumpLength(lump as c_uint) / std::mem::size_of::<mapvertex_t>() as c_int;
         vertexes = Z_Malloc(
             numvertexes * std::mem::size_of::<vertex_t>() as c_int,
             PU_LEVEL,
@@ -374,7 +329,7 @@ pub extern "C" fn P_LoadVertexes(lump: c_int) {
 #[no_mangle]
 pub extern "C" fn P_LoadSegs(lump: c_int) {
     unsafe {
-        numsegs = W_LumpLength(lump) / std::mem::size_of::<mapseg_t>() as c_int;
+        numsegs = W_LumpLength(lump as c_uint) / std::mem::size_of::<mapseg_t>() as c_int;
         segs = Z_Malloc(
             numsegs * std::mem::size_of::<seg_t>() as c_int,
             PU_LEVEL,
@@ -424,7 +379,7 @@ pub extern "C" fn P_LoadSegs(lump: c_int) {
 #[no_mangle]
 pub extern "C" fn P_LoadSubsectors(lump: c_int) {
     unsafe {
-        numsubsectors = W_LumpLength(lump) / std::mem::size_of::<mapsubsector_t>() as c_int;
+        numsubsectors = W_LumpLength(lump as c_uint) / std::mem::size_of::<mapsubsector_t>() as c_int;
         subsectors = Z_Malloc(
             numsubsectors * std::mem::size_of::<subsector_t>() as c_int,
             PU_LEVEL,
@@ -454,7 +409,7 @@ pub extern "C" fn P_LoadSubsectors(lump: c_int) {
 #[no_mangle]
 pub extern "C" fn P_LoadSectors(lump: c_int) {
     unsafe {
-        numsectors = W_LumpLength(lump) / std::mem::size_of::<mapsector_t>() as c_int;
+        numsectors = W_LumpLength(lump as c_uint) / std::mem::size_of::<mapsector_t>() as c_int;
         sectors = Z_Malloc(
             numsectors * std::mem::size_of::<sector_t>() as c_int,
             PU_LEVEL,
@@ -491,7 +446,7 @@ pub extern "C" fn P_LoadSectors(lump: c_int) {
 #[no_mangle]
 pub extern "C" fn P_LoadNodes(lump: c_int) {
     unsafe {
-        numnodes = W_LumpLength(lump) / std::mem::size_of::<mapnode_t>() as c_int;
+        numnodes = W_LumpLength(lump as c_uint) / std::mem::size_of::<mapnode_t>() as c_int;
         nodes = Z_Malloc(
             numnodes * std::mem::size_of::<node_t>() as c_int,
             PU_LEVEL,
@@ -529,7 +484,7 @@ pub extern "C" fn P_LoadNodes(lump: c_int) {
 pub extern "C" fn P_LoadThings(lump: c_int) {
     unsafe {
         let data = W_CacheLumpNum(lump, PU_STATIC);
-        let numthings = W_LumpLength(lump) / std::mem::size_of::<mapthing_t>() as c_int;
+        let numthings = W_LumpLength(lump as c_uint) / std::mem::size_of::<mapthing_t>() as c_int;
         let mut mt = data as *mut mapthing_t;
 
         for _ in 0..numthings {
@@ -556,7 +511,7 @@ pub extern "C" fn P_LoadThings(lump: c_int) {
                 r#type: SHORT((*mt).r#type),
                 options: SHORT((*mt).options),
             };
-            P_SpawnMapThing(&mut spawnthing);
+            P_SpawnMapThing(&mut spawnthing as *mut mapthing_t as *mut crate::doom::p_telept::mapthing_t);
             mt = mt.add(1);
         }
 
@@ -571,7 +526,7 @@ pub extern "C" fn P_LoadThings(lump: c_int) {
 #[no_mangle]
 pub extern "C" fn P_LoadLineDefs(lump: c_int) {
     unsafe {
-        numlines = W_LumpLength(lump) / std::mem::size_of::<maplinedef_t>() as c_int;
+        numlines = W_LumpLength(lump as c_uint) / std::mem::size_of::<maplinedef_t>() as c_int;
         lines = Z_Malloc(
             numlines * std::mem::size_of::<line_t>() as c_int,
             PU_LEVEL,
@@ -660,7 +615,7 @@ pub extern "C" fn P_LoadLineDefs(lump: c_int) {
 #[no_mangle]
 pub extern "C" fn P_LoadSideDefs(lump: c_int) {
     unsafe {
-        numsides = W_LumpLength(lump) / std::mem::size_of::<mapsidedef_t>() as c_int;
+        numsides = W_LumpLength(lump as c_uint) / std::mem::size_of::<mapsidedef_t>() as c_int;
         sides = Z_Malloc(
             numsides * std::mem::size_of::<side_t>() as c_int,
             PU_LEVEL,
@@ -697,11 +652,11 @@ pub extern "C" fn P_LoadSideDefs(lump: c_int) {
 #[no_mangle]
 pub extern "C" fn P_LoadBlockMap(lump: c_int) {
     unsafe {
-        let lumplen = W_LumpLength(lump);
+        let lumplen = W_LumpLength(lump as c_uint);
         let count = lumplen / 2;
 
         blockmaplump = Z_Malloc(lumplen, PU_LEVEL, ptr::null_mut()) as *mut c_short;
-        W_ReadLump(lump, blockmaplump as *mut c_void);
+        W_ReadLump(lump as c_uint, blockmaplump as *mut c_void);
         blockmap = blockmaplump.add(4);
 
         // Swap all short integers to native byte ordering.
@@ -862,7 +817,7 @@ unsafe fn PadRejectArray(array: *mut u8, len: usize) {
             std::mem::size_of_val(&rejectpad)
         );
 
-        let padvalue = if M_CheckParm(c"-reject_pad_with_ff".as_ptr()) != 0 {
+        let padvalue = if M_CheckParm(c"-reject_pad_with_ff".as_ptr() as *mut c_char) != 0 {
             0xff
         } else {
             0xf00
@@ -883,7 +838,7 @@ unsafe fn PadRejectArray(array: *mut u8, len: usize) {
 
 unsafe fn P_LoadReject(lumpnum: c_int) {
     let minlength = (numsectors * numsectors + 7) / 8;
-    let lumplen = W_LumpLength(lumpnum);
+    let lumplen = W_LumpLength(lumpnum as c_uint);
 
     if lumplen >= minlength {
         rejectmatrix = W_CacheLumpNum(lumpnum, PU_LEVEL) as *mut u8;
@@ -893,7 +848,7 @@ unsafe fn P_LoadReject(lumpnum: c_int) {
             PU_LEVEL,
             &mut rejectmatrix as *mut *mut u8 as *mut c_void,
         ) as *mut u8;
-        W_ReadLump(lumpnum, rejectmatrix as *mut c_void);
+        W_ReadLump(lumpnum as c_uint, rejectmatrix as *mut c_void);
         PadRejectArray(
             rejectmatrix.add(lumplen as usize),
             (minlength - lumplen) as usize,
