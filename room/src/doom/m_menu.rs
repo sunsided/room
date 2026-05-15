@@ -122,13 +122,10 @@ extern "C" {
     fn toupper(c: c_int) -> c_int;
     fn strlen(s: *const c_char) -> usize;
     fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int;
-    // doom1_endmsg/doom2_endmsg are exported with #[no_mangle] from dstrings.rs, but
-    // their element type (Ptr) is private; keep them via C linkage to avoid exposing it.
-    static mut doom1_endmsg: [*const c_char; 8];
-    static mut doom2_endmsg: [*const c_char; 8];
 }
 
 use crate::doom::am_map::automapactive;
+use crate::doom::dstrings::{doom1_endmsg, doom2_endmsg};
 use crate::doom::d_loop::gametic;
 use crate::doom::d_main::{devparm, D_StartTitle};
 use crate::doom::g_game::{
@@ -1039,9 +1036,9 @@ extern "C" fn M_QuitResponse(key: c_int) {
 fn M_SelectEndMessage() -> *const c_char {
     unsafe {
         if logical_gamemission() == d_mode::doom {
-            doom1_endmsg[(gametic as usize) & 7]
+            doom1_endmsg[(gametic as usize) & 7].0
         } else {
-            doom2_endmsg[(gametic as usize) & 7]
+            doom2_endmsg[(gametic as usize) & 7].0
         }
     }
 }

@@ -5,7 +5,7 @@ use std::ffi::{c_char, c_int, c_long, c_void, CStr};
 use crate::i_error;
 use crate::types::Boolean;
 
-enum FILE {}
+pub enum FILE {}
 
 const DIR_SEPARATOR: c_char = b'/' as c_char;
 const DIR_SEPARATOR_S: &[u8] = b"/\0";

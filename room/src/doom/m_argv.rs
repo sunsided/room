@@ -26,9 +26,7 @@ extern "C" {
     fn printf(format: *const c_char, ...) -> c_int;
 }
 
-extern "C" {
-    fn M_FileLength(handle: *mut c_void) -> c_long;
-}
+use crate::doom::m_misc::{M_FileLength, FILE as MiscFILE};
 
 #[no_mangle]
 pub extern "C" fn M_CheckParmWithArgs(check: *mut c_char, num_args: c_int) -> c_int {
@@ -71,7 +69,7 @@ unsafe fn LoadResponseFile(argv_index: c_int) {
         response_filename,
     );
 
-    let size: c_long = M_FileLength(handle as *mut c_void);
+    let size: c_long = M_FileLength(handle as *mut MiscFILE);
 
     let file: *mut c_char = malloc(size as usize + 1) as *mut c_char;
     let mut i: usize = 0;
