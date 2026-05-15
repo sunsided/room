@@ -619,6 +619,12 @@ pub const SP_TIMEY: c_int = SCREENHEIGHT - 32;
 pub const SHOWNEXTLOCDELAY: c_int = 4;
 /// X spacing between deathmatch matrix columns (DM_SPACINGX = 40).
 pub const DM_SPACINGX: c_int = 40;
+/// Number of animated elements in episode 0 background (EPSD0ANIMINFO length).
+pub const WI_EPSD0_NANIM: usize = 10;
+/// Number of animated elements in episode 1 background (EPSD1ANIMINFO length).
+pub const WI_EPSD1_NANIM: usize = 9;
+/// Number of animated elements in episode 2 background (EPSD2ANIMINFO length).
+pub const WI_EPSD2_NANIM: usize = 6;
 
 // ---------------------------------------------------------------------------
 // st_stuff.c — status bar constants

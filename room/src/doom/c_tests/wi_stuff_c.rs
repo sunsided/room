@@ -114,3 +114,25 @@ fn title_y_near_top() {
         "WI_TITLEY should be near the top of the screen"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Animation table constants
+// ---------------------------------------------------------------------------
+
+/// Episode 0 (Knee-Deep in the Dead) has 10 animated background elements.
+#[test]
+fn epsd0_animinfo_count() {
+    assert_eq!(c_ffi::WI_EPSD0_NANIM, 10);
+}
+
+/// Episode 1 (The Shores of Hell) has 9 animated background elements.
+#[test]
+fn epsd1_animinfo_count() {
+    assert_eq!(c_ffi::WI_EPSD1_NANIM, 9);
+}
+
+/// Episode 2 (Inferno) has 6 animated background elements.
+#[test]
+fn epsd2_animinfo_count() {
+    assert_eq!(c_ffi::WI_EPSD2_NANIM, 6);
+}
