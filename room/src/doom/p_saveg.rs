@@ -324,11 +324,16 @@ unsafe fn saveg_read_thinker_t(str: *mut thinker_t) {
     // Read prev/next as raw pointer indices (will be rebuilt)
     s.prev = saveg_read32() as usize as *mut thinker_t;
     s.next = saveg_read32() as usize as *mut thinker_t;
-    // Read function pointer as raw
-    s.function.acp1 = Some(core::mem::transmute::<
-        usize,
-        unsafe extern "C" fn(*mut c_void),
-    >(saveg_read32() as usize));
+    // 0 in the save stream means no function; transmuting 0 to fn is UB.
+    let raw = saveg_read32() as usize;
+    s.function.acp1 = if raw == 0 {
+        None
+    } else {
+        Some(core::mem::transmute::<
+            usize,
+            unsafe extern "C" fn(*mut c_void),
+        >(raw))
+    };
 }
 
 unsafe fn saveg_write_thinker_t(str: *const thinker_t) {
@@ -350,10 +355,15 @@ unsafe fn saveg_read_mobj_t(mobj: *mut c_void) {
         let thinker_ptr = std::ptr::addr_of_mut!((*mo).thinker_prev) as *mut thinker_t;
         (*thinker_ptr).prev = saveg_read32() as usize as *mut thinker_t;
         (*thinker_ptr).next = saveg_read32() as usize as *mut thinker_t;
-        (*thinker_ptr).function.acp1 = Some(core::mem::transmute::<
-            usize,
-            unsafe extern "C" fn(*mut c_void),
-        >(saveg_read32() as usize));
+        let raw = saveg_read32() as usize;
+        (*thinker_ptr).function.acp1 = if raw == 0 {
+            None
+        } else {
+            Some(core::mem::transmute::<
+                usize,
+                unsafe extern "C" fn(*mut c_void),
+            >(raw))
+        };
     }
 
     // x, y, z
@@ -1665,5 +1675,65 @@ mod tests {
     fn save_string_size() {
         let _g = LOCK.lock().unwrap();
         assert_eq!(SAVESTRINGSIZE, 24);
+    }
+
+    unsafe fn with_mem_stream<F: FnOnce()>(data: &mut [u8], f: F) {
+        let old_stream = save_stream;
+        let old_error = savegame_error;
+        let old_len = savegamelength;
+        save_stream = libc::fmemopen(
+            data.as_mut_ptr() as *mut libc::c_void,
+            data.len(),
+            b"r\0".as_ptr() as *const libc::c_char,
+        );
+        savegame_error = 0;
+        savegamelength = 0;
+        f();
+        libc::fclose(save_stream);
+        save_stream = old_stream;
+        savegame_error = old_error;
+        savegamelength = old_len;
+    }
+
+    #[test]
+    fn saveg_read_thinker_t_zero_fn_ptr_becomes_none() {
+        let _g = LOCK.lock().unwrap();
+        // 12 bytes: prev(4) + next(4) + fn_ptr(4), all zero
+        let mut data = [0u8; 12];
+        unsafe {
+            let mut th = thinker_t {
+                prev: ptr::null_mut(),
+                next: ptr::null_mut(),
+                function: actionf_t { acp1: None },
+            };
+            with_mem_stream(&mut data, || {
+                saveg_read_thinker_t(&mut th as *mut thinker_t);
+            });
+            assert!(
+                th.function.acp1.is_none(),
+                "zero function pointer must deserialize as None, not Some(NULL)"
+            );
+        }
+    }
+
+    #[test]
+    fn saveg_read_mobj_t_zero_fn_ptr_becomes_none() {
+        use crate::doom::c_ffi::mobj_t;
+        let _g = LOCK.lock().unwrap();
+        // mobj_t is large; we need enough bytes for the full struct read.
+        // The thinker (prev+next+fn) is the first 12 bytes.
+        // saveg_read_mobj_t reads many fields — pad to 256 zeros.
+        let mut data = [0u8; 256];
+        unsafe {
+            let mut mo = std::mem::MaybeUninit::<mobj_t>::zeroed().assume_init();
+            with_mem_stream(&mut data, || {
+                saveg_read_mobj_t(&mut mo as *mut mobj_t as *mut libc::c_void);
+            });
+            let thinker_ptr = std::ptr::addr_of!(mo.thinker_prev) as *const thinker_t;
+            assert!(
+                (*thinker_ptr).function.acp1.is_none(),
+                "zero function pointer in mobj thinker must deserialize as None, not Some(NULL)"
+            );
+        }
     }
 }
