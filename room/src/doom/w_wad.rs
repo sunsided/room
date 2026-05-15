@@ -10,7 +10,11 @@ use std::ptr;
 
 use crate::doom::w_file::{wad_file_t, W_OpenFile, W_Read};
 
-use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
+use crate::doom::z_zone::{PU_CACHE, PU_STATIC, Z_ChangeTag2, Z_ChangeUser, Z_Free, Z_Malloc};
+use crate::doom::i_video::{I_BeginRead, I_EndRead};
+use crate::doom::m_misc::M_ExtractFileBase;
+use crate::doom::d_iwad::D_SuggestGameName;
+use crate::doom::d_mode::D_GameMissionString;
 
 #[repr(C)]
 pub struct lumpinfo_t {
@@ -45,16 +49,6 @@ pub static mut numlumps: c_uint = 0;
 static mut lumphash: *mut *mut lumpinfo_t = ptr::null_mut();
 
 extern "C" {
-    fn I_BeginRead();
-    fn I_EndRead();
-
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn Z_Free(ptr: *mut c_void);
-    fn Z_ChangeUser(ptr: *mut c_void, user: *mut *mut c_void);
-    fn Z_ChangeTag2(ptr: *mut c_void, tag: c_int, file: *const c_char, line: c_int);
-
-    fn M_ExtractFileBase(path: *mut c_char, dest: *mut c_char);
-
     fn strncasecmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int;
     fn strcasecmp(s1: *const c_char, s2: *const c_char) -> c_int;
     fn strncmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int;
@@ -64,9 +58,6 @@ extern "C" {
 
     fn calloc(nmemb: usize, size: usize) -> *mut c_void;
     fn free(ptr: *mut c_void);
-
-    fn D_SuggestGameName(mission: c_int, mode: c_int) -> *mut c_char;
-    fn D_GameMissionString(mission: c_int) -> *mut c_char;
 }
 
 unsafe fn ExtendLumpInfo(newnumlumps: c_uint) {
