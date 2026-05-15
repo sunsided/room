@@ -44,11 +44,10 @@ static mut num_captured_stats: c_int = 0;
 
 use crate::doom::i_timer::TICRATE;
 
+use crate::doom::m_argv::{myargv, M_CheckParmWithArgs, M_ParmExists};
+
 extern "C" {
-    fn M_ParmExists(check: *mut c_char) -> c_int;
-    fn M_CheckParmWithArgs(check: *mut c_char, num_args: c_int) -> c_int;
     fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
-    static mut myargv: *mut *mut c_char;
 }
 
 #[no_mangle]
