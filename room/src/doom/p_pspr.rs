@@ -71,23 +71,14 @@ const sfx_dshtgn: c_int = 4;
 const sfx_bfg: c_int = 9;
 const sfx_punch: c_int = 83;
 
-extern "C" {
-    fn P_SetMobjState(mobj: *mut mobj_t, state: c_int) -> c_int;
-    fn P_AimLineAttack(t1: *mut mobj_t, angle: u32, distance: fixed_t) -> fixed_t;
-    fn P_LineAttack(t1: *mut mobj_t, angle: u32, distance: fixed_t, slope: fixed_t, damage: c_int);
-    fn P_SpawnPlayerMissile(source: *mut mobj_t, type_: c_int);
-    fn P_SpawnMobj(x: c_int, y: c_int, z: c_int, type_: c_int) -> *mut mobj_t;
-    fn P_DamageMobj(
-        target: *mut mobj_t,
-        inflictor: *mut mobj_t,
-        source: *mut mobj_t,
-        damage: c_int,
-    );
-    fn P_NoiseAlert(target: *mut mobj_t, emmiter: *mut mobj_t);
-    fn R_PointToAngle2(x1: fixed_t, y1: fixed_t, x2: fixed_t, y2: fixed_t) -> u32;
+use crate::doom::p_enemy::P_NoiseAlert;
+use crate::doom::p_inter::P_DamageMobj;
+use crate::doom::p_map::{linetarget, P_AimLineAttack, P_LineAttack};
+use crate::doom::p_mobj::{P_SetMobjState, P_SpawnMobj, P_SpawnPlayerMissile};
+use crate::doom::r_main::R_PointToAngle2;
 
-    static mut linetarget: *mut mobj_t;
-}
+// Type aliases for cross-module pointer casts (all #[repr(C)] identical layouts).
+type CffiMobj = crate::doom::c_ffi::mobj_t;
 
 /// Horizontal weapon-bob offset; updated each tic by P_CalcSwing.
 #[no_mangle]
@@ -397,8 +388,8 @@ pub unsafe extern "C" fn A_Punch(player: *mut PlayerT, _psp: *mut PspdefT) {
 
     let mut angle = (*mo).angle;
     angle = angle.wrapping_add(((P_Random() - P_Random()) as u32) << 18);
-    let slope = P_AimLineAttack(mo, angle, MELEERANGE);
-    P_LineAttack(mo, angle, MELEERANGE, slope, damage);
+    let slope = P_AimLineAttack(mo as *mut _ as *mut CffiMobj, angle, MELEERANGE);
+    P_LineAttack(mo as *mut _ as *mut CffiMobj, angle, MELEERANGE, slope, damage);
 
     // Turn to face target.
     if !linetarget.is_null() {
@@ -416,8 +407,8 @@ pub unsafe extern "C" fn A_Saw(player: *mut PlayerT, _psp: *mut PspdefT) {
     let mut angle = (*mo).angle;
     angle = angle.wrapping_add(((P_Random() - P_Random()) as u32) << 18);
 
-    let slope = P_AimLineAttack(mo, angle, MELEERANGE + 1);
-    P_LineAttack(mo, angle, MELEERANGE + 1, slope, damage);
+    let slope = P_AimLineAttack(mo as *mut _ as *mut CffiMobj, angle, MELEERANGE + 1);
+    P_LineAttack(mo as *mut _ as *mut CffiMobj, angle, MELEERANGE + 1, slope, damage);
 
     if linetarget.is_null() {
         S_StartSound(mo as *mut c_void, sfx_sawful);
@@ -493,14 +484,14 @@ pub unsafe extern "C" fn A_FirePlasma(player: *mut PlayerT, _psp: *mut PspdefT) 
 #[no_mangle]
 pub unsafe extern "C" fn P_BulletSlope(mo: *mut mobj_t) {
     let mut an = (*mo).angle;
-    bulletslope = P_AimLineAttack(mo, an, 16 * 64 * FRACUNIT);
+    bulletslope = P_AimLineAttack(mo as *mut _ as *mut CffiMobj, an, 16 * 64 * FRACUNIT);
 
     if linetarget.is_null() {
         an = an.wrapping_add(1 << 26);
-        bulletslope = P_AimLineAttack(mo, an, 16 * 64 * FRACUNIT);
+        bulletslope = P_AimLineAttack(mo as *mut _ as *mut CffiMobj, an, 16 * 64 * FRACUNIT);
         if linetarget.is_null() {
             an = an.wrapping_sub(2 << 26);
-            bulletslope = P_AimLineAttack(mo, an, 16 * 64 * FRACUNIT);
+            bulletslope = P_AimLineAttack(mo as *mut _ as *mut CffiMobj, an, 16 * 64 * FRACUNIT);
         }
     }
 }
@@ -515,7 +506,7 @@ pub unsafe extern "C" fn P_GunShot(mo: *mut mobj_t, accurate: c_int) {
         angle = angle.wrapping_add(((P_Random() - P_Random()) as u32) << 18);
     }
 
-    P_LineAttack(mo, angle, MISSILERANGE, bulletslope, damage);
+    P_LineAttack(mo as *mut _ as *mut CffiMobj, angle, MISSILERANGE, bulletslope, damage);
 }
 
 /// Fire pistol.
@@ -581,7 +572,7 @@ pub unsafe extern "C" fn A_FireShotgun2(player: *mut PlayerT, _psp: *mut PspdefT
         let mut angle = (*mo).angle;
         angle = angle.wrapping_add(((P_Random() - P_Random()) as u32) << 19);
         P_LineAttack(
-            mo,
+            mo as *mut _ as *mut CffiMobj,
             angle,
             MISSILERANGE,
             bulletslope + (((P_Random() - P_Random()) as c_int) << 5),
@@ -636,7 +627,7 @@ pub unsafe extern "C" fn A_BFGSpray(mo: *mut mobj_t) {
     for i in 0..40 {
         let an = (*mo).angle - ANG90 / 2 + (ANG90 / 40) * i as u32;
 
-        P_AimLineAttack((*mo).target, an, 16 * 64 * FRACUNIT);
+        P_AimLineAttack((*mo).target as *mut _ as *mut CffiMobj, an, 16 * 64 * FRACUNIT);
 
         if linetarget.is_null() {
             continue;
@@ -654,7 +645,7 @@ pub unsafe extern "C" fn A_BFGSpray(mo: *mut mobj_t) {
             damage += (P_Random() & 7) + 1;
         }
 
-        P_DamageMobj(linetarget, (*mo).target, (*mo).target, damage);
+        P_DamageMobj(linetarget as *mut mobj_t, (*mo).target, (*mo).target, damage);
     }
 }
 
