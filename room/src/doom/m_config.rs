@@ -43,16 +43,15 @@ const fn cfg(name: &'static [u8], ty: DefaultType) -> Default {
 }
 
 extern "C" {
-    fn M_CheckParmWithArgs(check: *const c_char, num_args: c_int) -> c_int;
-    fn M_StringJoinA(strs: *const *const c_char) -> *mut c_char;
-    fn M_MakeDirectory(path: *mut c_char);
     fn printf(fmt: *const c_char, ...) -> c_int;
     fn strdup(s: *const c_char) -> *mut c_char;
     fn strcmp(a: *const c_char, b: *const c_char) -> c_int;
     fn atof(s: *const c_char) -> f64;
     fn malloc(n: usize) -> *mut c_void;
-    static mut myargv: *mut *mut c_char;
 }
+
+use crate::doom::m_argv::{myargv, M_CheckParmWithArgs};
+use crate::doom::m_misc::{M_MakeDirectory, M_StringJoinA};
 
 #[no_mangle]
 pub static mut configdir: *mut c_char = ptr::null_mut();
@@ -550,7 +549,7 @@ pub extern "C" fn M_SaveDefaultsAlternate(main: *mut c_char, extra: *mut c_char)
 #[no_mangle]
 pub extern "C" fn M_LoadDefaults() {
     unsafe {
-        let i = M_CheckParmWithArgs(b"-config\0".as_ptr() as *const c_char, 1);
+        let i = M_CheckParmWithArgs(b"-config\0".as_ptr() as *mut c_char, 1);
         if i != 0 {
             doom_defaults.filename = *myargv.offset((i + 1) as isize);
             printf(
@@ -567,7 +566,7 @@ pub extern "C" fn M_LoadDefaults() {
             doom_defaults.filename,
         );
 
-        let i = M_CheckParmWithArgs(b"-extraconfig\0".as_ptr() as *const c_char, 1);
+        let i = M_CheckParmWithArgs(b"-extraconfig\0".as_ptr() as *mut c_char, 1);
         if i != 0 {
             extra_defaults.filename = *myargv.offset((i + 1) as isize);
             printf(
