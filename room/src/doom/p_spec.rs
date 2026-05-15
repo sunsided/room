@@ -187,45 +187,27 @@ pub static mut levelTimeCount: c_int = 0;
 // Externs from other modules / remaining C code
 // ---------------------------------------------------------------------------
 
-extern "C" {
-    // Other Rust modules (declared here with c_ffi types for ABI compatibility)
-    fn EV_DoDoor(line: *mut line_t, r#type: c_int) -> c_int;
-    fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_int;
-    fn EV_DoCeiling(line: *mut line_t, r#type: c_int) -> c_int;
-    fn EV_DoPlat(line: *mut line_t, r#type: c_int, amount: c_int) -> c_int;
-    fn EV_BuildStairs(line: *mut line_t, r#type: c_int) -> c_int;
-    fn EV_Teleport(line: *mut line_t, side: c_int, thing: *mut mobj_t) -> c_int;
-    fn EV_LightTurnOn(line: *mut line_t, bright: c_int);
-    fn EV_StartLightStrobing(line: *mut line_t);
-    fn EV_TurnTagLightsOff(line: *mut line_t);
-    fn EV_CeilingCrushStop(line: *mut line_t) -> c_int;
-    fn EV_StopPlat(line: *mut line_t);
-    fn P_SpawnLightFlash(sector: *mut sector_t);
-    fn P_SpawnStrobeFlash(sector: *mut sector_t, fastOrSlow: c_int, inSync: c_int);
-    fn P_SpawnGlowingLight(sector: *mut sector_t);
-    fn P_SpawnFireFlicker(sector: *mut sector_t);
-    fn P_SpawnDoorCloseIn30(sec: *mut sector_t);
-    fn P_SpawnDoorRaiseIn5Mins(sec: *mut sector_t, secnum: c_int);
-    fn P_ChangeSwitchTexture(line: *mut line_t, useAgain: c_int);
-    fn P_DamageMobj(
-        target: *mut mobj_t,
-        inflictor: *mut mobj_t,
-        source: *mut mobj_t,
-        damage: c_int,
-    );
-    fn T_MoveFloor(floor: *mut floormove_t);
+use crate::doom::g_game::{deathmatch, timelimit, totalsecret, G_ExitLevel, G_SecretExitLevel};
+use crate::doom::p_ceilng::{EV_CeilingCrushStop, EV_DoCeiling};
+use crate::doom::p_doors::{EV_DoDoor, P_SpawnDoorCloseIn30, P_SpawnDoorRaiseIn5Mins};
+use crate::doom::p_floor::{EV_BuildStairs, EV_DoFloor, T_MoveFloor};
+use crate::doom::p_inter::P_DamageMobj;
+use crate::doom::p_lights::{
+    EV_LightTurnOn, EV_StartLightStrobing, EV_TurnTagLightsOff, P_SpawnFireFlicker,
+    P_SpawnGlowingLight, P_SpawnLightFlash, P_SpawnStrobeFlash,
+};
+use crate::doom::p_plats::{EV_DoPlat, EV_StopPlat};
+use crate::doom::p_switch::P_ChangeSwitchTexture;
+use crate::doom::p_telept::EV_Teleport;
+use crate::doom::w_wad::W_CheckNumForName;
+use crate::doom::z_zone::Z_Malloc;
 
-    // Remaining C modules
-    fn G_ExitLevel();
-    fn G_SecretExitLevel();
-    fn W_CheckNumForName(name: *mut c_char) -> c_int;
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-
-    // C globals
-    static mut timelimit: c_int;
-    static mut deathmatch: c_int;
-    static mut totalsecret: c_int;
-}
+// Type aliases for casting c_ffi pointers to the local types used by the
+// modules imported above (all are #[repr(C)] with identical field layouts).
+type LightsLine = crate::doom::p_lights::line_t;
+type LightsSector = crate::doom::p_lights::sector_t;
+type TeleptLine = crate::doom::p_telept::line_t;
+type TeleptMobj = crate::doom::p_telept::mobj_t;
 
 // ---------------------------------------------------------------------------
 // DEH_String shim — identity when dehacked is disabled.
@@ -479,147 +461,147 @@ pub unsafe extern "C" fn P_CrossSpecialLine(linenum: c_int, side: c_int, thing: 
 
     match (*line).special as c_int {
         2 => {
-            EV_DoDoor(line, vld_open);
+            EV_DoDoor(line as *mut LightsLine, vld_open);
             (*line).special = 0;
         }
         3 => {
-            EV_DoDoor(line, vld_close);
+            EV_DoDoor(line as *mut LightsLine, vld_close);
             (*line).special = 0;
         }
         4 => {
-            EV_DoDoor(line, vld_normal);
+            EV_DoDoor(line as *mut LightsLine, vld_normal);
             (*line).special = 0;
         }
         5 => {
-            EV_DoFloor(line, raiseFloor);
+            EV_DoFloor(line as *mut LightsLine, raiseFloor);
             (*line).special = 0;
         }
         6 => {
-            EV_DoCeiling(line, fastCrushAndRaise);
+            EV_DoCeiling(line as *mut LightsLine, fastCrushAndRaise);
             (*line).special = 0;
         }
         8 => {
-            EV_BuildStairs(line, build8);
+            EV_BuildStairs(line as *mut LightsLine, build8);
             (*line).special = 0;
         }
         10 => {
-            EV_DoPlat(line, downWaitUpStay, 0);
+            EV_DoPlat(line as *mut LightsLine, downWaitUpStay, 0);
             (*line).special = 0;
         }
         12 => {
-            EV_LightTurnOn(line, 0);
+            EV_LightTurnOn(line as *mut LightsLine, 0);
             (*line).special = 0;
         }
         13 => {
-            EV_LightTurnOn(line, 255);
+            EV_LightTurnOn(line as *mut LightsLine, 255);
             (*line).special = 0;
         }
         16 => {
-            EV_DoDoor(line, vld_close30ThenOpen);
+            EV_DoDoor(line as *mut LightsLine, vld_close30ThenOpen);
             (*line).special = 0;
         }
         17 => {
-            EV_StartLightStrobing(line);
+            EV_StartLightStrobing(line as *mut LightsLine);
             (*line).special = 0;
         }
         19 => {
-            EV_DoFloor(line, lowerFloor);
+            EV_DoFloor(line as *mut LightsLine, lowerFloor);
             (*line).special = 0;
         }
         22 => {
-            EV_DoPlat(line, raiseToNearestAndChange, 0);
+            EV_DoPlat(line as *mut LightsLine, raiseToNearestAndChange, 0);
             (*line).special = 0;
         }
         25 => {
-            EV_DoCeiling(line, crushAndRaise);
+            EV_DoCeiling(line as *mut LightsLine, crushAndRaise);
             (*line).special = 0;
         }
         30 => {
-            EV_DoFloor(line, raiseToTexture);
+            EV_DoFloor(line as *mut LightsLine, raiseToTexture);
             (*line).special = 0;
         }
         35 => {
-            EV_LightTurnOn(line, 35);
+            EV_LightTurnOn(line as *mut LightsLine, 35);
             (*line).special = 0;
         }
         36 => {
-            EV_DoFloor(line, turboLower);
+            EV_DoFloor(line as *mut LightsLine, turboLower);
             (*line).special = 0;
         }
         37 => {
-            EV_DoFloor(line, lowerAndChange);
+            EV_DoFloor(line as *mut LightsLine, lowerAndChange);
             (*line).special = 0;
         }
         38 => {
-            EV_DoFloor(line, lowerFloorToLowest);
+            EV_DoFloor(line as *mut LightsLine, lowerFloorToLowest);
             (*line).special = 0;
         }
         39 => {
-            EV_Teleport(line, side, thing);
+            EV_Teleport(line as *mut TeleptLine, side, thing as *mut TeleptMobj);
             (*line).special = 0;
         }
         40 => {
-            EV_DoCeiling(line, raiseToHighest);
-            EV_DoFloor(line, lowerFloorToLowest);
+            EV_DoCeiling(line as *mut LightsLine, raiseToHighest);
+            EV_DoFloor(line as *mut LightsLine, lowerFloorToLowest);
             (*line).special = 0;
         }
         44 => {
-            EV_DoCeiling(line, lowerAndCrush);
+            EV_DoCeiling(line as *mut LightsLine, lowerAndCrush);
             (*line).special = 0;
         }
         52 => {
             G_ExitLevel();
         }
         53 => {
-            EV_DoPlat(line, perpetualRaise, 0);
+            EV_DoPlat(line as *mut LightsLine, perpetualRaise, 0);
             (*line).special = 0;
         }
         54 => {
-            EV_StopPlat(line);
+            EV_StopPlat(line as *mut LightsLine);
             (*line).special = 0;
         }
         56 => {
-            EV_DoFloor(line, raiseFloorCrush);
+            EV_DoFloor(line as *mut LightsLine, raiseFloorCrush);
             (*line).special = 0;
         }
         57 => {
-            EV_CeilingCrushStop(line);
+            EV_CeilingCrushStop(line as *mut LightsLine);
             (*line).special = 0;
         }
         58 => {
-            EV_DoFloor(line, raiseFloor24);
+            EV_DoFloor(line as *mut LightsLine, raiseFloor24);
             (*line).special = 0;
         }
         59 => {
-            EV_DoFloor(line, raiseFloor24AndChange);
+            EV_DoFloor(line as *mut LightsLine, raiseFloor24AndChange);
             (*line).special = 0;
         }
         104 => {
-            EV_TurnTagLightsOff(line);
+            EV_TurnTagLightsOff(line as *mut LightsLine);
             (*line).special = 0;
         }
         108 => {
-            EV_DoDoor(line, vld_blazeRaise);
+            EV_DoDoor(line as *mut LightsLine, vld_blazeRaise);
             (*line).special = 0;
         }
         109 => {
-            EV_DoDoor(line, vld_blazeOpen);
+            EV_DoDoor(line as *mut LightsLine, vld_blazeOpen);
             (*line).special = 0;
         }
         100 => {
-            EV_BuildStairs(line, turbo16);
+            EV_BuildStairs(line as *mut LightsLine, turbo16);
             (*line).special = 0;
         }
         110 => {
-            EV_DoDoor(line, vld_blazeClose);
+            EV_DoDoor(line as *mut LightsLine, vld_blazeClose);
             (*line).special = 0;
         }
         119 => {
-            EV_DoFloor(line, raiseFloorToNearest);
+            EV_DoFloor(line as *mut LightsLine, raiseFloorToNearest);
             (*line).special = 0;
         }
         121 => {
-            EV_DoPlat(line, blazeDWUS, 0);
+            EV_DoPlat(line as *mut LightsLine, blazeDWUS, 0);
             (*line).special = 0;
         }
         124 => {
@@ -627,116 +609,116 @@ pub unsafe extern "C" fn P_CrossSpecialLine(linenum: c_int, side: c_int, thing: 
         }
         125 => {
             if (*thing).player.is_null() {
-                EV_Teleport(line, side, thing);
+                EV_Teleport(line as *mut TeleptLine, side, thing as *mut TeleptMobj);
                 (*line).special = 0;
             }
         }
         130 => {
-            EV_DoFloor(line, raiseFloorTurbo);
+            EV_DoFloor(line as *mut LightsLine, raiseFloorTurbo);
             (*line).special = 0;
         }
         141 => {
-            EV_DoCeiling(line, silentCrushAndRaise);
+            EV_DoCeiling(line as *mut LightsLine, silentCrushAndRaise);
             (*line).special = 0;
         }
         // RETRIGGERS
         72 => {
-            EV_DoCeiling(line, lowerAndCrush);
+            EV_DoCeiling(line as *mut LightsLine, lowerAndCrush);
         }
         73 => {
-            EV_DoCeiling(line, crushAndRaise);
+            EV_DoCeiling(line as *mut LightsLine, crushAndRaise);
         }
         74 => {
-            EV_CeilingCrushStop(line);
+            EV_CeilingCrushStop(line as *mut LightsLine);
         }
         75 => {
-            EV_DoDoor(line, vld_close);
+            EV_DoDoor(line as *mut LightsLine, vld_close);
         }
         76 => {
-            EV_DoDoor(line, vld_close30ThenOpen);
+            EV_DoDoor(line as *mut LightsLine, vld_close30ThenOpen);
         }
         77 => {
-            EV_DoCeiling(line, fastCrushAndRaise);
+            EV_DoCeiling(line as *mut LightsLine, fastCrushAndRaise);
         }
         79 => {
-            EV_LightTurnOn(line, 35);
+            EV_LightTurnOn(line as *mut LightsLine, 35);
         }
         80 => {
-            EV_LightTurnOn(line, 0);
+            EV_LightTurnOn(line as *mut LightsLine, 0);
         }
         81 => {
-            EV_LightTurnOn(line, 255);
+            EV_LightTurnOn(line as *mut LightsLine, 255);
         }
         82 => {
-            EV_DoFloor(line, lowerFloorToLowest);
+            EV_DoFloor(line as *mut LightsLine, lowerFloorToLowest);
         }
         83 => {
-            EV_DoFloor(line, lowerFloor);
+            EV_DoFloor(line as *mut LightsLine, lowerFloor);
         }
         84 => {
-            EV_DoFloor(line, lowerAndChange);
+            EV_DoFloor(line as *mut LightsLine, lowerAndChange);
         }
         86 => {
-            EV_DoDoor(line, vld_open);
+            EV_DoDoor(line as *mut LightsLine, vld_open);
         }
         87 => {
-            EV_DoPlat(line, perpetualRaise, 0);
+            EV_DoPlat(line as *mut LightsLine, perpetualRaise, 0);
         }
         88 => {
-            EV_DoPlat(line, downWaitUpStay, 0);
+            EV_DoPlat(line as *mut LightsLine, downWaitUpStay, 0);
         }
         89 => {
-            EV_StopPlat(line);
+            EV_StopPlat(line as *mut LightsLine);
         }
         90 => {
-            EV_DoDoor(line, vld_normal);
+            EV_DoDoor(line as *mut LightsLine, vld_normal);
         }
         91 => {
-            EV_DoFloor(line, raiseFloor);
+            EV_DoFloor(line as *mut LightsLine, raiseFloor);
         }
         92 => {
-            EV_DoFloor(line, raiseFloor24);
+            EV_DoFloor(line as *mut LightsLine, raiseFloor24);
         }
         93 => {
-            EV_DoFloor(line, raiseFloor24AndChange);
+            EV_DoFloor(line as *mut LightsLine, raiseFloor24AndChange);
         }
         94 => {
-            EV_DoFloor(line, raiseFloorCrush);
+            EV_DoFloor(line as *mut LightsLine, raiseFloorCrush);
         }
         95 => {
-            EV_DoPlat(line, raiseToNearestAndChange, 0);
+            EV_DoPlat(line as *mut LightsLine, raiseToNearestAndChange, 0);
         }
         96 => {
-            EV_DoFloor(line, raiseToTexture);
+            EV_DoFloor(line as *mut LightsLine, raiseToTexture);
         }
         97 => {
-            EV_Teleport(line, side, thing);
+            EV_Teleport(line as *mut TeleptLine, side, thing as *mut TeleptMobj);
         }
         98 => {
-            EV_DoFloor(line, turboLower);
+            EV_DoFloor(line as *mut LightsLine, turboLower);
         }
         105 => {
-            EV_DoDoor(line, vld_blazeRaise);
+            EV_DoDoor(line as *mut LightsLine, vld_blazeRaise);
         }
         106 => {
-            EV_DoDoor(line, vld_blazeOpen);
+            EV_DoDoor(line as *mut LightsLine, vld_blazeOpen);
         }
         107 => {
-            EV_DoDoor(line, vld_blazeClose);
+            EV_DoDoor(line as *mut LightsLine, vld_blazeClose);
         }
         120 => {
-            EV_DoPlat(line, blazeDWUS, 0);
+            EV_DoPlat(line as *mut LightsLine, blazeDWUS, 0);
         }
         126 => {
             if (*thing).player.is_null() {
-                EV_Teleport(line, side, thing);
+                EV_Teleport(line as *mut TeleptLine, side, thing as *mut TeleptMobj);
             }
         }
         128 => {
-            EV_DoFloor(line, raiseFloorToNearest);
+            EV_DoFloor(line as *mut LightsLine, raiseFloorToNearest);
         }
         129 => {
-            EV_DoFloor(line, raiseFloorTurbo);
+            EV_DoFloor(line as *mut LightsLine, raiseFloorTurbo);
         }
         _ => {}
     }
@@ -761,16 +743,16 @@ pub unsafe extern "C" fn P_ShootSpecialLine(thing: *mut mobj_t, line: *mut line_
 
     match (*line).special as c_int {
         24 => {
-            EV_DoFloor(line, raiseFloor);
-            P_ChangeSwitchTexture(line, 0);
+            EV_DoFloor(line as *mut LightsLine, raiseFloor);
+            P_ChangeSwitchTexture(line as *mut LightsLine, 0);
         }
         46 => {
-            EV_DoDoor(line, vld_open);
-            P_ChangeSwitchTexture(line, 1);
+            EV_DoDoor(line as *mut LightsLine, vld_open);
+            P_ChangeSwitchTexture(line as *mut LightsLine, 1);
         }
         47 => {
-            EV_DoPlat(line, raiseToNearestAndChange, 0);
-            P_ChangeSwitchTexture(line, 0);
+            EV_DoPlat(line as *mut LightsLine, raiseToNearestAndChange, 0);
+            P_ChangeSwitchTexture(line as *mut LightsLine, 0);
         }
         _ => {}
     }
@@ -795,7 +777,7 @@ pub unsafe extern "C" fn P_PlayerInSpecialSector(player: *mut PlayerT) {
             if (*player).powers[pw_ironfeet] == 0 {
                 if leveltime & 0x1f == 0 {
                     P_DamageMobj(
-                        (*player).mo as *mut mobj_t,
+                        (*player).mo as *mut TeleptMobj,
                         ptr::null_mut(),
                         ptr::null_mut(),
                         10,
@@ -807,7 +789,7 @@ pub unsafe extern "C" fn P_PlayerInSpecialSector(player: *mut PlayerT) {
             if (*player).powers[pw_ironfeet] == 0 {
                 if leveltime & 0x1f == 0 {
                     P_DamageMobj(
-                        (*player).mo as *mut mobj_t,
+                        (*player).mo as *mut TeleptMobj,
                         ptr::null_mut(),
                         ptr::null_mut(),
                         5,
@@ -819,7 +801,7 @@ pub unsafe extern "C" fn P_PlayerInSpecialSector(player: *mut PlayerT) {
             if (*player).powers[pw_ironfeet] == 0 || P_Random() < 5 {
                 if leveltime & 0x1f == 0 {
                     P_DamageMobj(
-                        (*player).mo as *mut mobj_t,
+                        (*player).mo as *mut TeleptMobj,
                         ptr::null_mut(),
                         ptr::null_mut(),
                         20,
@@ -835,7 +817,7 @@ pub unsafe extern "C" fn P_PlayerInSpecialSector(player: *mut PlayerT) {
             (*player).cheats &= !CF_GODMODE;
             if leveltime & 0x1f == 0 {
                 P_DamageMobj(
-                    (*player).mo as *mut mobj_t,
+                    (*player).mo as *mut TeleptMobj,
                     ptr::null_mut(),
                     ptr::null_mut(),
                     20,
@@ -1068,22 +1050,22 @@ pub unsafe extern "C" fn P_SpawnSpecials() {
             continue;
         }
         match (*sector).special as c_int {
-            1 => P_SpawnLightFlash(sector),
-            2 => P_SpawnStrobeFlash(sector, crate::doom::c_ffi::FASTDARK, 0),
-            3 => P_SpawnStrobeFlash(sector, crate::doom::c_ffi::SLOWDARK, 0),
+            1 => P_SpawnLightFlash(sector as *mut LightsSector),
+            2 => P_SpawnStrobeFlash(sector as *mut LightsSector, crate::doom::c_ffi::FASTDARK, 0),
+            3 => P_SpawnStrobeFlash(sector as *mut LightsSector, crate::doom::c_ffi::SLOWDARK, 0),
             4 => {
-                P_SpawnStrobeFlash(sector, crate::doom::c_ffi::FASTDARK, 0);
+                P_SpawnStrobeFlash(sector as *mut LightsSector, crate::doom::c_ffi::FASTDARK, 0);
                 (*sector).special = 4;
             }
-            8 => P_SpawnGlowingLight(sector),
+            8 => P_SpawnGlowingLight(sector as *mut LightsSector),
             9 => {
                 totalsecret += 1;
             }
-            10 => P_SpawnDoorCloseIn30(sector),
-            12 => P_SpawnStrobeFlash(sector, crate::doom::c_ffi::SLOWDARK, 1),
-            13 => P_SpawnStrobeFlash(sector, crate::doom::c_ffi::FASTDARK, 1),
-            14 => P_SpawnDoorRaiseIn5Mins(sector, i),
-            17 => P_SpawnFireFlicker(sector),
+            10 => P_SpawnDoorCloseIn30(sector as *mut LightsSector),
+            12 => P_SpawnStrobeFlash(sector as *mut LightsSector, crate::doom::c_ffi::SLOWDARK, 1),
+            13 => P_SpawnStrobeFlash(sector as *mut LightsSector, crate::doom::c_ffi::FASTDARK, 1),
+            14 => P_SpawnDoorRaiseIn5Mins(sector as *mut LightsSector, i),
+            17 => P_SpawnFireFlicker(sector as *mut LightsSector),
             _ => {}
         }
     }
