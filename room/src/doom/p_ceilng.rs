@@ -7,10 +7,15 @@
 use std::ffi::c_void;
 use std::os::raw::c_int;
 
+use crate::doom::c_ffi as cffi;
 use crate::doom::m_fixed::{fixed_t, FRACUNIT};
+use crate::doom::p_floor::T_MovePlane;
 use crate::doom::p_lights::{line_t, sector_t};
-use crate::doom::p_tick::{thinker_t, P_AddThinker, P_RemoveThinker};
-use crate::doom::z_zone::PU_LEVSPEC;
+use crate::doom::p_setup::sectors;
+use crate::doom::p_spec::{P_FindHighestCeilingSurrounding, P_FindSectorFromLineTag};
+use crate::doom::p_tick::{leveltime, thinker_t, P_AddThinker, P_RemoveThinker};
+use crate::doom::s_sound::S_StartSound;
+use crate::doom::z_zone::{PU_LEVSPEC, Z_Malloc};
 
 const CEILSPEED: fixed_t = FRACUNIT;
 const MAXCEILINGS: usize = 30;
@@ -68,22 +73,6 @@ mod layout_checks {
 #[no_mangle]
 pub static mut activeceilings: [*mut ceiling_t; MAXCEILINGS] = [std::ptr::null_mut(); MAXCEILINGS];
 
-extern "C" {
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn P_FindSectorFromLineTag(line: *mut line_t, start: c_int) -> c_int;
-    fn P_FindHighestCeilingSurrounding(sec: *mut sector_t) -> fixed_t;
-    fn S_StartSound(origin: *mut c_void, sfxid: c_int);
-    fn T_MovePlane(
-        sector: *mut sector_t,
-        speed: fixed_t,
-        dest: fixed_t,
-        crush: c_int,
-        floorOrCeiling: c_int,
-        direction: c_int,
-    ) -> c_int;
-    static mut sectors: *mut sector_t;
-    static mut leveltime: c_int;
-}
 
 #[no_mangle]
 pub unsafe extern "C" fn T_MoveCeiling(ceiling: *mut ceiling_t) {
@@ -152,7 +141,7 @@ pub unsafe extern "C" fn EV_DoCeiling(line: *mut line_t, ceilingtype: c_int) -> 
     }
 
     while {
-        secnum = P_FindSectorFromLineTag(line, secnum);
+        secnum = P_FindSectorFromLineTag(line as *mut cffi::line_t, secnum);
         secnum
     } >= 0
     {
@@ -173,7 +162,7 @@ pub unsafe extern "C" fn EV_DoCeiling(line: *mut line_t, ceilingtype: c_int) -> 
             unsafe extern "C" fn(*mut ceiling_t),
             unsafe extern "C" fn(*mut c_void),
         >(T_MoveCeiling));
-        (*ceiling).sector = sec;
+        (*ceiling).sector = sec as *mut sector_t;
         (*ceiling).crush = 0;
 
         match ceilingtype {
