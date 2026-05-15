@@ -758,7 +758,7 @@ unsafe fn WI_initAnimatedBack() {
 
     let epsd = (*wbs).epsd as usize;
     let count = NUMANIMS[epsd] as usize;
-    let base = ANIMS[epsd] as *mut anim_t;
+    let base = ANIMS[epsd];
 
     for i in 0..count {
         let a = base.add(i);
@@ -783,7 +783,7 @@ unsafe fn WI_updateAnimatedBack() {
 
     let epsd = (*wbs).epsd as usize;
     let count = NUMANIMS[epsd] as usize;
-    let base = ANIMS[epsd] as *mut anim_t;
+    let base = ANIMS[epsd];
 
     for i in 0..count {
         let a = base.add(i);
@@ -830,7 +830,7 @@ unsafe fn WI_drawAnimatedBack() {
 
     let epsd = (*wbs).epsd as usize;
     let count = NUMANIMS[epsd] as usize;
-    let base = ANIMS[epsd] as *mut anim_t;
+    let base = ANIMS[epsd] as *const anim_t;
 
     for i in 0..count {
         let a = base.add(i);
@@ -1596,13 +1596,13 @@ unsafe fn WI_loadUnloadData(callback: LoadCallback) {
 
         if (*wbs).epsd < 3 {
             for j in 0..NUMANIMS[(*wbs).epsd as usize] {
-                let a = (ANIMS[(*wbs).epsd as usize] as *mut anim_t).add(j as usize);
+                let a = ANIMS[(*wbs).epsd as usize].add(j as usize);
                 for i in 0..(*a).nanims {
                     if (*wbs).epsd != 1 || j != 8 {
                         c_write!(name, "WIA{}{:02}{:02}", (*wbs).epsd, j, i);
                         callback(name.as_mut_ptr(), &mut (*a).p[i as usize]);
                     } else {
-                        (*a).p[i as usize] = (*((ANIMS[1] as *mut anim_t).add(4))).p[i as usize];
+                        (*a).p[i as usize] = (*ANIMS[1].add(4)).p[i as usize];
                     }
                 }
             }
