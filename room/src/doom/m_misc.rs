@@ -367,8 +367,7 @@ pub extern "C" fn M_StringJoinA(strs: *const *const c_char) -> *mut c_char {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn M_snprintf_clamp(buf: *mut c_char, len: usize, result: c_int) -> c_int {
+pub(crate) fn m_snprintf_clamp(buf: *mut c_char, len: usize, result: c_int) -> c_int {
     if len == 0 {
         return 0;
     }
@@ -382,18 +381,9 @@ pub extern "C" fn M_snprintf_clamp(buf: *mut c_char, len: usize, result: c_int) 
     }
 }
 
-pub(crate) fn m_snprintf_clamp(buf: *mut c_char, len: usize, result: c_int) -> c_int {
-    if len == 0 {
-        return 0;
-    }
-    if result < 0 || result >= len as c_int {
-        unsafe {
-            *buf.add(len - 1) = 0;
-        }
-        (len as c_int) - 1
-    } else {
-        result
-    }
+#[no_mangle]
+pub extern "C" fn M_snprintf_clamp(buf: *mut c_char, len: usize, result: c_int) -> c_int {
+    m_snprintf_clamp(buf, len, result)
 }
 
 #[no_mangle]
