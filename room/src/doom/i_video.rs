@@ -6,6 +6,10 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::doom::i_input::{I_GetEvent, I_InitInput};
+use crate::doom::m_argv::{M_CheckParmWithArgs, myargv};
+use crate::doom::tables::gammatable;
+use crate::doom::z_zone::{Z_Free, Z_Malloc};
 use crate::i_error;
 use std::ffi::{c_char, c_float, c_int, c_void};
 
@@ -102,13 +106,6 @@ static mut s_Fb: FB_ScreenInfo = FB_ScreenInfo {
 extern "C" {
     fn DG_DrawFrame();
     fn DG_SetWindowTitle(title: *const c_char);
-    fn I_InitInput();
-    fn I_GetEvent();
-    fn M_CheckParmWithArgs(check: *const c_char, num_args: c_int) -> c_int;
-    static gammatable: [[u8; 256]; 5];
-    static mut myargv: *mut *mut c_char;
-    fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
-    fn Z_Free(ptr: *mut c_void);
 }
 
 unsafe fn cmap_to_fb(out: *mut u8, inp: *mut u8, in_pixels: c_int) {
@@ -182,7 +179,7 @@ pub unsafe extern "C" fn I_InitGraphics() {
     s_Fb.transp.offset = 24;
 
     // Check for -gfxmode arg
-    let gfxmodeparm = M_CheckParmWithArgs(b"-gfxmode\0".as_ptr() as *const c_char, 1);
+    let gfxmodeparm = M_CheckParmWithArgs(b"-gfxmode\0".as_ptr() as *mut c_char, 1);
     if gfxmodeparm != 0 {
         let mode = *myargv.add((gfxmodeparm + 1) as usize);
         if !mode.is_null() {
@@ -217,7 +214,7 @@ pub unsafe extern "C" fn I_InitGraphics() {
     }
 
     // Auto-scaling factor
-    let scale_parm = M_CheckParmWithArgs(b"-scaling\0".as_ptr() as *const c_char, 1);
+    let scale_parm = M_CheckParmWithArgs(b"-scaling\0".as_ptr() as *mut c_char, 1);
     if scale_parm != 0 {
         let val = *myargv.add((scale_parm + 1) as usize);
         if !val.is_null() {
