@@ -17,18 +17,14 @@ const am_noammo: c_int = 5;
 // State index constants (from info.h statenum_t enum)
 // ---------------------------------------------------------------------------
 //
-// Re-use the same build-script-generated constants that `info.rs` consumes,
-// so the weapon state indices cannot drift out of sync with the real
-// `statenum_t` enum in `vendor/doomgeneric/info.h`.
-//
-// (Previously these were hand-typed and were silently off-by-one from
+// Previously these were hand-typed and were silently off-by-one from
 // S_DSGUNFLASH1 onward because the S_DSNR1/S_DSNR2 super-shotgun reload
 // states were missed, which caused wp_missile / wp_chainsaw / wp_plasma /
 // wp_bfg to point at the wrong animation slots. Raising one of those weapons
 // ran A_Lower instead of A_Raise, eventually driving readyweapon to
-// wp_nochange (= NUMWEAPONS) and segfaulting on weaponinfo[9].)
+// wp_nochange (= NUMWEAPONS) and segfaulting on weaponinfo[9].
 
-include!(concat!(env!("OUT_DIR"), "/statenum.rs"));
+use crate::doom::statenum::*;
 
 // ---------------------------------------------------------------------------
 // Weapon info table

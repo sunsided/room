@@ -78,6 +78,7 @@ pub mod sounds;
 pub mod st_lib;
 pub mod st_stuff;
 pub mod statdump;
+pub mod statenum;
 pub mod tables;
 pub mod v_video;
 pub mod w_checksum;

@@ -264,7 +264,7 @@ const sfx_skesit: c_int = 106;
 const sfx_skeatk: c_int = 107;
 const sfx_radio: c_int = 108;
 
-include!(concat!(env!("OUT_DIR"), "/statenum.rs"));
+pub use crate::doom::statenum::*;
 
 // MF_* flag constants
 
