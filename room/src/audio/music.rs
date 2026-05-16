@@ -175,8 +175,8 @@ impl MusicState {
 // ---------------------------------------------------------------------------
 
 const MUS_MAGIC: &[u8; 4] = b"MUS\x1a";
-const MIDI_TEMPO: u32 = 1_000_000; // µs per beat (60 BPM)
-const MIDI_PPQ: u16 = 70;          // ticks per beat; 1 tick = 1 MUS tick (1/70 s)
+const MIDI_TEMPO: u32 = 500_000; // µs per beat (120 BPM) — yields 140 ticks/sec = MUS tick rate
+const MIDI_PPQ: u16 = 70;          // ticks per beat; 1 tick = 1 MUS tick (1/140 s)
 
 fn mus_to_midi_channel(mus_ch: u8) -> u8 {
     if mus_ch == 15 { 9 }              // percussion
@@ -288,7 +288,7 @@ pub(crate) fn mus2midi(data: &[u8]) -> Option<Vec<u8>> {
             4 => { // change controller
                 if pos + 1 >= score.len() { return None; }
                 let ctrl = score[pos]; pos += 1;
-                let val = score[pos]; pos += 1;
+                let val = score[pos] & 0x7F; pos += 1;
                 match ctrl {
                     0 => midi_ev.extend_from_slice(&[0xC0 | mid_ch, val]),     // program
                     1 => midi_ev.extend_from_slice(&[0xB0 | mid_ch, 0, val]),  // bank select
@@ -410,7 +410,7 @@ mod tests {
         // Note-on event: delta=0 (0x00), status=0x90, note=0x3C, vel=0x64.
         let track_body = &out[22..]; // skip MThd (14 bytes) + MTrk header (8 bytes)
         // Tempo: 00 FF 51 03 0F 42 40 (7 bytes)
-        assert_eq!(&track_body[0..7], &[0x00, 0xFF, 0x51, 0x03, 0x0F, 0x42, 0x40]);
+        assert_eq!(&track_body[0..7], &[0x00, 0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20]);
         // Note on: delta=0, ch=0
         assert_eq!(&track_body[7..11], &[0x00, 0x90, 0x3C, 0x64]);
     }
