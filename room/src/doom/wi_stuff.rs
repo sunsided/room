@@ -438,8 +438,17 @@ fn anim_config(epsd: usize, j: usize) -> &'static anim_config_t {
 }
 
 /// Returns a raw pointer to the mutable state for animation `j` in episode `epsd`.
-/// SAFETY: Doom is single-threaded; caller must not alias across concurrent frames.
-/// Cast *mut [T; N] → *mut T directly to avoid creating any intermediate &mut reference.
+///
+/// # Safety
+///
+/// Callers must uphold all three invariants:
+/// 1. `epsd` must be 0, 1, or 2 — any other value panics.
+/// 2. `j` must be in bounds for the selected episode's state table.
+/// 3. No data races: Doom is single-threaded; callers must not use the returned
+///    pointer concurrently with any other access to the same `AnimStateTable`.
+///
+/// Note: raw pointers produced by this function may alias different elements of
+/// the same table — that is intentional and sound as long as invariant 3 holds.
 unsafe fn anim_state_ptr(epsd: usize, j: usize) -> *mut anim_state_t {
     match epsd {
         0 => {
@@ -463,7 +472,7 @@ unsafe fn anim_state_ptr(epsd: usize, j: usize) -> *mut anim_state_t {
             );
             (EPSD2_STATE.0.get() as *mut anim_state_t).add(j)
         }
-        _ => ptr::null_mut(),
+        _ => panic!("anim_state_ptr: invalid episode {epsd}"),
     }
 }
 
