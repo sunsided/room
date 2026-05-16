@@ -176,7 +176,7 @@ unsafe fn CheckDirectoryHasIWAD(dir: *mut c_char, iwadname: *mut c_char) -> *mut
             iwadname as *const c_char,
             ptr::null(),
         ];
-        // SAFETY: null-terminated pointer array; caller frees result with free().
+        // SAFETY: null-terminated pointer array; ownership transferred to caller via return.
         filename = M_StringJoinA(strs.as_ptr());
     }
 
@@ -260,7 +260,7 @@ pub unsafe extern "C" fn D_FindWADByName(name: *mut c_char) -> *mut c_char {
             name as *const c_char,
             ptr::null(),
         ];
-        // SAFETY: null-terminated pointer array; caller frees result with free().
+        // SAFETY: null-terminated pointer array; freed below on miss, transferred to caller on hit.
         let path = M_StringJoinA(strs.as_ptr());
 
         if M_FileExists(path) != 0 {

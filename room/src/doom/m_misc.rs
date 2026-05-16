@@ -677,6 +677,7 @@ mod tests {
     fn test_string_join_a_single() {
         let s = CString::new("hello").unwrap();
         let strs: [*const c_char; 2] = [s.as_ptr(), std::ptr::null()];
+        // SAFETY: null-terminated pointer array; result freed below with free_cstring.
         let result = unsafe { M_StringJoinA(strs.as_ptr()) };
         assert!(!result.is_null());
         let out = unsafe { CStr::from_ptr(result).to_str().unwrap().to_owned() };
@@ -690,6 +691,7 @@ mod tests {
         let b = CString::new(", ").unwrap();
         let c = CString::new("world").unwrap();
         let strs: [*const c_char; 4] = [a.as_ptr(), b.as_ptr(), c.as_ptr(), std::ptr::null()];
+        // SAFETY: null-terminated pointer array; result freed below with free_cstring.
         let result = unsafe { M_StringJoinA(strs.as_ptr()) };
         assert!(!result.is_null());
         let out = unsafe { CStr::from_ptr(result).to_str().unwrap().to_owned() };
@@ -700,6 +702,7 @@ mod tests {
     #[test]
     fn test_string_join_a_empty_list() {
         let strs: [*const c_char; 1] = [std::ptr::null()];
+        // SAFETY: null-terminated pointer array; result freed below with free_cstring.
         let result = unsafe { M_StringJoinA(strs.as_ptr()) };
         assert!(!result.is_null());
         let out = unsafe { CStr::from_ptr(result).to_str().unwrap().to_owned() };
