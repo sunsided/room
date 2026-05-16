@@ -35,6 +35,9 @@ bytemuck = { version = "1", features = ["derive"] }
 # Logging facade.
 log = "0.4"
 
+# Cross-platform audio playback, used for SFX.
+rodio = "0.22"
+
 # Simple logger backed by stderr.
 env_logger = "0.11"
 
