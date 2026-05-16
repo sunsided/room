@@ -3,7 +3,11 @@ name = "room"
 version = "0.1.0"
 edition = "2021"
 description = "A Rust implementation of the doomgeneric platform layer using winit and wgpu"
-license = "GPL-2.0-or-later"
+maintainers = ["Markus Mayer <widemeadows@gmail.com>"]
+repository = "https://github.com/sunsided/room"
+license = "GPL-2.0"
+license-file = "../LICENSE-GPL-2.0"
+readme = "../README.md"
 
 [lib]
 name = "room"
