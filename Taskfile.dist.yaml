@@ -38,6 +38,14 @@ tasks:
     cmds:
       - cargo test
 
+  check:
+    desc: Check the workspace
+    preconditions:
+      - sh: command -v cargo >/dev/null 2>&1
+        msg: cargo is not installed. Please install Rust via https://rustup.rs
+    cmds:
+      - cargo check
+
   build:
     desc: Build the workspace
     preconditions:
