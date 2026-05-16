@@ -953,9 +953,9 @@ pub extern "C" fn D_DoAdvanceDemo() {
                 gamestate = GS_DEMOSCREEN;
                 pagename = b"TITLEPIC\0".as_ptr() as *mut c_char;
                 if gamemode == d_mode::commercial {
-                    S_StartMusic(40); // mus_dm2ttl
+                    S_StartMusic(66); // mus_dm2ttl
                 } else {
-                    S_StartMusic(1); // mus_intro
+                    S_StartMusic(29); // mus_intro
                 }
             }
             1 => {
@@ -974,7 +974,7 @@ pub extern "C" fn D_DoAdvanceDemo() {
                 if gamemode == d_mode::commercial {
                     pagetic = TICRATE * 11;
                     pagename = b"TITLEPIC\0".as_ptr() as *mut c_char;
-                    S_StartMusic(40); // mus_dm2ttl
+                    S_StartMusic(66); // mus_dm2ttl
                 } else {
                     pagetic = 200;
                     if gamemode == d_mode::retail {
