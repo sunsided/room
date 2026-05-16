@@ -102,8 +102,17 @@ pub struct channel_t {
 
 #[repr(C)]
 pub struct MobjStub {
+    // thinker_t prefix (3 pointers × 8 bytes = 24 bytes on 64-bit)
+    _thinker_prev: *mut c_void,
+    _thinker_next: *mut c_void,
+    _thinker_fn: *mut c_void,
+    // mobj_t positional fields
     pub x: c_int,
     pub y: c_int,
+    _z: c_int,
+    _pad0: u32,
+    _snext: *mut c_void,
+    _sprev: *mut c_void,
     pub angle: u32,
 }
 
