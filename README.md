@@ -33,7 +33,7 @@ A regression-test harness (`room/src/doom/c_tests/`) runs the original C
 functions alongside their Rust replacements to verify bit-for-bit behavioural
 compatibility before a module is declared ported.
 
-Sound effects are implemented via [rodio](https://github.com/RustAudio/rodio) with stereo panning. Music playback is not yet implemented.
+Sound effects and music are implemented via [rodio](https://github.com/RustAudio/rodio). SFX uses stereo panning; music uses the [Roland SC-55 SoundFont](https://github.com/GuihongWang/SC55Soundfont) via [rustysynth](https://github.com/sinshu/rustysynth). A custom soundfont can be specified with `-sf2 <path>`.
 
 ## Project layout
 
@@ -102,7 +102,6 @@ The engine runs inside the winit event loop:
 
 ## Known limitations
 
-- **No music.**  Music playback stubs (`I_RegisterSong`, `I_PlaySong`, etc.) are not yet implemented; sound effects work via rodio.
 - **No mouse support.**  Mouse aiming / strafing are not yet implemented.
 - **No joystick support.**
 - **Single player only.**  Networking (`FEATURE_MULTIPLAYER`) is not compiled in.
@@ -205,7 +204,7 @@ fully replaced by Rust code in the `room` crate. Port complete.
 
 - [x] `s_sound.c` - sound and music state machine fully ported
 - [x] `sounds.c` - SFX and music tables fully ported
-- [x] `i_sound.c` - SFX playback via rodio (stereo pan); music stubs pending
+- [x] `i_sound.c` - SFX playback via rodio (stereo pan); music via rustysynth + SC-55 soundfont
 
 ### Video / WAD / memory / utilities
 
