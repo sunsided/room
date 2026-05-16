@@ -155,6 +155,7 @@ pub(crate) fn mus2midi(data: &[u8]) -> Option<Vec<u8>> {
                     _ => {} // unknown controller, skip
                 }
             }
+            5 => {}         // measure end — no payload, skip
             6 | 7 => break, // score end
             _ => break,     // unknown type, stop
         }
@@ -282,5 +283,17 @@ mod tests {
         let track_body = &out[22..];
         // Note-on on MIDI channel 9: 0x90 | 9 = 0x99
         assert_eq!(track_body[8], 0x99);
+    }
+
+    #[test]
+    fn mus2midi_truncated_score_returns_none() {
+        // Valid header but score has a note-on byte with no following note byte.
+        // score_start=16, event 0x10 = note-on ch0, but score ends before the note byte.
+        let mut mus = vec![0u8; 17];
+        mus[0..4].copy_from_slice(b"MUS\x1a");
+        mus[4] = 1;   // score_len = 1
+        mus[6] = 16;  // score_start
+        mus[16] = 0x10; // note-on event, ch 0 — requires another byte that doesn't exist
+        assert!(mus2midi(&mus).is_none());
     }
 }
