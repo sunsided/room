@@ -1,15 +1,101 @@
+use std::io::{BufReader, Cursor};
 use std::sync::Arc;
-use std::sync::atomic::AtomicU32;
-use rodio::Player;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
+use rodio::{Player, Source};
+use rustysynth::{MidiFile, MidiFileSequencer, SoundFont, Synthesizer, SynthesizerSettings};
+
+const BLOCK_SIZE: usize = 512;
+const SAMPLE_RATE: i32 = 44100;
 
 pub(crate) struct MusicHandle {
     pub(crate) midi_bytes: Vec<u8>,
 }
 
+// ---------------------------------------------------------------------------
+// MusicSource — rodio Source that renders MIDI via rustysynth
+// ---------------------------------------------------------------------------
+
+pub(crate) struct MusicSource {
+    sequencer: MidiFileSequencer,
+    buf_l: Vec<f32>,
+    buf_r: Vec<f32>,
+    pos: usize,
+    finished: bool,
+    volume: Arc<AtomicU32>,
+}
+
+impl MusicSource {
+    pub(crate) fn new(
+        sound_font: &Arc<SoundFont>,
+        midi_bytes: &[u8],
+        looping: bool,
+        volume: Arc<AtomicU32>,
+    ) -> Option<Self> {
+        let settings = SynthesizerSettings::new(SAMPLE_RATE);
+        let synthesizer = Synthesizer::new(sound_font, &settings).ok()?;
+        let midi_file = Arc::new(MidiFile::new(&mut Cursor::new(midi_bytes)).ok()?);
+        let mut sequencer = MidiFileSequencer::new(synthesizer);
+        sequencer.play(&midi_file, looping);
+        Some(Self {
+            sequencer,
+            buf_l: vec![0.0f32; BLOCK_SIZE],
+            buf_r: vec![0.0f32; BLOCK_SIZE],
+            pos: BLOCK_SIZE * 2, // triggers render on first next()
+            finished: false,
+            volume,
+        })
+    }
+}
+
+impl Iterator for MusicSource {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<f32> {
+        if self.pos >= BLOCK_SIZE * 2 {
+            if self.finished {
+                return None;
+            }
+            self.sequencer.render(&mut self.buf_l, &mut self.buf_r);
+            self.pos = 0;
+            if self.sequencer.end_of_sequence() {
+                self.finished = true;
+            }
+        }
+        let vol = f32::from_bits(self.volume.load(Ordering::Relaxed));
+        let sample = if self.pos % 2 == 0 {
+            self.buf_l[self.pos / 2] * vol
+        } else {
+            self.buf_r[self.pos / 2] * vol
+        };
+        self.pos += 1;
+        Some(sample)
+    }
+}
+
+impl Source for MusicSource {
+    fn current_span_len(&self) -> Option<usize> {
+        None
+    }
+    fn channels(&self) -> rodio::ChannelCount {
+        std::num::NonZero::new(2u16).unwrap()
+    }
+    fn sample_rate(&self) -> rodio::SampleRate {
+        std::num::NonZero::new(SAMPLE_RATE as u32).unwrap()
+    }
+    fn total_duration(&self) -> Option<Duration> {
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MusicState — SF2 loading and playback control
+// ---------------------------------------------------------------------------
+
 pub(crate) struct MusicState {
-    pub(crate) sound_font: Option<Arc<rustysynth::SoundFont>>,
-    pub(crate) player: Option<Player>,
-    pub(crate) volume: Arc<AtomicU32>,
+    pub(crate) sound_font: Option<Arc<SoundFont>>,
+    player: Option<Player>,
+    volume: Arc<AtomicU32>,
 }
 
 impl MusicState {
@@ -19,6 +105,68 @@ impl MusicState {
             player: None,
             volume: Arc::new(AtomicU32::new(1.0f32.to_bits())),
         }
+    }
+
+    pub(crate) fn load_sound_font(&mut self, path: &std::path::Path) {
+        match std::fs::File::open(path) {
+            Ok(f) => {
+                let mut reader = BufReader::new(f);
+                match SoundFont::new(&mut reader) {
+                    Ok(sf) => {
+                        log::info!("Soundfont loaded: {}", path.display());
+                        self.sound_font = Some(Arc::new(sf));
+                    }
+                    Err(e) => log::warn!("Soundfont parse error ({}): {e}", path.display()),
+                }
+            }
+            Err(e) => log::warn!("Soundfont not found ({}): {e}", path.display()),
+        }
+    }
+
+    pub(crate) fn play(
+        &mut self,
+        midi_bytes: &[u8],
+        looping: bool,
+        mixer: &rodio::mixer::Mixer,
+    ) {
+        let Some(sf) = self.sound_font.as_ref() else {
+            return;
+        };
+        let Some(source) =
+            MusicSource::new(sf, midi_bytes, looping, Arc::clone(&self.volume))
+        else {
+            log::warn!("I_PlaySong: failed to create MusicSource");
+            return;
+        };
+        self.player = None;
+        let player = Player::connect_new(mixer);
+        player.append(source);
+        self.player = Some(player);
+    }
+
+    pub(crate) fn stop(&mut self) {
+        self.player = None;
+    }
+
+    pub(crate) fn set_volume(&self, vol: i32) {
+        let gain = (vol.clamp(0, 15) as f32 / 15.0).to_bits();
+        self.volume.store(gain, Ordering::Relaxed);
+    }
+
+    pub(crate) fn pause(&self) {
+        if let Some(p) = &self.player {
+            p.pause();
+        }
+    }
+
+    pub(crate) fn resume(&self) {
+        if let Some(p) = &self.player {
+            p.play();
+        }
+    }
+
+    pub(crate) fn is_playing(&self) -> bool {
+        self.player.as_ref().map_or(false, |p| !p.empty())
     }
 }
 
