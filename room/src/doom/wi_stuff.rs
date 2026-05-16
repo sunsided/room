@@ -16,8 +16,9 @@
     clippy::manual_c_str_literals
 )]
 
+use std::cell::UnsafeCell;
 use std::ffi::{c_char, c_int, c_void};
-use std::ptr::{self, addr_of_mut};
+use std::ptr;
 
 use crate::types::Boolean;
 
@@ -120,28 +121,47 @@ struct point_t {
     y: c_int,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum animenum_t {
     ANIM_ALWAYS,
     ANIM_RANDOM,
     ANIM_LEVEL,
 }
 
+/// Immutable per-animation configuration (set at compile time, never written at runtime).
 #[derive(Clone, Copy)]
-#[allow(dead_code)]
-struct anim_t {
+struct anim_config_t {
     type_: animenum_t,
     period: c_int,
     nanims: c_int,
     loc: point_t,
     data1: c_int,
     data2: c_int,
+}
+
+/// Mutable per-animation runtime state (zeroed at startup, written every frame).
+#[derive(Clone, Copy)]
+struct anim_state_t {
     p: [*mut patch_t; 3],
     nexttic: c_int,
     lastdrawn: c_int,
     ctr: c_int,
     state: c_int,
 }
+
+const ZERO_STATE: anim_state_t = anim_state_t {
+    p: [ptr::null_mut(); 3],
+    nexttic: 0,
+    lastdrawn: 0,
+    ctr: 0,
+    state: 0,
+};
+
+/// Interior-mutable wrapper for a fixed-size animation state array.
+/// Single-threaded Doom: safe because all access is from the main game thread.
+struct AnimStateTable<const N: usize>(UnsafeCell<[anim_state_t; N]>);
+// SAFETY: Doom is single-threaded; no concurrent access to these tables.
+unsafe impl<const N: usize> Sync for AnimStateTable<N> {}
 
 // ---------------------------------------------------------------------------
 // Static data tables
@@ -192,358 +212,247 @@ pub(crate) const EPSD0_NANIM: usize = 10;
 pub(crate) const EPSD1_NANIM: usize = 9;
 pub(crate) const EPSD2_NANIM: usize = 6;
 
-// TODO: Consider splitting into immutable config fields (type_, period, nanims,
-// loc, data1, data2) and mutable runtime state (ctr, nexttic, lastdrawn, state,
-// p) using two separate arrays, or wrapping in UnsafeCell for explicit interior
-// mutability without static mut.
-static mut EPSD0ANIMINFO: [anim_t; EPSD0_NANIM] = [
-    anim_t {
+static EPSD0_CONFIG: [anim_config_t; EPSD0_NANIM] = [
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 224, y: 104 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 184, y: 160 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 112, y: 136 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 72, y: 112 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 88, y: 96 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 64, y: 48 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 192, y: 40 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 136, y: 16 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 80, y: 16 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 64, y: 24 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
 ];
 
-// TODO: Same as EPSD0ANIMINFO — candidate for config/state split or UnsafeCell.
-static mut EPSD1ANIMINFO: [anim_t; EPSD1_NANIM] = [
-    anim_t {
+static EPSD1_CONFIG: [anim_config_t; EPSD1_NANIM] = [
+    anim_config_t {
         type_: animenum_t::ANIM_LEVEL,
         period: TICRATE / 3,
         nanims: 1,
         loc: point_t { x: 128, y: 136 },
         data1: 1,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_LEVEL,
         period: TICRATE / 3,
         nanims: 1,
         loc: point_t { x: 128, y: 136 },
         data1: 2,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_LEVEL,
         period: TICRATE / 3,
         nanims: 1,
         loc: point_t { x: 128, y: 136 },
         data1: 3,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_LEVEL,
         period: TICRATE / 3,
         nanims: 1,
         loc: point_t { x: 128, y: 136 },
         data1: 4,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_LEVEL,
         period: TICRATE / 3,
         nanims: 1,
         loc: point_t { x: 128, y: 136 },
         data1: 5,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_LEVEL,
         period: TICRATE / 3,
         nanims: 1,
         loc: point_t { x: 128, y: 136 },
         data1: 6,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_LEVEL,
         period: TICRATE / 3,
         nanims: 1,
         loc: point_t { x: 128, y: 136 },
         data1: 7,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_LEVEL,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 192, y: 144 },
         data1: 8,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_LEVEL,
         period: TICRATE / 3,
         nanims: 1,
         loc: point_t { x: 128, y: 136 },
         data1: 8,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
 ];
 
-// TODO: Same as EPSD0ANIMINFO — candidate for config/state split or UnsafeCell.
-static mut EPSD2ANIMINFO: [anim_t; EPSD2_NANIM] = [
-    anim_t {
+static EPSD2_CONFIG: [anim_config_t; EPSD2_NANIM] = [
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 104, y: 168 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 40, y: 136 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 160, y: 96 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 104, y: 80 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 3,
         nanims: 3,
         loc: point_t { x: 120, y: 32 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
-    anim_t {
+    anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
         period: TICRATE / 4,
         nanims: 3,
         loc: point_t { x: 40, y: 0 },
         data1: 0,
         data2: 0,
-        p: [ptr::null_mut(); 3],
-        nexttic: 0,
-        lastdrawn: 0,
-        ctr: 0,
-        state: 0,
     },
 ];
+
+static EPSD0_STATE: AnimStateTable<EPSD0_NANIM> =
+    AnimStateTable(UnsafeCell::new([ZERO_STATE; EPSD0_NANIM]));
+static EPSD1_STATE: AnimStateTable<EPSD1_NANIM> =
+    AnimStateTable(UnsafeCell::new([ZERO_STATE; EPSD1_NANIM]));
+static EPSD2_STATE: AnimStateTable<EPSD2_NANIM> =
+    AnimStateTable(UnsafeCell::new([ZERO_STATE; EPSD2_NANIM]));
+
+fn anim_config(epsd: usize, j: usize) -> &'static anim_config_t {
+    match epsd {
+        0 => &EPSD0_CONFIG[j],
+        1 => &EPSD1_CONFIG[j],
+        2 => &EPSD2_CONFIG[j],
+        _ => panic!("anim_config: invalid episode {}", epsd),
+    }
+}
+
+/// Returns a raw pointer to the mutable state for animation `j` in episode `epsd`.
+/// SAFETY: Doom is single-threaded; caller must not alias across concurrent frames.
+unsafe fn anim_state_ptr(epsd: usize, j: usize) -> *mut anim_state_t {
+    match epsd {
+        0 => (*EPSD0_STATE.0.get()).as_mut_ptr().add(j),
+        1 => (*EPSD1_STATE.0.get()).as_mut_ptr().add(j),
+        2 => (*EPSD2_STATE.0.get()).as_mut_ptr().add(j),
+        _ => ptr::null_mut(),
+    }
+}
 
 static NUMANIMS: [c_int; NUMEPISODES] = [
     EPSD0_NANIM as c_int,
     EPSD1_NANIM as c_int,
     EPSD2_NANIM as c_int,
     0,
-];
-
-static mut ANIMS: [*mut anim_t; NUMEPISODES] = [
-    addr_of_mut!(EPSD0ANIMINFO) as *mut anim_t,
-    addr_of_mut!(EPSD1ANIMINFO) as *mut anim_t,
-    addr_of_mut!(EPSD2ANIMINFO) as *mut anim_t,
-    ptr::null_mut(),
 ];
 
 // ---------------------------------------------------------------------------
@@ -753,17 +662,17 @@ unsafe fn WI_initAnimatedBack() {
 
     let epsd = (*wbs).epsd as usize;
     let count = NUMANIMS[epsd] as usize;
-    let base = ANIMS[epsd];
 
     for i in 0..count {
-        let a = base.add(i);
-        (*a).ctr = -1;
-        if (*a).type_ == animenum_t::ANIM_ALWAYS {
-            (*a).nexttic = bcnt + 1 + (M_Random() % (*a).period);
-        } else if (*a).type_ == animenum_t::ANIM_RANDOM {
-            (*a).nexttic = bcnt + 1 + (*a).data2 + (M_Random() % (*a).data1);
-        } else if (*a).type_ == animenum_t::ANIM_LEVEL {
-            (*a).nexttic = bcnt + 1;
+        let cfg = anim_config(epsd, i);
+        let st = anim_state_ptr(epsd, i);
+        (*st).ctr = -1;
+        if cfg.type_ == animenum_t::ANIM_ALWAYS {
+            (*st).nexttic = bcnt + 1 + (M_Random() % cfg.period);
+        } else if cfg.type_ == animenum_t::ANIM_RANDOM {
+            (*st).nexttic = bcnt + 1 + cfg.data2 + (M_Random() % cfg.data1);
+        } else if cfg.type_ == animenum_t::ANIM_LEVEL {
+            (*st).nexttic = bcnt + 1;
         }
     }
 }
@@ -778,36 +687,36 @@ unsafe fn WI_updateAnimatedBack() {
 
     let epsd = (*wbs).epsd as usize;
     let count = NUMANIMS[epsd] as usize;
-    let base = ANIMS[epsd];
 
     for i in 0..count {
-        let a = base.add(i);
-        if bcnt == (*a).nexttic {
-            match (*a).type_ {
+        let cfg = anim_config(epsd, i);
+        let st = anim_state_ptr(epsd, i);
+        if bcnt == (*st).nexttic {
+            match cfg.type_ {
                 animenum_t::ANIM_ALWAYS => {
-                    (*a).ctr += 1;
-                    if (*a).ctr >= (*a).nanims {
-                        (*a).ctr = 0;
+                    (*st).ctr += 1;
+                    if (*st).ctr >= cfg.nanims {
+                        (*st).ctr = 0;
                     }
-                    (*a).nexttic = bcnt + (*a).period;
+                    (*st).nexttic = bcnt + cfg.period;
                 }
                 animenum_t::ANIM_RANDOM => {
-                    (*a).ctr += 1;
-                    if (*a).ctr == (*a).nanims {
-                        (*a).ctr = -1;
-                        (*a).nexttic = bcnt + (*a).data2 + (M_Random() % (*a).data1);
+                    (*st).ctr += 1;
+                    if (*st).ctr == cfg.nanims {
+                        (*st).ctr = -1;
+                        (*st).nexttic = bcnt + cfg.data2 + (M_Random() % cfg.data1);
                     } else {
-                        (*a).nexttic = bcnt + (*a).period;
+                        (*st).nexttic = bcnt + cfg.period;
                     }
                 }
                 animenum_t::ANIM_LEVEL => {
                     // gawd-awful hack for level anims
-                    if !(state == stateenum_t::StatCount && i == 7) && (*wbs).next == (*a).data1 {
-                        (*a).ctr += 1;
-                        if (*a).ctr == (*a).nanims {
-                            (*a).ctr -= 1;
+                    if !(state == stateenum_t::StatCount && i == 7) && (*wbs).next == cfg.data1 {
+                        (*st).ctr += 1;
+                        if (*st).ctr == cfg.nanims {
+                            (*st).ctr -= 1;
                         }
-                        (*a).nexttic = bcnt + (*a).period;
+                        (*st).nexttic = bcnt + cfg.period;
                     }
                 }
             }
@@ -825,12 +734,12 @@ unsafe fn WI_drawAnimatedBack() {
 
     let epsd = (*wbs).epsd as usize;
     let count = NUMANIMS[epsd] as usize;
-    let base = ANIMS[epsd] as *const anim_t;
 
     for i in 0..count {
-        let a = base.add(i);
-        if (*a).ctr >= 0 {
-            V_DrawPatch((*a).loc.x, (*a).loc.y, (*a).p[(*a).ctr as usize]);
+        let cfg = anim_config(epsd, i);
+        let st = anim_state_ptr(epsd, i);
+        if (*st).ctr >= 0 {
+            V_DrawPatch(cfg.loc.x, cfg.loc.y, (*st).p[(*st).ctr as usize]);
         }
     }
 }
@@ -1590,14 +1499,16 @@ unsafe fn WI_loadUnloadData(callback: LoadCallback) {
         );
 
         if (*wbs).epsd < 3 {
-            for j in 0..NUMANIMS[(*wbs).epsd as usize] {
-                let a = ANIMS[(*wbs).epsd as usize].add(j as usize);
-                for i in 0..(*a).nanims {
+            let epsd = (*wbs).epsd as usize;
+            for j in 0..NUMANIMS[epsd] as usize {
+                let cfg = anim_config(epsd, j);
+                let st = anim_state_ptr(epsd, j);
+                for i in 0..cfg.nanims as usize {
                     if (*wbs).epsd != 1 || j != 8 {
                         c_write!(name, "WIA{}{:02}{:02}", (*wbs).epsd, j, i);
-                        callback(name.as_mut_ptr(), &mut (*a).p[i as usize]);
+                        callback(name.as_mut_ptr(), &mut (*st).p[i]);
                     } else {
-                        (*a).p[i as usize] = (*ANIMS[1].add(4)).p[i as usize];
+                        (*st).p[i] = (*anim_state_ptr(1, 4)).p[i];
                     }
                 }
             }
@@ -1788,5 +1699,43 @@ pub unsafe extern "C" fn WI_Start(wbstartstruct: *mut wbstartstruct_t) {
         WI_initNetgameStats();
     } else {
         WI_initStats();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn epsd0_config_entry0_fields() {
+        let c = &EPSD0_CONFIG[0];
+        assert_eq!(c.type_, animenum_t::ANIM_ALWAYS);
+        assert_eq!(c.nanims, 3);
+        assert_eq!(c.loc.x, 224);
+        assert_eq!(c.loc.y, 104);
+    }
+
+    #[test]
+    fn epsd1_config_entry0_is_level_anim() {
+        let c = &EPSD1_CONFIG[0];
+        assert_eq!(c.type_, animenum_t::ANIM_LEVEL);
+        assert_eq!(c.data1, 1);
+    }
+
+    #[test]
+    fn epsd2_last_entry_has_quarter_ticrate_period() {
+        let last = &EPSD2_CONFIG[EPSD2_NANIM - 1];
+        assert_eq!(last.period, TICRATE / 4);
+    }
+
+    #[test]
+    fn anim_state_initializes_zeroed() {
+        unsafe {
+            let st = anim_state_ptr(0, 0);
+            assert_eq!((*st).ctr, 0);
+            assert_eq!((*st).nexttic, 0);
+            assert_eq!((*st).lastdrawn, 0);
+            assert_eq!((*st).state, 0);
+        }
     }
 }
