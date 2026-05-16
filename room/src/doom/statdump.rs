@@ -46,6 +46,12 @@ use crate::doom::i_timer::TICRATE;
 
 use crate::doom::m_argv::{myargv, M_CheckParmWithArgs, M_ParmExists};
 
+macro_rules! cstr {
+    ($s:literal) => {
+        concat!($s, "\0").as_ptr() as *mut c_char
+    };
+}
+
 extern "C" {
     fn memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
 }
@@ -53,9 +59,7 @@ extern "C" {
 #[no_mangle]
 pub extern "C" fn StatCopy(stats: *mut wbstartstruct_t) {
     unsafe {
-        if M_ParmExists(b"-statdump\0".as_ptr() as *mut c_char) != 0
-            && num_captured_stats < MAX_CAPTURES as c_int
-        {
+        if M_ParmExists(cstr!("-statdump")) != 0 && num_captured_stats < MAX_CAPTURES as c_int {
             memcpy(
                 captured_stats
                     .as_mut_ptr()
