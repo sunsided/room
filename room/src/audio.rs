@@ -16,7 +16,7 @@ pub(crate) fn decode_doom_sfx(data: &[u8]) -> Option<(u32, Vec<f32>)> {
     }
     let sample_rate = u16::from_le_bytes([data[2], data[3]]) as u32;
     let num_samples = u32::from_le_bytes([data[4], data[5], data[6], data[7]]) as usize;
-    if num_samples == 0 || data.len() < 8 + num_samples {
+    if sample_rate == 0 || num_samples == 0 || data.len() < 8 + num_samples {
         return None;
     }
     let samples = data[8..8 + num_samples]
@@ -129,6 +129,7 @@ impl AudioState {
     }
 
     pub(crate) fn start_sound(&mut self, data: &[u8], vol: i32, sep: i32, channel: usize) -> bool {
+        if channel >= 8 { return false; }
         let Some((sample_rate, samples)) = decode_doom_sfx(data) else { return false; };
         let pan = Arc::clone(&self.channels[channel].pan);
         pan.update(vol, sep);
@@ -145,14 +146,17 @@ impl AudioState {
     }
 
     pub(crate) fn stop_sound(&mut self, channel: usize) {
+        if channel >= 8 { return; }
         self.channels[channel].player = None;
     }
 
     pub(crate) fn update_sound_params(&self, channel: usize, vol: i32, sep: i32) {
+        if channel >= 8 { return; }
         self.channels[channel].pan.update(vol, sep);
     }
 
     pub(crate) fn is_playing(&self, channel: usize) -> bool {
+        if channel >= 8 { return false; }
         self.channels[channel].player.as_ref().map_or(false, |p| !p.empty())
     }
 }
@@ -195,6 +199,13 @@ mod tests {
     #[test]
     fn decode_sfx_zero_samples_returns_none() {
         let data: &[u8] = &[3, 0, 0x11, 0x2B, 0, 0, 0, 0];
+        assert!(decode_doom_sfx(data).is_none());
+    }
+
+    #[test]
+    fn decode_sfx_zero_rate_returns_none() {
+        // sample_rate=0 (bytes 2-3 are 0x00, 0x00), 1 sample
+        let data: &[u8] = &[3, 0, 0x00, 0x00, 1, 0, 0, 0, 128];
         assert!(decode_doom_sfx(data).is_none());
     }
 
