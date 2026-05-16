@@ -195,26 +195,26 @@ fn write_var_len(buf: &mut Vec<u8>, mut val: u32) {
     buf.extend_from_slice(&[b3 | 0x80, b2 | 0x80, b1 | 0x80, b0]);
 }
 
-fn read_delay(score: &[u8], pos: &mut usize) -> u32 {
+fn read_delay(score: &[u8], pos: &mut usize) -> Option<u32> {
     let mut delay = 0u32;
     loop {
-        if *pos >= score.len() { break; }
+        if *pos >= score.len() { return None; }
         let b = score[*pos]; *pos += 1;
         delay = delay.saturating_mul(128).saturating_add((b & 0x7F) as u32);
-        if b & 0x80 == 0 { break; }
+        if b & 0x80 == 0 { return Some(delay); }
     }
-    delay
 }
 
 pub(crate) fn mus2midi(data: &[u8]) -> Option<Vec<u8>> {
     if data.len() < 17 || &data[0..4] != MUS_MAGIC {
         return None;
     }
+    let score_len = u16::from_le_bytes([data[4], data[5]]) as usize;
     let score_start = u16::from_le_bytes([data[6], data[7]]) as usize;
-    if score_start >= data.len() {
+    if score_start >= data.len() || score_start + score_len > data.len() {
         return None;
     }
-    let score = &data[score_start..];
+    let score = &data[score_start..score_start + score_len];
     let mut pos = 0usize;
     let mut track: Vec<u8> = Vec::new();
 
@@ -315,7 +315,7 @@ pub(crate) fn mus2midi(data: &[u8]) -> Option<Vec<u8>> {
         }
 
         if is_last {
-            delta += read_delay(score, &mut pos);
+            delta += read_delay(score, &mut pos)?;
         }
     }
 
