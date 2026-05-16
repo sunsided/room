@@ -406,7 +406,7 @@ pub unsafe extern "C" fn R_InitTextures() {
     let mut name: [c_char; 9] = [0; 9];
 
     let names =
-        W_CacheLumpName(DEH_String(b"PNAMES\0".as_ptr() as *const c_char),PU_STATIC) as *mut c_int;
+        W_CacheLumpName(DEH_String(b"PNAMES\0".as_ptr() as *const c_char), PU_STATIC) as *mut c_int;
     let nummappatches = LONG(*names);
     let name_p = names.add(1) as *mut c_char;
 
@@ -422,12 +422,14 @@ pub unsafe extern "C" fn R_InitTextures() {
     }
     W_ReleaseLumpName(DEH_String(b"PNAMES\0".as_ptr() as *const c_char));
 
-    let maptex1 =
-        W_CacheLumpName(DEH_String(b"TEXTURE1\0".as_ptr() as *const c_char),PU_STATIC) as *mut c_int;
+    let maptex1 = W_CacheLumpName(
+        DEH_String(b"TEXTURE1\0".as_ptr() as *const c_char),
+        PU_STATIC,
+    ) as *mut c_int;
     let numtextures1 = LONG(*maptex1);
-    let maxoff = W_LumpLength(W_GetNumForName(DEH_String(
-        b"TEXTURE1\0".as_ptr() as *const c_char
-    )) as c_uint);
+    let maxoff = W_LumpLength(
+        W_GetNumForName(DEH_String(b"TEXTURE1\0".as_ptr() as *const c_char)) as c_uint,
+    );
     let mut directory = maptex1.add(1);
 
     let mut maptex2: *mut c_int = ptr::null_mut();
@@ -435,12 +437,14 @@ pub unsafe extern "C" fn R_InitTextures() {
     let mut maxoff2: c_int = 0;
 
     if W_CheckNumForName(DEH_String(b"TEXTURE2\0".as_ptr() as *const c_char)) != -1 {
-        maptex2 = W_CacheLumpName(DEH_String(b"TEXTURE2\0".as_ptr() as *const c_char),PU_STATIC)
-            as *mut c_int;
+        maptex2 = W_CacheLumpName(
+            DEH_String(b"TEXTURE2\0".as_ptr() as *const c_char),
+            PU_STATIC,
+        ) as *mut c_int;
         numtextures2 = LONG(*maptex2);
-        maxoff2 = W_LumpLength(W_GetNumForName(DEH_String(
-            b"TEXTURE2\0".as_ptr() as *const c_char
-        )) as c_uint);
+        maxoff2 = W_LumpLength(
+            W_GetNumForName(DEH_String(b"TEXTURE2\0".as_ptr() as *const c_char)) as c_uint,
+        );
     }
 
     numtextures = numtextures1 + numtextures2;

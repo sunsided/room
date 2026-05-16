@@ -6,8 +6,8 @@ use libc::printf;
 
 use crate::types::Boolean;
 
-use crate::doom::m_argv::{myargc, myargv, M_CheckParmWithArgs};
 use crate::doom::d_iwad::D_TryFindWADByName;
+use crate::doom::m_argv::{myargc, myargv, M_CheckParmWithArgs};
 use crate::doom::w_wad::W_AddFile;
 
 #[no_mangle]

@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use rodio::{Player, Source};
@@ -55,7 +55,11 @@ pub(crate) struct PannedSource<S> {
 
 impl<S: Source> PannedSource<S> {
     pub(crate) fn new(inner: S, pan: Arc<PanState>) -> Self {
-        Self { inner, pan, buffered: None }
+        Self {
+            inner,
+            pan,
+            buffered: None,
+        }
     }
 }
 
@@ -196,7 +200,11 @@ mod tests {
 
     #[test]
     fn panned_source_center_two_samples() {
-        let buf = SamplesBuffer::new(NonZero::new(1).unwrap(), NonZero::new(11025).unwrap(), vec![1.0_f32, 0.5_f32]);
+        let buf = SamplesBuffer::new(
+            NonZero::new(1).unwrap(),
+            NonZero::new(11025).unwrap(),
+            vec![1.0_f32, 0.5_f32],
+        );
         let pan = Arc::new(PanState::new(127, 127));
         let mut src = PannedSource::new(buf, Arc::clone(&pan));
         let l1 = src.next().unwrap();
@@ -212,7 +220,11 @@ mod tests {
 
     #[test]
     fn panned_source_hard_left() {
-        let buf = SamplesBuffer::new(NonZero::new(1).unwrap(), NonZero::new(11025).unwrap(), vec![0.5_f32]);
+        let buf = SamplesBuffer::new(
+            NonZero::new(1).unwrap(),
+            NonZero::new(11025).unwrap(),
+            vec![0.5_f32],
+        );
         let pan = Arc::new(PanState::new(127, 0));
         let mut src = PannedSource::new(buf, pan);
         let l = src.next().unwrap();
@@ -224,7 +236,11 @@ mod tests {
     #[test]
     fn panned_source_channels_is_2() {
         use rodio::Source;
-        let buf = SamplesBuffer::new(NonZero::new(1).unwrap(), NonZero::new(11025).unwrap(), vec![0.0_f32]);
+        let buf = SamplesBuffer::new(
+            NonZero::new(1).unwrap(),
+            NonZero::new(11025).unwrap(),
+            vec![0.0_f32],
+        );
         let pan = Arc::new(PanState::new(127, 127));
         let src = PannedSource::new(buf, pan);
         assert_eq!(src.channels().get(), 2);
@@ -232,7 +248,11 @@ mod tests {
 
     #[test]
     fn panned_source_live_pan_update() {
-        let buf = SamplesBuffer::new(NonZero::new(1).unwrap(), NonZero::new(11025).unwrap(), vec![1.0_f32, 1.0_f32]);
+        let buf = SamplesBuffer::new(
+            NonZero::new(1).unwrap(),
+            NonZero::new(11025).unwrap(),
+            vec![1.0_f32, 1.0_f32],
+        );
         let pan = Arc::new(PanState::new(127, 127));
         let mut src = PannedSource::new(buf, Arc::clone(&pan));
         let _ = src.next();

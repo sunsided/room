@@ -19,9 +19,9 @@ use super::p_telept::P_Telept_Link_Anchor;
 use super::p_user::P_User_Link_Anchor;
 use super::r_main::R_Main_Link_Anchor;
 
-// Constants matching DOOMGENERIC_RESX * DOOMGENERIC_RESY from doomgeneric.h
-const DOOMGENERIC_RESX: usize = 640;
-const DOOMGENERIC_RESY: usize = 400;
+pub const DOOMGENERIC_RESX: usize = 640;
+pub const DOOMGENERIC_RESY: usize = 400;
+pub const DOOMGENERIC_PIXELS: usize = DOOMGENERIC_RESX * DOOMGENERIC_RESY;
 
 #[no_mangle]
 pub static mut DG_ScreenBuffer: *mut u32 = ptr::null_mut();

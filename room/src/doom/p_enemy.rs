@@ -1484,7 +1484,10 @@ pub unsafe extern "C" fn A_BossDeath(mut mo: *mut mobj_t) {
         if gamemap == 7 as c_int {
             if (*mo).mobjtype as c_uint == MT_FATSO as c_int as c_uint {
                 junk.tag = 666 as c_short;
-                EV_DoFloor(&mut junk as *mut line_t as *mut PLineThing, lowerFloorToLowest);
+                EV_DoFloor(
+                    &mut junk as *mut line_t as *mut PLineThing,
+                    lowerFloorToLowest,
+                );
                 return;
             }
             if (*mo).mobjtype as c_uint == MT_BABY as c_int as c_uint {
@@ -1497,7 +1500,10 @@ pub unsafe extern "C" fn A_BossDeath(mut mo: *mut mobj_t) {
         match gameepisode {
             1 => {
                 junk.tag = 666 as c_short;
-                EV_DoFloor(&mut junk as *mut line_t as *mut PLineThing, lowerFloorToLowest);
+                EV_DoFloor(
+                    &mut junk as *mut line_t as *mut PLineThing,
+                    lowerFloorToLowest,
+                );
                 return;
             }
             4 => match gamemap {
@@ -1508,7 +1514,10 @@ pub unsafe extern "C" fn A_BossDeath(mut mo: *mut mobj_t) {
                 }
                 8 => {
                     junk.tag = 666 as c_short;
-                    EV_DoFloor(&mut junk as *mut line_t as *mut PLineThing, lowerFloorToLowest);
+                    EV_DoFloor(
+                        &mut junk as *mut line_t as *mut PLineThing,
+                        lowerFloorToLowest,
+                    );
                     return;
                 }
                 _ => {}

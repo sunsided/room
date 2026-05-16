@@ -125,8 +125,8 @@ use crate::doom::g_game::{consoleplayer, gameepisode, gamemap, players};
 // i_sound.rs
 use crate::doom::i_sound::{
     I_GetSfxLumpNum, I_MusicIsPlaying, I_PauseSong, I_PlaySong, I_PrecacheSounds, I_RegisterSong,
-    I_ResumeSong, I_ShutdownMusic, I_ShutdownSound, I_SoundIsPlaying, I_StartSound, I_StopSong,
-    I_StopSound, I_UnRegisterSong, I_UpdateSound, I_UpdateSoundParams, I_SetMusicVolume,
+    I_ResumeSong, I_SetMusicVolume, I_ShutdownMusic, I_ShutdownSound, I_SoundIsPlaying,
+    I_StartSound, I_StopSong, I_StopSound, I_UnRegisterSong, I_UpdateSound, I_UpdateSoundParams,
 };
 
 // i_system.rs

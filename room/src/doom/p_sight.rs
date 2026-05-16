@@ -130,8 +130,8 @@ pub static mut t2y: c_int = 0;
 pub static mut sightcounts: [c_int; 2] = [0, 0];
 
 use crate::doom::p_setup::{
-    numsubsectors, subsectors as p_setup_subsectors, segs as p_setup_segs,
-    nodes as p_setup_nodes, numnodes, rejectmatrix, numsectors, sectors as p_setup_sectors,
+    nodes as p_setup_nodes, numnodes, numsectors, numsubsectors, rejectmatrix,
+    sectors as p_setup_sectors, segs as p_setup_segs, subsectors as p_setup_subsectors,
 };
 use crate::doom::r_main::validcount;
 // Reuse the authoritative mobj_t mirror from p_telept.rs to guarantee
@@ -376,9 +376,11 @@ pub extern "C" fn P_CheckSight(t1: *mut mobj_t, t2: *mut mobj_t) -> c_int {
         // mobj_t (from p_telept) references a different sector_t type than
         // the one declared here. Sector size is the same in both.
         let sec_size = std::mem::size_of::<sector_t>() as isize;
-        let s1 = (((*(*t1).subsector).sector as *const u8).offset_from(p_setup_sectors as *const u8)
+        let s1 = (((*(*t1).subsector).sector as *const u8)
+            .offset_from(p_setup_sectors as *const u8)
             / sec_size) as c_int;
-        let s2 = (((*(*t2).subsector).sector as *const u8).offset_from(p_setup_sectors as *const u8)
+        let s2 = (((*(*t2).subsector).sector as *const u8)
+            .offset_from(p_setup_sectors as *const u8)
             / sec_size) as c_int;
         let pnum = s1 * numsectors + s2;
         let bytenum = pnum >> 3;

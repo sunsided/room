@@ -8,13 +8,13 @@ use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
 use crate::doom::i_video::{
-    I_GetPaletteIndex, I_VideoBuffer, SCREENHEIGHT, SCREENWIDTH,
-    mouse_acceleration, mouse_threshold, usemouse,
+    mouse_acceleration, mouse_threshold, usemouse, I_GetPaletteIndex, I_VideoBuffer, SCREENHEIGHT,
+    SCREENWIDTH,
 };
 use crate::doom::m_bbox::M_AddToBox;
 use crate::doom::m_misc::{M_FileExists, M_WriteFile};
 use crate::doom::w_wad::W_CacheLumpName;
-use crate::doom::z_zone::{PU_CACHE, PU_STATIC, Z_Free, Z_Malloc};
+use crate::doom::z_zone::{Z_Free, Z_Malloc, PU_CACHE, PU_STATIC};
 use crate::i_error;
 
 #[repr(C, packed)]
@@ -71,7 +71,6 @@ pub static mut dirtybox: [c_int; 4] = [0; 4];
 
 static mut dest_screen: *mut u8 = ptr::null_mut();
 static mut patchclip_callback: vpatchclipfunc_t = None;
-
 
 #[no_mangle]
 pub extern "C" fn V_MarkRect(x: c_int, y: c_int, width: c_int, height: c_int) {

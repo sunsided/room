@@ -10,11 +10,11 @@ use std::ptr;
 
 use crate::doom::w_file::{wad_file_t, W_OpenFile, W_Read};
 
-use crate::doom::z_zone::{PU_CACHE, PU_STATIC, Z_ChangeTag2, Z_ChangeUser, Z_Free, Z_Malloc};
-use crate::doom::i_video::{I_BeginRead, I_EndRead};
-use crate::doom::m_misc::M_ExtractFileBase;
 use crate::doom::d_iwad::D_SuggestGameName;
 use crate::doom::d_mode::D_GameMissionString;
+use crate::doom::i_video::{I_BeginRead, I_EndRead};
+use crate::doom::m_misc::M_ExtractFileBase;
+use crate::doom::z_zone::{Z_ChangeTag2, Z_ChangeUser, Z_Free, Z_Malloc, PU_CACHE, PU_STATIC};
 
 #[repr(C)]
 pub struct lumpinfo_t {

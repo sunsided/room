@@ -210,7 +210,7 @@ use crate::doom::r_draw::{
     ds_x1, ds_x2, ds_xfrac, ds_xstep, ds_y, ds_yfrac, ds_ystep, viewheight, viewwidth,
 };
 use crate::doom::r_main::{
-    colfunc, centerxfrac, detailshift, extralight, fixedcolormap, spanfunc, viewangle, viewx,
+    centerxfrac, colfunc, detailshift, extralight, fixedcolormap, spanfunc, viewangle, viewx,
     viewy, viewz, xtoviewangle, zlight,
 };
 use crate::doom::r_sky::{skytexture, skytexturemid};

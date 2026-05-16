@@ -17,9 +17,6 @@ path = "src/main.rs"
 dhat-heap = ["dep:dhat"]
 
 [dependencies]
-# Low-level Doom engine bindings (vendored C source compiled via cc).
-doomgeneric-sys = { path = "../doomgeneric-sys" }
-
 # Cross-platform window creation and event handling.
 winit = "0.30"
 
@@ -49,3 +46,8 @@ libc = "0.2"
 
 # Optional heap profiler (use with --features dhat-heap).
 dhat = { version = "0.3", optional = true }
+
+[dev-dependencies]
+# C layout-guard tests: compiles test_helpers.c to verify C struct offsets
+# match the ported Rust equivalents. Only linked into the test binary.
+doomgeneric-sys = { path = "../doomgeneric-sys" }

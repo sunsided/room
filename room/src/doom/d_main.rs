@@ -323,16 +323,20 @@ use crate::doom::m_menu::{
 };
 
 // s_sound.rs
-use crate::doom::s_sound::{musicVolume, sfxVolume, snd_channels, S_Init, S_StartMusic, S_UpdateSounds};
+use crate::doom::s_sound::{
+    musicVolume, sfxVolume, snd_channels, S_Init, S_StartMusic, S_UpdateSounds,
+};
 
 // r_main.rs
 use crate::doom::r_main::{setsizeneeded, R_ExecuteSetViewSize, R_Init, R_RenderPlayerView};
 
 // r_draw.rs
-use crate::doom::r_draw::{scaledviewwidth, viewheight, viewwindowx, viewwindowy, R_DrawViewBorder, R_FillBackScreen};
+use crate::doom::r_draw::{
+    scaledviewwidth, viewheight, viewwindowx, viewwindowy, R_DrawViewBorder, R_FillBackScreen,
+};
 
 // i_video.rs
-use crate::doom::i_video::{screenvisible, screensaver_mode};
+use crate::doom::i_video::{screensaver_mode, screenvisible};
 
 // w_wad.rs
 use crate::doom::w_wad::{
@@ -380,7 +384,9 @@ use crate::doom::z_zone::{Z_Init, Z_Malloc};
 use crate::doom::w_main::W_ParseCommandLine;
 
 // v_video.rs
-use crate::doom::v_video::{patch_t, V_DrawMouseSpeedBox, V_DrawPatch, V_DrawPatchDirect, V_Init, V_RestoreBuffer};
+use crate::doom::v_video::{
+    patch_t, V_DrawMouseSpeedBox, V_DrawPatch, V_DrawPatchDirect, V_Init, V_RestoreBuffer,
+};
 
 // f_finale.rs
 use crate::doom::f_finale::F_Drawer;

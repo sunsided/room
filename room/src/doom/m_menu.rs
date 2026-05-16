@@ -125,9 +125,9 @@ extern "C" {
 }
 
 use crate::doom::am_map::automapactive;
-use crate::doom::dstrings::{doom1_endmsg, doom2_endmsg};
 use crate::doom::d_loop::gametic;
 use crate::doom::d_main::{devparm, D_StartTitle};
+use crate::doom::dstrings::{doom1_endmsg, doom2_endmsg};
 use crate::doom::g_game::{
     consoleplayer, demoplayback, gamestate, netgame, players, testcontrols, usergame,
     G_DeferedInitNew, G_LoadGame, G_SaveGame, G_ScreenShot,
@@ -1652,7 +1652,11 @@ pub extern "C" fn M_Drawer() {
         for i in 0..max {
             let name = (*(*currentMenu).menuitems.add(i)).name.as_ptr();
             if *name != 0 {
-                V_DrawPatchDirect(x, y + LINEHEIGHT * i as c_int, W_CacheLumpName(name, 0) as *mut patch_t);
+                V_DrawPatchDirect(
+                    x,
+                    y + LINEHEIGHT * i as c_int,
+                    W_CacheLumpName(name, 0) as *mut patch_t,
+                );
             }
         }
 

@@ -19,7 +19,7 @@ use crate::doom::p_setup::{sectors, sides};
 use crate::doom::p_spec::{P_FindLowestCeilingSurrounding, P_FindSectorFromLineTag};
 use crate::doom::p_tick::{thinker_t, P_AddThinker, P_RemoveThinker};
 use crate::doom::s_sound::S_StartSound;
-use crate::doom::z_zone::{PU_LEVSPEC, Z_Malloc};
+use crate::doom::z_zone::{Z_Malloc, PU_LEVSPEC};
 
 const VDOORSPEED: fixed_t = FRACUNIT * 2;
 const VDOORWAIT: c_int = 150;
@@ -87,7 +87,6 @@ mod layout_checks {
     const _: () = assert!(std::mem::offset_of!(vldoor_t, topwait) == 52);
     const _: () = assert!(std::mem::offset_of!(vldoor_t, topcountdown) == 56);
 }
-
 
 #[no_mangle]
 pub unsafe extern "C" fn T_VerticalDoor(door: *mut vldoor_t) {

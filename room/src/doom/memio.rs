@@ -3,7 +3,7 @@
 use std::ffi::{c_int, c_void};
 
 #[cfg(not(test))]
-use crate::doom::z_zone::{PU_STATIC, Z_Free, Z_Malloc};
+use crate::doom::z_zone::{Z_Free, Z_Malloc, PU_STATIC};
 
 #[repr(C)]
 pub enum memfile_mode_t {

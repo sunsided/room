@@ -389,7 +389,13 @@ pub unsafe extern "C" fn A_Punch(player: *mut PlayerT, _psp: *mut PspdefT) {
     let mut angle = (*mo).angle;
     angle = angle.wrapping_add(((P_Random() - P_Random()) as u32) << 18);
     let slope = P_AimLineAttack(mo as *mut _ as *mut CffiMobj, angle, MELEERANGE);
-    P_LineAttack(mo as *mut _ as *mut CffiMobj, angle, MELEERANGE, slope, damage);
+    P_LineAttack(
+        mo as *mut _ as *mut CffiMobj,
+        angle,
+        MELEERANGE,
+        slope,
+        damage,
+    );
 
     // Turn to face target.
     if !linetarget.is_null() {
@@ -408,7 +414,13 @@ pub unsafe extern "C" fn A_Saw(player: *mut PlayerT, _psp: *mut PspdefT) {
     angle = angle.wrapping_add(((P_Random() - P_Random()) as u32) << 18);
 
     let slope = P_AimLineAttack(mo as *mut _ as *mut CffiMobj, angle, MELEERANGE + 1);
-    P_LineAttack(mo as *mut _ as *mut CffiMobj, angle, MELEERANGE + 1, slope, damage);
+    P_LineAttack(
+        mo as *mut _ as *mut CffiMobj,
+        angle,
+        MELEERANGE + 1,
+        slope,
+        damage,
+    );
 
     if linetarget.is_null() {
         S_StartSound(mo as *mut c_void, sfx_sawful);
@@ -506,7 +518,13 @@ pub unsafe extern "C" fn P_GunShot(mo: *mut mobj_t, accurate: c_int) {
         angle = angle.wrapping_add(((P_Random() - P_Random()) as u32) << 18);
     }
 
-    P_LineAttack(mo as *mut _ as *mut CffiMobj, angle, MISSILERANGE, bulletslope, damage);
+    P_LineAttack(
+        mo as *mut _ as *mut CffiMobj,
+        angle,
+        MISSILERANGE,
+        bulletslope,
+        damage,
+    );
 }
 
 /// Fire pistol.
@@ -627,7 +645,11 @@ pub unsafe extern "C" fn A_BFGSpray(mo: *mut mobj_t) {
     for i in 0..40 {
         let an = (*mo).angle - ANG90 / 2 + (ANG90 / 40) * i as u32;
 
-        P_AimLineAttack((*mo).target as *mut _ as *mut CffiMobj, an, 16 * 64 * FRACUNIT);
+        P_AimLineAttack(
+            (*mo).target as *mut _ as *mut CffiMobj,
+            an,
+            16 * 64 * FRACUNIT,
+        );
 
         if linetarget.is_null() {
             continue;
@@ -645,7 +667,12 @@ pub unsafe extern "C" fn A_BFGSpray(mo: *mut mobj_t) {
             damage += (P_Random() & 7) + 1;
         }
 
-        P_DamageMobj(linetarget as *mut mobj_t, (*mo).target, (*mo).target, damage);
+        P_DamageMobj(
+            linetarget as *mut mobj_t,
+            (*mo).target,
+            (*mo).target,
+            damage,
+        );
     }
 }
 

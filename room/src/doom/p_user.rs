@@ -56,17 +56,15 @@ const PST_REBORN: c_int = 2;
 // Colormap index
 const INVERSECOLORMAP: c_int = 32;
 
-
-
 /// Whether the player is on ground (boolean → c_int for 4-byte ABI).
 /// Read by not-yet-ported C modules (e.g. p_pspr.c).
 #[no_mangle]
 pub static mut onground: c_int = 0;
 
+use crate::doom::p_map::P_UseLines;
 use crate::doom::p_mobj::P_SetMobjState;
 use crate::doom::p_pspr::P_MovePsprites;
 use crate::doom::p_spec::P_PlayerInSpecialSector;
-use crate::doom::p_map::P_UseLines;
 use crate::doom::r_main::R_PointToAngle2;
 
 #[no_mangle]

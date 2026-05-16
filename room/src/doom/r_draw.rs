@@ -698,17 +698,20 @@ pub extern "C" fn R_FillBackScreen() {
             V_DrawPatch(viewwindowx + x, viewwindowy - 8, patch);
         }
 
-        patch = W_CacheLumpName(DEH_String(b"brdr_b\0".as_ptr() as *const c_char), 8) as *mut patch_t;
+        patch =
+            W_CacheLumpName(DEH_String(b"brdr_b\0".as_ptr() as *const c_char), 8) as *mut patch_t;
         for x in (0..scaledviewwidth).step_by(8) {
             V_DrawPatch(viewwindowx + x, viewwindowy + viewheight, patch);
         }
 
-        patch = W_CacheLumpName(DEH_String(b"brdr_l\0".as_ptr() as *const c_char), 8) as *mut patch_t;
+        patch =
+            W_CacheLumpName(DEH_String(b"brdr_l\0".as_ptr() as *const c_char), 8) as *mut patch_t;
         for y in (0..viewheight).step_by(8) {
             V_DrawPatch(viewwindowx - 8, viewwindowy + y, patch);
         }
 
-        patch = W_CacheLumpName(DEH_String(b"brdr_r\0".as_ptr() as *const c_char), 8) as *mut patch_t;
+        patch =
+            W_CacheLumpName(DEH_String(b"brdr_r\0".as_ptr() as *const c_char), 8) as *mut patch_t;
         for y in (0..viewheight).step_by(8) {
             V_DrawPatch(viewwindowx + scaledviewwidth, viewwindowy + y, patch);
         }

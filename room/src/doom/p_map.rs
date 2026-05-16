@@ -72,7 +72,9 @@ use crate::doom::g_game::gamemap;
 use crate::doom::m_argv::{myargv, M_CheckParmWithArgs};
 use crate::doom::m_misc::M_StrToInt;
 use crate::doom::p_inter::{P_DamageMobj, P_TouchSpecialThing};
-use crate::doom::p_mobj::{P_RemoveMobj, P_SetMobjState, P_SpawnBlood, P_SpawnMobj, P_SpawnPuff, P_SubstNullMobj};
+use crate::doom::p_mobj::{
+    P_RemoveMobj, P_SetMobjState, P_SpawnBlood, P_SpawnMobj, P_SpawnPuff, P_SubstNullMobj,
+};
 use crate::doom::p_spec::{P_CrossSpecialLine, P_ShootSpecialLine};
 use crate::doom::p_switch::P_UseSpecialLine;
 use crate::doom::p_tick::leveltime;
@@ -134,7 +136,12 @@ pub unsafe extern "C" fn PIT_StompThing(thing: *mut mobj_t) -> c_uint {
     if (*tmthing).player.is_null() && gamemap != 30 {
         return 0;
     }
-    P_DamageMobj(thing as *const _ as *mut TeleptMobj, tmthing as *mut TeleptMobj, tmthing as *mut TeleptMobj, 10000);
+    P_DamageMobj(
+        thing as *const _ as *mut TeleptMobj,
+        tmthing as *mut TeleptMobj,
+        tmthing as *mut TeleptMobj,
+        10000,
+    );
     1
 }
 
@@ -249,12 +256,20 @@ pub unsafe extern "C" fn PIT_CheckThing(thing: *mut mobj_t) -> c_uint {
     // check for skulls slamming into things
     if (*tmthing).flags & MF_SKULLFLY != 0 {
         let damage = ((P_Random() % 8) + 1) * (*((*tmthing).info as *mut MobjInfo)).damage;
-        P_DamageMobj(thing as *const _ as *mut TeleptMobj, tmthing as *mut TeleptMobj, tmthing as *mut TeleptMobj, damage);
+        P_DamageMobj(
+            thing as *const _ as *mut TeleptMobj,
+            tmthing as *mut TeleptMobj,
+            tmthing as *mut TeleptMobj,
+            damage,
+        );
         (*tmthing).flags &= !MF_SKULLFLY;
         (*tmthing).momx = 0;
         (*tmthing).momy = 0;
         (*tmthing).momz = 0;
-        P_SetMobjState(tmthing as *mut TeleptMobj, (*((*tmthing).info as *mut MobjInfo)).spawnstate);
+        P_SetMobjState(
+            tmthing as *mut TeleptMobj,
+            (*((*tmthing).info as *mut MobjInfo)).spawnstate,
+        );
         return 0;
     }
 
@@ -287,7 +302,12 @@ pub unsafe extern "C" fn PIT_CheckThing(thing: *mut mobj_t) -> c_uint {
         }
         let damage = ((P_Random() % 8) + 1) * (*((*tmthing).info as *mut MobjInfo)).damage;
         let target = (*tmthing).target as *mut TeleptMobj;
-        P_DamageMobj(thing as *const _ as *mut TeleptMobj, tmthing as *mut TeleptMobj, target, damage);
+        P_DamageMobj(
+            thing as *const _ as *mut TeleptMobj,
+            tmthing as *mut TeleptMobj,
+            target,
+            damage,
+        );
         return 0;
     }
 
@@ -295,7 +315,10 @@ pub unsafe extern "C" fn PIT_CheckThing(thing: *mut mobj_t) -> c_uint {
     if thing.flags & MF_SPECIAL != 0 {
         let solid = thing.flags & MF_SOLID;
         if tmflags & MF_PICKUP != 0 {
-            P_TouchSpecialThing(thing as *const _ as *mut TeleptMobj, tmthing as *mut TeleptMobj);
+            P_TouchSpecialThing(
+                thing as *const _ as *mut TeleptMobj,
+                tmthing as *mut TeleptMobj,
+            );
         }
         return (solid == 0) as c_uint;
     }
@@ -747,7 +770,12 @@ pub unsafe extern "C" fn PTR_ShootTraverse(in_: *mut intercept_t) -> c_uint {
         P_SpawnBlood(x, y, z, la_damage);
     }
     if la_damage != 0 {
-        P_DamageMobj(th as *mut TeleptMobj, shootthing as *mut TeleptMobj, shootthing as *mut TeleptMobj, la_damage);
+        P_DamageMobj(
+            th as *mut TeleptMobj,
+            shootthing as *mut TeleptMobj,
+            shootthing as *mut TeleptMobj,
+            la_damage,
+        );
     }
     0
 }
@@ -848,7 +876,11 @@ pub unsafe extern "C" fn PTR_UseTraverse(in_: *mut intercept_t) -> c_uint {
     if P_PointOnLineSide((*usething).x, (*usething).y, in_.d.line) == 1 {
         side = 1;
     }
-    P_UseSpecialLine(usething as *mut c_void, in_.d.line as *mut crate::doom::p_lights::line_t, side);
+    P_UseSpecialLine(
+        usething as *mut c_void,
+        in_.d.line as *mut crate::doom::p_lights::line_t,
+        side,
+    );
     0
 }
 

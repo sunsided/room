@@ -1,9 +1,9 @@
-use std::io::{BufReader, Cursor};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
 use rodio::{Player, Source};
 use rustysynth::{MidiFile, MidiFileSequencer, SoundFont, Synthesizer, SynthesizerSettings};
+use std::io::{BufReader, Cursor};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 const BLOCK_SIZE: usize = 512;
 const SAMPLE_RATE: i32 = 44100;
@@ -123,17 +123,11 @@ impl MusicState {
         }
     }
 
-    pub(crate) fn play(
-        &mut self,
-        midi_bytes: &[u8],
-        looping: bool,
-        mixer: &rodio::mixer::Mixer,
-    ) {
+    pub(crate) fn play(&mut self, midi_bytes: &[u8], looping: bool, mixer: &rodio::mixer::Mixer) {
         let Some(sf) = self.sound_font.as_ref() else {
             return;
         };
-        let Some(source) =
-            MusicSource::new(sf, midi_bytes, looping, Arc::clone(&self.volume))
+        let Some(source) = MusicSource::new(sf, midi_bytes, looping, Arc::clone(&self.volume))
         else {
             log::warn!("I_PlaySong: failed to create MusicSource");
             return;
@@ -176,21 +170,41 @@ impl MusicState {
 
 const MUS_MAGIC: &[u8; 4] = b"MUS\x1a";
 const MIDI_TEMPO: u32 = 500_000; // µs per beat (120 BPM) — yields 140 ticks/sec = MUS tick rate
-const MIDI_PPQ: u16 = 70;          // ticks per beat; 1 tick = 1 MUS tick (1/140 s)
+const MIDI_PPQ: u16 = 70; // ticks per beat; 1 tick = 1 MUS tick (1/140 s)
 
 fn mus_to_midi_channel(mus_ch: u8) -> u8 {
-    if mus_ch == 15 { 9 }              // percussion
-    else if mus_ch >= 9 { mus_ch + 1 } // skip MIDI ch 9
-    else { mus_ch }
+    if mus_ch == 15 {
+        9
+    }
+    // percussion
+    else if mus_ch >= 9 {
+        mus_ch + 1
+    }
+    // skip MIDI ch 9
+    else {
+        mus_ch
+    }
 }
 
 fn write_var_len(buf: &mut Vec<u8>, mut val: u32) {
-    let b0 = (val & 0x7F) as u8; val >>= 7;
-    if val == 0 { buf.push(b0); return; }
-    let b1 = (val & 0x7F) as u8; val >>= 7;
-    if val == 0 { buf.extend_from_slice(&[b1 | 0x80, b0]); return; }
-    let b2 = (val & 0x7F) as u8; val >>= 7;
-    if val == 0 { buf.extend_from_slice(&[b2 | 0x80, b1 | 0x80, b0]); return; }
+    let b0 = (val & 0x7F) as u8;
+    val >>= 7;
+    if val == 0 {
+        buf.push(b0);
+        return;
+    }
+    let b1 = (val & 0x7F) as u8;
+    val >>= 7;
+    if val == 0 {
+        buf.extend_from_slice(&[b1 | 0x80, b0]);
+        return;
+    }
+    let b2 = (val & 0x7F) as u8;
+    val >>= 7;
+    if val == 0 {
+        buf.extend_from_slice(&[b2 | 0x80, b1 | 0x80, b0]);
+        return;
+    }
     let b3 = (val & 0x7F) as u8;
     buf.extend_from_slice(&[b3 | 0x80, b2 | 0x80, b1 | 0x80, b0]);
 }
@@ -198,10 +212,15 @@ fn write_var_len(buf: &mut Vec<u8>, mut val: u32) {
 fn read_delay(score: &[u8], pos: &mut usize) -> Option<u32> {
     let mut delay = 0u32;
     loop {
-        if *pos >= score.len() { return None; }
-        let b = score[*pos]; *pos += 1;
+        if *pos >= score.len() {
+            return None;
+        }
+        let b = score[*pos];
+        *pos += 1;
         delay = delay.saturating_mul(128).saturating_add((b & 0x7F) as u32);
-        if b & 0x80 == 0 { return Some(delay); }
+        if b & 0x80 == 0 {
+            return Some(delay);
+        }
     }
 }
 
@@ -220,7 +239,10 @@ pub(crate) fn mus2midi(data: &[u8]) -> Option<Vec<u8>> {
 
     // Tempo meta-event at delta 0
     track.extend_from_slice(&[
-        0x00, 0xFF, 0x51, 0x03,
+        0x00,
+        0xFF,
+        0x51,
+        0x03,
         ((MIDI_TEMPO >> 16) & 0xFF) as u8,
         ((MIDI_TEMPO >> 8) & 0xFF) as u8,
         (MIDI_TEMPO & 0xFF) as u8,
@@ -233,7 +255,8 @@ pub(crate) fn mus2midi(data: &[u8]) -> Option<Vec<u8>> {
         if pos >= score.len() {
             return None; // truncated score
         }
-        let ev = score[pos]; pos += 1;
+        let ev = score[pos];
+        pos += 1;
         let mus_ch = ev & 0x0F;
         let ev_type = (ev >> 4) & 0x07;
         let is_last = ev >> 7 != 0;
@@ -243,36 +266,51 @@ pub(crate) fn mus2midi(data: &[u8]) -> Option<Vec<u8>> {
         let mut midi_ev: Vec<u8> = Vec::new();
 
         match ev_type {
-            0 => { // note off
-                if pos >= score.len() { return None; }
-                let note = score[pos] & 0x7F; pos += 1;
+            0 => {
+                // note off
+                if pos >= score.len() {
+                    return None;
+                }
+                let note = score[pos] & 0x7F;
+                pos += 1;
                 midi_ev.extend_from_slice(&[0x80 | mid_ch, note, 0x40]);
             }
-            1 => { // note on
-                if pos >= score.len() { return None; }
-                let raw = score[pos]; pos += 1;
+            1 => {
+                // note on
+                if pos >= score.len() {
+                    return None;
+                }
+                let raw = score[pos];
+                pos += 1;
                 if raw & 0x80 != 0 {
-                    if pos >= score.len() { return None; }
-                    last_vol[mus_ch as usize] = score[pos] & 0x7F; pos += 1;
+                    if pos >= score.len() {
+                        return None;
+                    }
+                    last_vol[mus_ch as usize] = score[pos] & 0x7F;
+                    pos += 1;
                 }
                 let note = raw & 0x7F;
                 let vol = last_vol[mus_ch as usize];
                 midi_ev.extend_from_slice(&[0x90 | mid_ch, note, vol]);
             }
-            2 => { // pitch bend
-                if pos >= score.len() { return None; }
-                let b = score[pos] as u32; pos += 1;
+            2 => {
+                // pitch bend
+                if pos >= score.len() {
+                    return None;
+                }
+                let b = score[pos] as u32;
+                pos += 1;
                 // MUS: 0=down, 128=center, 255=up. MIDI: 14-bit, center=0x2000.
                 let bend = (b * 64) as u16;
-                midi_ev.extend_from_slice(&[
-                    0xE0 | mid_ch,
-                    (bend & 0x7F) as u8,
-                    (bend >> 7) as u8,
-                ]);
+                midi_ev.extend_from_slice(&[0xE0 | mid_ch, (bend & 0x7F) as u8, (bend >> 7) as u8]);
             }
-            3 => { // system event
-                if pos >= score.len() { return None; }
-                let ctrl = score[pos]; pos += 1;
+            3 => {
+                // system event
+                if pos >= score.len() {
+                    return None;
+                }
+                let ctrl = score[pos];
+                pos += 1;
                 let cc: Option<u8> = match ctrl {
                     10 => Some(120), // all sounds off
                     11 => Some(123), // all notes off
@@ -285,15 +323,20 @@ pub(crate) fn mus2midi(data: &[u8]) -> Option<Vec<u8>> {
                     midi_ev.extend_from_slice(&[0xB0 | mid_ch, cc, 0]);
                 }
             }
-            4 => { // change controller
-                if pos + 1 >= score.len() { return None; }
-                let ctrl = score[pos]; pos += 1;
-                let val = score[pos] & 0x7F; pos += 1;
+            4 => {
+                // change controller
+                if pos + 1 >= score.len() {
+                    return None;
+                }
+                let ctrl = score[pos];
+                pos += 1;
+                let val = score[pos] & 0x7F;
+                pos += 1;
                 match ctrl {
-                    0 => midi_ev.extend_from_slice(&[0xC0 | mid_ch, val]),     // program
-                    1 => midi_ev.extend_from_slice(&[0xB0 | mid_ch, 0, val]),  // bank select
-                    2 => midi_ev.extend_from_slice(&[0xB0 | mid_ch, 1, val]),  // modulation
-                    3 => midi_ev.extend_from_slice(&[0xB0 | mid_ch, 7, val]),  // volume
+                    0 => midi_ev.extend_from_slice(&[0xC0 | mid_ch, val]), // program
+                    1 => midi_ev.extend_from_slice(&[0xB0 | mid_ch, 0, val]), // bank select
+                    2 => midi_ev.extend_from_slice(&[0xB0 | mid_ch, 1, val]), // modulation
+                    3 => midi_ev.extend_from_slice(&[0xB0 | mid_ch, 7, val]), // volume
                     4 => midi_ev.extend_from_slice(&[0xB0 | mid_ch, 10, val]), // pan
                     5 => midi_ev.extend_from_slice(&[0xB0 | mid_ch, 11, val]), // expression
                     6 => midi_ev.extend_from_slice(&[0xB0 | mid_ch, 91, val]), // reverb
@@ -347,8 +390,8 @@ mod tests {
     fn minimal_mus() -> Vec<u8> {
         let mut d = vec![0u8; 17];
         d[0..4].copy_from_slice(b"MUS\x1a");
-        d[4] = 1;   // score_len
-        d[6] = 16;  // score_start
+        d[4] = 1; // score_len
+        d[6] = 16; // score_start
         d[16] = 0x60; // score end event: is_last=0, type=6, ch=0
         d
     }
@@ -398,19 +441,22 @@ mod tests {
         // Score end: 0x60.
         let mut mus = vec![0u8; 20];
         mus[0..4].copy_from_slice(b"MUS\x1a");
-        mus[4] = 4;   // score_len
-        mus[6] = 16;  // score_start
+        mus[4] = 4; // score_len
+        mus[6] = 16; // score_start
         mus[16] = 0x10; // note on, ch 0, not last
         mus[17] = 0x80 | 60; // has_vol=1, note=60
-        mus[18] = 100;        // volume
-        mus[19] = 0x60;       // score end
+        mus[18] = 100; // volume
+        mus[19] = 0x60; // score end
         let out = mus2midi(&mus).unwrap();
         // Find note-on byte 0x90 (ch0 note on) after the tempo meta event.
         // Tempo meta is 7 bytes at track start (after MThd+MTrk headers = 22 bytes).
         // Note-on event: delta=0 (0x00), status=0x90, note=0x3C, vel=0x64.
         let track_body = &out[22..]; // skip MThd (14 bytes) + MTrk header (8 bytes)
-        // Tempo: 00 FF 51 03 0F 42 40 (7 bytes)
-        assert_eq!(&track_body[0..7], &[0x00, 0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20]);
+                                     // Tempo: 00 FF 51 03 0F 42 40 (7 bytes)
+        assert_eq!(
+            &track_body[0..7],
+            &[0x00, 0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20]
+        );
         // Note on: delta=0, ch=0
         assert_eq!(&track_body[7..11], &[0x00, 0x90, 0x3C, 0x64]);
     }
@@ -439,8 +485,8 @@ mod tests {
         // score_start=16, event 0x10 = note-on ch0, but score ends before the note byte.
         let mut mus = vec![0u8; 17];
         mus[0..4].copy_from_slice(b"MUS\x1a");
-        mus[4] = 1;   // score_len = 1
-        mus[6] = 16;  // score_start
+        mus[4] = 1; // score_len = 1
+        mus[6] = 16; // score_start
         mus[16] = 0x10; // note-on event, ch 0 — requires another byte that doesn't exist
         assert!(mus2midi(&mus).is_none());
     }

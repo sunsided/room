@@ -15,8 +15,8 @@ use crate::doom::d_items::weaponinfo;
 use crate::doom::d_mode;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS, NUMAMMO, NUMCARDS, NUMWEAPONS};
 use crate::doom::doomstat::{gamemission, gamemode, gameversion};
-use crate::doom::g_game::{consoleplayer, deathmatch, gameskill, netgame, players};
 use crate::doom::g_game::G_DeferedInitNew;
+use crate::doom::g_game::{consoleplayer, deathmatch, gameskill, netgame, players};
 use crate::doom::i_timer::TICRATE;
 use crate::doom::i_video::I_SetPalette;
 use crate::doom::m_cheat::{cheatseq_t, cht_CheckCheat, cht_GetParam};
@@ -34,7 +34,7 @@ use crate::doom::tables::{ANG180, ANG45};
 use crate::doom::v_video::patch_t;
 use crate::doom::v_video::{V_CopyRect, V_DrawPatch, V_RestoreBuffer, V_UseBuffer};
 use crate::doom::w_wad::{W_CacheLumpName, W_CacheLumpNum, W_GetNumForName, W_ReleaseLumpName};
-use crate::doom::z_zone::{PU_CACHE, PU_STATIC, Z_Malloc};
+use crate::doom::z_zone::{Z_Malloc, PU_CACHE, PU_STATIC};
 use crate::types::Boolean;
 
 // ---------------------------------------------------------------------------

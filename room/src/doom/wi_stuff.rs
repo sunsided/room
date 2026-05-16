@@ -34,7 +34,7 @@ use crate::doom::s_sound::{S_ChangeMusic, S_StartSound};
 use crate::doom::v_video::patch_t;
 use crate::doom::v_video::V_DrawPatch;
 use crate::doom::w_wad::{W_CacheLumpName, W_CheckNumForName, W_ReleaseLumpName};
-use crate::doom::z_zone::{PU_STATIC, Z_Malloc};
+use crate::doom::z_zone::{Z_Malloc, PU_STATIC};
 use crate::{c_write, DEH_snprintf};
 
 // ---------------------------------------------------------------------------

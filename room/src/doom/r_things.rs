@@ -75,6 +75,7 @@ extern "C" {
 }
 
 use crate::doom::doomstat::modifiedgame;
+use crate::doom::r_bsp::{drawsegs, ds_p};
 use crate::doom::r_data::{
     colormaps, firstspritelump, lastspritelump, spriteoffset, spritetopoffset, spritewidth,
 };
@@ -87,7 +88,6 @@ use crate::doom::r_main::{
     fuzzcolfunc, projection, scalelight, transcolfunc, validcount, viewangle, viewangleoffset,
     viewcos, viewplayer, viewsin, viewx, viewy, viewz, R_PointOnSegSide, R_PointToAngle,
 };
-use crate::doom::r_bsp::{drawsegs, ds_p};
 use crate::doom::r_segs::R_RenderMaskedSegRange;
 use crate::doom::w_wad::{lumpinfo, W_CacheLumpNum, W_GetNumForName};
 use crate::doom::z_zone::Z_Malloc;

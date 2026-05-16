@@ -18,8 +18,7 @@ use crate::doom::doomstat::{gamemission, gamemode, gameversion};
 use crate::doom::m_random::P_Random;
 use crate::doom::p_inter::maxammo;
 use crate::doom::p_setup::{
-    deathmatch_p, deathmatchstarts, playerstarts,
-    mapthing_t as SetupMapThing,
+    deathmatch_p, deathmatchstarts, mapthing_t as SetupMapThing, playerstarts,
 };
 use crate::doom::p_telept::{mapthing_t, mobj_t, sector_t, subsector_t};
 use crate::doom::tables::{finecosine, finesine, finetangent};
@@ -439,7 +438,9 @@ extern "C" {
 use crate::doom::d_loop::{gametic, ticdup};
 
 // d_main.rs
-use crate::doom::d_main::{D_AdvanceDemo, D_PageTicker, fastparm, nomonsters, respawnparm, wipegamestate};
+use crate::doom::d_main::{
+    fastparm, nomonsters, respawnparm, wipegamestate, D_AdvanceDemo, D_PageTicker,
+};
 
 // am_map.rs
 use crate::doom::am_map::{automapactive, AM_Responder, AM_Stop, AM_Ticker};
@@ -486,7 +487,7 @@ use crate::doom::p_tick::{leveltime, P_Ticker};
 use crate::doom::st_stuff::{ST_Responder, ST_Ticker};
 
 // hu_stuff.rs
-use crate::doom::hu_stuff::{player_names, HU_dequeueChatChar, HU_Responder, HU_Ticker};
+use crate::doom::hu_stuff::{player_names, HU_Responder, HU_Ticker, HU_dequeueChatChar};
 
 // wi_stuff.rs
 use crate::doom::wi_stuff::{WI_End, WI_Start, WI_Ticker};
@@ -523,13 +524,13 @@ use crate::doom::w_wad::{W_CacheLumpName, W_CheckNumForName, W_ReleaseLumpName};
 
 // m_controls.rs
 use crate::doom::m_controls::{
-    dclick_use, joybfire, joybprevweapon, joybspeed, joybstrafe, joybstrafeleft, joybstraferight,
-    joybuse, joybnextweapon, key_demo_quit, key_down, key_fire, key_left, key_nextweapon,
+    dclick_use, joybfire, joybnextweapon, joybprevweapon, joybspeed, joybstrafe, joybstrafeleft,
+    joybstraferight, joybuse, key_demo_quit, key_down, key_fire, key_left, key_nextweapon,
     key_pause, key_prevweapon, key_right, key_speed, key_spy, key_strafe, key_strafeleft,
     key_straferight, key_up, key_use, key_weapon1, key_weapon2, key_weapon3, key_weapon4,
-    key_weapon5, key_weapon6, key_weapon7, key_weapon8, mousebbackward, mousebfire,
-    mousebforward, mousebnextweapon, mousebprevweapon, mousebstrafe, mousebstrafeleft,
-    mousebstraferight, mousebuse,
+    key_weapon5, key_weapon6, key_weapon7, key_weapon8, mousebbackward, mousebfire, mousebforward,
+    mousebnextweapon, mousebprevweapon, mousebstrafe, mousebstrafeleft, mousebstraferight,
+    mousebuse,
 };
 
 use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
@@ -1323,7 +1324,12 @@ pub unsafe extern "C" fn G_CheckSpot(playernum: c_int, mthing: *mut mapthing_t) 
     let x = ((*mthing).x as fixed_t) << 16;
     let y = ((*mthing).y as fixed_t) << 16;
 
-    if P_CheckPosition(players[playernum as usize].mo as *mut crate::doom::c_ffi::mobj_t, x, y) == 0 {
+    if P_CheckPosition(
+        players[playernum as usize].mo as *mut crate::doom::c_ffi::mobj_t,
+        x,
+        y,
+    ) == 0
+    {
         return 0;
     }
 
@@ -1909,7 +1915,6 @@ unsafe fn set_fast_monsters(fast: bool) {
         G_SetFastMonsters(0);
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // G_SetFastMonsters — adjusts state tics and monster shot speeds

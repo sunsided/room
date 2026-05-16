@@ -45,10 +45,12 @@ use crate::doom::r_draw::{
     dc_colormap, dc_iscale, dc_source, dc_texturemid, dc_x, dc_yh, dc_yl, viewheight,
 };
 use crate::doom::r_main::{
-    colfunc, centeryfrac, extralight, fixedcolormap, scalelight, viewangle, viewz,
-    xtoviewangle, R_PointToDist, R_ScaleFromGlobalAngle,
+    centeryfrac, colfunc, extralight, fixedcolormap, scalelight, viewangle, viewz, xtoviewangle,
+    R_PointToDist, R_ScaleFromGlobalAngle,
 };
-use crate::doom::r_plane::{ceilingclip, ceilingplane, floorclip, floorplane, lastopening, R_CheckPlane};
+use crate::doom::r_plane::{
+    ceilingclip, ceilingplane, floorclip, floorplane, lastopening, R_CheckPlane,
+};
 use crate::doom::r_sky::skyflatnum;
 use crate::doom::r_things::{negonearray, screenheightarray, R_DrawMaskedColumn};
 

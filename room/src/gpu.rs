@@ -40,7 +40,7 @@ use std::sync::Arc;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
-use doomgeneric_sys::{DOOMGENERIC_RESX, DOOMGENERIC_RESY};
+use room::doom::doomgeneric::{DOOMGENERIC_RESX, DOOMGENERIC_RESY};
 
 // ---------------------------------------------------------------------------
 // WGSL shaders (embedded)

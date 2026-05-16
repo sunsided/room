@@ -1,7 +1,7 @@
 #![allow(non_upper_case_globals, non_snake_case)]
 
 use crate::audio::music::MusicHandle;
-use crate::doom::m_argv::{M_CheckParmWithArgs, myargv};
+use crate::doom::m_argv::{myargv, M_CheckParmWithArgs};
 use crate::doom::m_config::M_BindVariable;
 use crate::doom::sounds::SfxInfo;
 use crate::doom::w_wad::{W_CacheLumpNum, W_CheckNumForName, W_LumpLength};
@@ -191,9 +191,7 @@ fn find_soundfont_path() -> Option<std::path::PathBuf> {
         }
     }
 
-    let bundled = std::path::Path::new(
-        "soundfonts/SC55Soundfont-1.2b/SC-55 SoundFont v1.2b.sf2",
-    );
+    let bundled = std::path::Path::new("soundfonts/SC55Soundfont-1.2b/SC-55 SoundFont v1.2b.sf2");
     if bundled.exists() {
         return Some(bundled.to_path_buf());
     }
@@ -276,7 +274,9 @@ pub extern "C" fn I_RegisterSong(data: *mut c_void, len: c_int) -> *mut c_void {
 #[no_mangle]
 pub extern "C" fn I_UnRegisterSong(handle: *mut c_void) {
     if !handle.is_null() {
-        unsafe { drop(Box::from_raw(handle as *mut MusicHandle)); }
+        unsafe {
+            drop(Box::from_raw(handle as *mut MusicHandle));
+        }
     }
 }
 
@@ -313,7 +313,6 @@ pub extern "C" fn I_MusicIsPlaying() -> c_int {
     });
     playing
 }
-
 
 #[no_mangle]
 pub extern "C" fn I_BindSoundVariables() {

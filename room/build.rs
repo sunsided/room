@@ -50,15 +50,4 @@ fn generate_statenum() {
 
 fn main() {
     generate_statenum();
-
-    // Re-emit the doomgeneric library link directive so it applies to all
-    // compilation targets (lib, bin, lib-test, integration-test).
-    println!("cargo:rustc-link-lib=static=doomgeneric");
-
-    if let Ok(root) = std::env::var("DEP_DOOMGENERIC_ROOT") {
-        println!("cargo:rustc-link-search=native={}", root);
-    }
-
-    println!("cargo:rustc-link-lib=m");
-    println!("cargo:rerun-if-changed=../doomgeneric-sys/build.rs");
 }

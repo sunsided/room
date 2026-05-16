@@ -7,7 +7,7 @@
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
 use crate::doom::i_input::{I_GetEvent, I_InitInput};
-use crate::doom::m_argv::{M_CheckParmWithArgs, myargv};
+use crate::doom::m_argv::{myargv, M_CheckParmWithArgs};
 use crate::doom::tables::gammatable;
 use crate::doom::z_zone::{Z_Free, Z_Malloc};
 use crate::i_error;
@@ -162,8 +162,8 @@ unsafe fn cmap_to_rgb565(out: *mut u8, inp: *mut u8, in_pixels: c_int) {
 #[no_mangle]
 pub unsafe extern "C" fn I_InitGraphics() {
     s_Fb = mem::zeroed::<FB_ScreenInfo>();
-    s_Fb.xres = doomgeneric_sys::DOOMGENERIC_RESX as u32;
-    s_Fb.yres = doomgeneric_sys::DOOMGENERIC_RESY as u32;
+    s_Fb.xres = super::doomgeneric::DOOMGENERIC_RESX as u32;
+    s_Fb.yres = super::doomgeneric::DOOMGENERIC_RESY as u32;
     s_Fb.xres_virtual = s_Fb.xres;
     s_Fb.yres_virtual = s_Fb.yres;
 
@@ -276,7 +276,7 @@ pub unsafe extern "C" fn I_FinishUpdate() {
         .max(0) as u32;
 
     let mut line_in = I_VideoBuffer;
-    let screen_ptr = doomgeneric_sys::DG_ScreenBuffer as *mut u8;
+    let screen_ptr = super::doomgeneric::DG_ScreenBuffer as *mut u8;
     let mut line_out = screen_ptr.add(y_offset as usize + x_offset as usize);
 
     for _ in 0..SCREENHEIGHT as usize {

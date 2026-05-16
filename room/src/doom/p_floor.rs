@@ -13,13 +13,13 @@ use crate::doom::p_lights::sector_t;
 use crate::doom::p_map::P_ChangeSector;
 use crate::doom::p_setup::sectors;
 use crate::doom::p_spec::{
-    P_FindHighestFloorSurrounding, P_FindLowestCeilingSurrounding, P_FindLowestFloorSurrounding,
-    P_FindNextHighestFloor, P_FindSectorFromLineTag, getSector, getSide, twoSided,
+    getSector, getSide, twoSided, P_FindHighestFloorSurrounding, P_FindLowestCeilingSurrounding,
+    P_FindLowestFloorSurrounding, P_FindNextHighestFloor, P_FindSectorFromLineTag,
 };
 use crate::doom::p_tick::{leveltime, thinker_t, P_AddThinker, P_RemoveThinker};
 use crate::doom::r_data::textureheight;
 use crate::doom::s_sound::S_StartSound;
-use crate::doom::z_zone::{PU_LEVSPEC, Z_Malloc};
+use crate::doom::z_zone::{Z_Malloc, PU_LEVSPEC};
 
 const FLOORSPEED: fixed_t = FRACUNIT;
 const INT_MAX: c_int = c_int::MAX;
@@ -104,7 +104,6 @@ mod layout_checks {
     const _: () = assert!(std::mem::offset_of!(side_t, midtexture) == 12);
     const _: () = assert!(std::mem::offset_of!(side_t, sector) == 16);
 }
-
 
 const SFX_PSTOP: c_int = 19;
 const SFX_STNMOV: c_int = 22;

@@ -68,9 +68,9 @@ pub struct st_binicon_t {
 #[no_mangle]
 pub static mut sttminus: *mut patch_t = std::ptr::null_mut();
 
-use crate::doom::w_wad::W_CacheLumpName;
-use crate::doom::v_video::{V_CopyRect, V_DrawPatch};
 use crate::doom::st_stuff::st_backing_screen;
+use crate::doom::v_video::{V_CopyRect, V_DrawPatch};
+use crate::doom::w_wad::W_CacheLumpName;
 
 #[no_mangle]
 pub extern "C" fn STlib_init() {

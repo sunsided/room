@@ -979,7 +979,10 @@ unsafe fn saveg_write_glow_t(str: *const glow_t) {
 // ---------------------------------------------------------------------------
 
 fn fill_save_filename(buf: &mut [u8], dir: &str, slot: c_int) -> usize {
-    assert!(!buf.is_empty(), "fill_save_filename: buffer must have at least 1 byte");
+    assert!(
+        !buf.is_empty(),
+        "fill_save_filename: buffer must have at least 1 byte"
+    );
     let full = format!("{}{}{}.dsg", dir, SAVEGAMENAME, slot);
     let bytes = full.as_bytes();
     let len = std::cmp::min(bytes.len(), buf.len() - 1);

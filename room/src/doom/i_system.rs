@@ -27,7 +27,6 @@ struct atexit_listentry_t {
 
 static mut exit_funcs: *mut atexit_listentry_t = ptr::null_mut();
 
-
 unsafe fn AutoAllocMemory(size: *mut c_int, mut default_ram: c_int, min_ram: c_int) -> *mut u8 {
     let mut zonemem: *mut u8 = ptr::null_mut();
 

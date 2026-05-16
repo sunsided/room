@@ -51,15 +51,17 @@ const exe_ultimate: c_int = 6;
 
 use crate::doom::d_main::nomonsters;
 use crate::doom::doomstat::gameversion;
+use crate::doom::g_game::G_PlayerReborn;
 use crate::doom::g_game::{
     consoleplayer, deathmatch, gameskill, netgame, playeringame, players, respawnmonsters,
     totalitems, totalkills,
 };
-use crate::doom::p_map::{attackrange, ceilingline, linetarget, P_AimLineAttack, P_CheckPosition, P_SlideMove, P_TryMove};
+use crate::doom::p_map::{
+    attackrange, ceilingline, linetarget, P_AimLineAttack, P_CheckPosition, P_SlideMove, P_TryMove,
+};
 use crate::doom::p_setup::{deathmatch_p, deathmatchstarts, playerstarts};
 use crate::doom::p_tick::leveltime;
 use crate::doom::r_sky::skyflatnum;
-use crate::doom::g_game::G_PlayerReborn;
 use crate::doom::st_stuff::ST_Start;
 use crate::doom::z_zone::Z_Malloc;
 

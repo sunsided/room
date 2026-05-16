@@ -20,7 +20,7 @@ use crate::doom::p_spec::{
 };
 use crate::doom::p_tick::{leveltime, thinker_t, P_AddThinker, P_RemoveThinker};
 use crate::doom::s_sound::S_StartSound;
-use crate::doom::z_zone::{PU_LEVSPEC, Z_Malloc};
+use crate::doom::z_zone::{Z_Malloc, PU_LEVSPEC};
 use crate::i_error;
 
 const PLATSPEED: fixed_t = FRACUNIT;
@@ -87,7 +87,6 @@ mod layout_checks {
 
 #[no_mangle]
 pub static mut activeplats: [*mut plat_t; MAXPLATS] = [std::ptr::null_mut(); MAXPLATS];
-
 
 #[no_mangle]
 pub unsafe extern "C" fn T_PlatRaise(plat: *mut plat_t) {

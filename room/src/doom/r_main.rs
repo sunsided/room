@@ -161,7 +161,7 @@ pub static mut setdetail: c_int = 0;
 
 use crate::doom::d_loop::NetUpdate;
 use crate::doom::m_menu::{detailLevel, screenblocks};
-use crate::doom::p_setup::{numnodes, nodes, subsectors};
+use crate::doom::p_setup::{nodes, numnodes, subsectors};
 use crate::doom::r_bsp::{R_ClearClipSegs, R_ClearDrawSegs, R_RenderBSPNode};
 use crate::doom::r_data::{colormaps, R_InitData};
 use crate::doom::r_draw::{

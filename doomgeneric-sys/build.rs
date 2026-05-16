@@ -225,14 +225,8 @@ fn main() {
         build.file(vendor.join(src));
     }
 
-    // Small helper that exposes #define constants to Rust tests.
+    // Exposes C #define constants and struct layout values for Rust layout-guard tests.
     build.file("test_helpers.c");
-
-    // If all C sources have been ported to Rust, lib_sources is empty.
-    // Add a dummy source file so the cc crate produces a valid (empty) library.
-    if lib_sources.is_empty() {
-        build.file(vendor.join("dummy.c"));
-    }
 
     build.compile("doomgeneric");
 

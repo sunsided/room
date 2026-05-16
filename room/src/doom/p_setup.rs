@@ -250,7 +250,7 @@ pub static mut playerstarts: [mapthing_t; MAXPLAYERS] = [mapthing_t {
 
 use crate::doom::doomstat::gamemode;
 use crate::doom::g_game::{
-    bodyqueslot, deathmatch, playeringame, precache, totalkills, totalitems, totalsecret, wminfo,
+    bodyqueslot, deathmatch, playeringame, precache, totalitems, totalkills, totalsecret, wminfo,
     G_DeathMatchSpawnPlayer,
 };
 use crate::doom::i_system::I_GetMemoryValue;
@@ -262,7 +262,9 @@ use crate::doom::p_switch::P_InitSwitchList;
 use crate::doom::r_data::{R_FlatNumForName, R_PrecacheLevel, R_TextureNumForName};
 use crate::doom::r_things::R_InitSprites;
 use crate::doom::s_sound::S_Start;
-use crate::doom::w_wad::{W_CacheLumpNum, W_GetNumForName, W_LumpLength, W_ReadLump, W_ReleaseLumpNum};
+use crate::doom::w_wad::{
+    W_CacheLumpNum, W_GetNumForName, W_LumpLength, W_ReadLump, W_ReleaseLumpNum,
+};
 use crate::doom::z_zone::{Z_FreeTags, Z_Malloc};
 
 // ---------------------------------------------------------------------------
@@ -379,7 +381,8 @@ pub extern "C" fn P_LoadSegs(lump: c_int) {
 #[no_mangle]
 pub extern "C" fn P_LoadSubsectors(lump: c_int) {
     unsafe {
-        numsubsectors = W_LumpLength(lump as c_uint) / std::mem::size_of::<mapsubsector_t>() as c_int;
+        numsubsectors =
+            W_LumpLength(lump as c_uint) / std::mem::size_of::<mapsubsector_t>() as c_int;
         subsectors = Z_Malloc(
             numsubsectors * std::mem::size_of::<subsector_t>() as c_int,
             PU_LEVEL,
@@ -511,7 +514,9 @@ pub extern "C" fn P_LoadThings(lump: c_int) {
                 r#type: SHORT((*mt).r#type),
                 options: SHORT((*mt).options),
             };
-            P_SpawnMapThing(&mut spawnthing as *mut mapthing_t as *mut crate::doom::p_telept::mapthing_t);
+            P_SpawnMapThing(
+                &mut spawnthing as *mut mapthing_t as *mut crate::doom::p_telept::mapthing_t,
+            );
             mt = mt.add(1);
         }
 

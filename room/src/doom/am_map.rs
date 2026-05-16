@@ -13,6 +13,10 @@ use crate::c_write;
 use crate::doom::c_ffi::{mobj_t, sector_t, MAPBLOCKSHIFT, MAPBLOCKSIZE, MAPBLOCKUNITS};
 use crate::doom::d_event::event_t;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS};
+use crate::doom::g_game::{
+    consoleplayer, deathmatch, gameepisode, gamemap, netgame, playeringame, players, singledemo,
+    viewactive,
+};
 use crate::doom::i_video::I_VideoBuffer;
 use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 use crate::doom::m_cheat::{cheatseq_t, cht_CheckCheat};
@@ -25,15 +29,11 @@ use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::p_setup::{
     bmaporgx, bmaporgy, lines, numlines, numsectors, numvertexes, sectors, vertexes,
 };
+use crate::doom::st_stuff::ST_Responder;
 use crate::doom::tables::ANGLETOFINESHIFT;
 use crate::doom::tables::{finecosine, finesine};
 use crate::doom::v_video::{patch_t, V_DrawPatch, V_MarkRect};
 use crate::doom::w_wad::{W_CacheLumpName, W_ReleaseLumpName};
-use crate::doom::g_game::{
-    consoleplayer, deathmatch, gameepisode, gamemap, netgame, playeringame, players, singledemo,
-    viewactive,
-};
-use crate::doom::st_stuff::ST_Responder;
 
 use crate::doom::z_zone::PU_STATIC;
 

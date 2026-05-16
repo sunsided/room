@@ -53,7 +53,7 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::PhysicalKey;
 use winit::window::{Window, WindowId};
 
-use doomgeneric_sys::{DOOMGENERIC_RESX, DOOMGENERIC_RESY};
+use room::doom::doomgeneric::{DOOMGENERIC_RESX, DOOMGENERIC_RESY};
 
 use gpu::GpuState;
 use platform::keys::to_doom_key;
@@ -217,14 +217,12 @@ impl ApplicationHandler for App {
             // - The `DG_*` callbacks are exported symbols in this binary.
             let argc = (self.argv.len() - 1) as c_int; // exclude trailing null
             unsafe {
-                doomgeneric_sys::doomgeneric_Create(argc, self.argv.as_mut_ptr());
+                room::doom::doomgeneric::doomgeneric_Create(argc, self.argv.as_mut_ptr());
             }
             self.doom_initialized = true;
         } else {
             // Subsequent ticks: advance the game by one tick.
-            unsafe {
-                doomgeneric_sys::doomgeneric_Tick();
-            }
+            room::doom::d_main::doomgeneric_Tick();
         }
 
         // Request a redraw so winit doesn't throttle to zero FPS while idle.

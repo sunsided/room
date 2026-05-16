@@ -15,7 +15,7 @@ use crate::doom::p_setup::sectors;
 use crate::doom::p_spec::{P_FindHighestCeilingSurrounding, P_FindSectorFromLineTag};
 use crate::doom::p_tick::{leveltime, thinker_t, P_AddThinker, P_RemoveThinker};
 use crate::doom::s_sound::S_StartSound;
-use crate::doom::z_zone::{PU_LEVSPEC, Z_Malloc};
+use crate::doom::z_zone::{Z_Malloc, PU_LEVSPEC};
 
 const CEILSPEED: fixed_t = FRACUNIT;
 const MAXCEILINGS: usize = 30;
@@ -72,7 +72,6 @@ mod layout_checks {
 
 #[no_mangle]
 pub static mut activeceilings: [*mut ceiling_t; MAXCEILINGS] = [std::ptr::null_mut(); MAXCEILINGS];
-
 
 #[no_mangle]
 pub unsafe extern "C" fn T_MoveCeiling(ceiling: *mut ceiling_t) {

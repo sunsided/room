@@ -107,12 +107,12 @@ pub extern "C" fn DG_DrawFrame() {
     // SAFETY: DG_ScreenBuffer is allocated by doomgeneric_Create and is
     // valid for DOOMGENERIC_PIXELS * 4 bytes.
     let pixel_bytes = unsafe {
-        let ptr = doomgeneric_sys::DG_ScreenBuffer as *const u8;
+        let ptr = room::doom::doomgeneric::DG_ScreenBuffer as *const u8;
         if ptr.is_null() {
             log::warn!("DG_DrawFrame: DG_ScreenBuffer is null, skipping frame");
             return;
         }
-        std::slice::from_raw_parts(ptr, doomgeneric_sys::DOOMGENERIC_PIXELS * 4)
+        std::slice::from_raw_parts(ptr, room::doom::doomgeneric::DOOMGENERIC_PIXELS * 4)
     };
 
     GPU.with_borrow(|opt| {

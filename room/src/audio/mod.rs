@@ -7,7 +7,7 @@ use std::sync::Arc;
 use rodio::buffer::SamplesBuffer;
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
 
-pub(crate) use sfx::{PanState, PannedSource, decode_doom_sfx, gains_from};
+pub(crate) use sfx::{decode_doom_sfx, gains_from, PanState, PannedSource};
 
 thread_local! {
     pub(crate) static AUDIO: RefCell<Option<AudioState>> = const { RefCell::new(None) };
@@ -34,8 +34,12 @@ impl AudioState {
     }
 
     pub(crate) fn start_sound(&mut self, data: &[u8], vol: i32, sep: i32, channel: usize) -> bool {
-        if channel >= 8 { return false; }
-        let Some((sample_rate, samples)) = decode_doom_sfx(data) else { return false; };
+        if channel >= 8 {
+            return false;
+        }
+        let Some((sample_rate, samples)) = decode_doom_sfx(data) else {
+            return false;
+        };
         let pan = Arc::clone(&self.channels[channel].pan);
         pan.update(vol, sep);
         let buf = SamplesBuffer::new(
@@ -51,17 +55,26 @@ impl AudioState {
     }
 
     pub(crate) fn stop_sound(&mut self, channel: usize) {
-        if channel >= 8 { return; }
+        if channel >= 8 {
+            return;
+        }
         self.channels[channel].player = None;
     }
 
     pub(crate) fn update_sound_params(&self, channel: usize, vol: i32, sep: i32) {
-        if channel >= 8 { return; }
+        if channel >= 8 {
+            return;
+        }
         self.channels[channel].pan.update(vol, sep);
     }
 
     pub(crate) fn is_playing(&self, channel: usize) -> bool {
-        if channel >= 8 { return false; }
-        self.channels[channel].player.as_ref().map_or(false, |p| !p.empty())
+        if channel >= 8 {
+            return false;
+        }
+        self.channels[channel]
+            .player
+            .as_ref()
+            .map_or(false, |p| !p.empty())
     }
 }

@@ -12,7 +12,7 @@ use crate::doom::m_random::P_Random;
 use crate::doom::p_setup::{numsectors, sectors};
 use crate::doom::p_spec::{getNextSector, P_FindMinSurroundingLight, P_FindSectorFromLineTag};
 use crate::doom::p_tick::{thinker_t, P_AddThinker};
-use crate::doom::z_zone::{PU_LEVSPEC, Z_Malloc};
+use crate::doom::z_zone::{Z_Malloc, PU_LEVSPEC};
 const GLOWSPEED: c_int = 8;
 const STROBEBRIGHT: c_int = 5;
 const FASTDARK: c_int = 15;
@@ -109,7 +109,6 @@ pub struct line_t {
     pub specialdata: *mut c_void,
 }
 
-
 #[no_mangle]
 pub unsafe extern "C" fn T_FireFlicker(flick: *mut fireflicker_t) {
     (*flick).count -= 1;
@@ -148,7 +147,9 @@ pub extern "C" fn P_SpawnFireFlicker(sector: *mut sector_t) {
         >(T_FireFlicker));
         (*flick).sector = sector;
         (*flick).maxlight = (*sector).lightlevel as c_int;
-        (*flick).minlight = P_FindMinSurroundingLight(sector as *mut cffi::sector_t, (*sector).lightlevel as c_int) + 16;
+        (*flick).minlight =
+            P_FindMinSurroundingLight(sector as *mut cffi::sector_t, (*sector).lightlevel as c_int)
+                + 16;
         (*flick).count = 4;
     }
 }
@@ -190,7 +191,8 @@ pub extern "C" fn P_SpawnLightFlash(sector: *mut sector_t) {
         >(T_LightFlash));
         (*flash).sector = sector;
         (*flash).maxlight = (*sector).lightlevel as c_int;
-        (*flash).minlight = P_FindMinSurroundingLight(sector as *mut cffi::sector_t, (*sector).lightlevel as c_int);
+        (*flash).minlight =
+            P_FindMinSurroundingLight(sector as *mut cffi::sector_t, (*sector).lightlevel as c_int);
         (*flash).maxtime = 64;
         (*flash).mintime = 7;
         (*flash).count = (P_Random() & (*flash).maxtime) + 1;
@@ -234,7 +236,8 @@ pub extern "C" fn P_SpawnStrobeFlash(sector: *mut sector_t, fastOrSlow: c_int, i
             unsafe extern "C" fn(*mut c_void),
         >(T_StrobeFlash));
         (*flash).maxlight = (*sector).lightlevel as c_int;
-        (*flash).minlight = P_FindMinSurroundingLight(sector as *mut cffi::sector_t, (*sector).lightlevel as c_int);
+        (*flash).minlight =
+            P_FindMinSurroundingLight(sector as *mut cffi::sector_t, (*sector).lightlevel as c_int);
 
         if (*flash).minlight == (*flash).maxlight {
             (*flash).minlight = 0;
@@ -356,7 +359,8 @@ pub extern "C" fn P_SpawnGlowingLight(sector: *mut sector_t) {
         P_AddThinker(&mut (*g).thinker);
 
         (*g).sector = sector;
-        (*g).minlight = P_FindMinSurroundingLight(sector as *mut cffi::sector_t, (*sector).lightlevel as c_int);
+        (*g).minlight =
+            P_FindMinSurroundingLight(sector as *mut cffi::sector_t, (*sector).lightlevel as c_int);
         (*g).maxlight = (*sector).lightlevel as c_int;
         (*g).thinker.function.acp1 = Some(core::mem::transmute::<
             unsafe extern "C" fn(*mut glow_t),
