@@ -33,7 +33,7 @@ A regression-test harness (`room/src/doom/c_tests/`) runs the original C
 functions alongside their Rust replacements to verify bit-for-bit behavioural
 compatibility before a module is declared ported.
 
-As noted in the doomgeneric README, sound is hard – so we skip it for now.
+Sound effects are implemented via [rodio](https://github.com/RustAudio/rodio) with stereo panning. Music playback is not yet implemented.
 
 ## Project layout
 
@@ -102,7 +102,7 @@ The engine runs inside the winit event loop:
 
 ## Known limitations
 
-- **No sound.**  Sound output is deliberately omitted in this initial port.
+- **No music.**  Music playback stubs (`I_RegisterSong`, `I_PlaySong`, etc.) are not yet implemented; sound effects work via rodio.
 - **No mouse support.**  Mouse aiming / strafing are not yet implemented.
 - **No joystick support.**
 - **Single player only.**  Networking (`FEATURE_MULTIPLAYER`) is not compiled in.
@@ -201,10 +201,11 @@ fully replaced by Rust code in the `room` crate. Port complete.
 - [x] `i_timer.c`
 - [x] `i_video.c`
 
-### Sound tables / sound subsystem (stubbed today)
+### Sound effects and music subsystem
 
-- [x] `s_sound.c`
-- [x] `sounds.c`
+- [x] `s_sound.c` - sound and music state machine fully ported
+- [x] `sounds.c` - SFX and music tables fully ported
+- [x] `i_sound.c` - SFX playback via rodio (stereo pan); music stubs pending
 
 ### Video / WAD / memory / utilities
 

@@ -38,6 +38,9 @@ log = "0.4"
 # Cross-platform audio playback, used for SFX.
 rodio = "0.22"
 
+# Pure-Rust SF2 soundfont synthesizer, used for Doom music playback.
+rustysynth = "1"
+
 # Simple logger backed by stderr.
 env_logger = "0.11"
 
