@@ -548,24 +548,21 @@ pub extern "C" fn WritePCXfile(
     }
 }
 
-#[no_mangle]
-pub extern "C" fn V_ScreenShot(format: *mut c_char) {
-    unsafe {
-        let ext = b"pcx\0".as_ptr() as *const c_char;
-        let mut lbmname = [0u8; 16];
+/// Build a screenshot filename for index `i`: `"DOOM{i:02}.pcx"` in a 16-byte null-padded buffer.
+/// The only real caller always passes `"DOOM%02i.%s"` as format, so the pattern is fixed.
+fn screenshot_filename(i: i32) -> [u8; 16] {
+    let s = format!("DOOM{:02}.pcx", i);
+    let mut buf = [0u8; 16];
+    buf[..s.len()].copy_from_slice(s.as_bytes());
+    buf
+}
 
+#[no_mangle]
+pub extern "C" fn V_ScreenShot(_format: *mut c_char) {
+    unsafe {
         let mut i = 0;
         while i <= 99 {
-            // Dynamic format string (*mut c_char from C caller, e.g. "DOOM%02i.%s").
-            // Cannot use c_write! — format string is not a Rust literal.
-            libc::snprintf(
-                lbmname.as_mut_ptr() as *mut c_char,
-                lbmname.len(),
-                format,
-                i,
-                ext,
-            );
-
+            let mut lbmname = screenshot_filename(i);
             if M_FileExists(lbmname.as_mut_ptr() as *mut c_char) == 0 {
                 break;
             }
@@ -576,6 +573,7 @@ pub extern "C" fn V_ScreenShot(format: *mut c_char) {
             i_error!("V_ScreenShot: Couldn't create a PCX");
         }
 
+        let mut lbmname = screenshot_filename(i);
         WritePCXfile(
             lbmname.as_mut_ptr() as *mut c_char,
             I_VideoBuffer,
@@ -699,4 +697,28 @@ pub unsafe extern "C" fn V_Video_Link_Anchor() {
     WritePCXfile(ptr::null_mut(), ptr::null_mut(), 0, 0, ptr::null_mut());
     V_ScreenShot(ptr::null_mut());
     V_DrawMouseSpeedBox(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn screenshot_filename_zero_padded() {
+        let name = screenshot_filename(0);
+        assert_eq!(&name[..10], b"DOOM00.pcx");
+        assert_eq!(name[10], 0);
+    }
+
+    #[test]
+    fn screenshot_filename_two_digit() {
+        let name = screenshot_filename(42);
+        assert_eq!(&name[..10], b"DOOM42.pcx");
+    }
+
+    #[test]
+    fn screenshot_filename_max() {
+        let name = screenshot_filename(99);
+        assert_eq!(&name[..10], b"DOOM99.pcx");
+    }
 }

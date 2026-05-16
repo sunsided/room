@@ -1037,11 +1037,12 @@ unsafe fn GetGameName(gamename: *mut c_char) -> *mut c_char {
                 Z_Malloc(gamename_size as c_int, PU_STATIC, ptr::null_mut()) as *mut c_char;
 
             let version = G_VanillaVersionCode();
-            // Dynamic format string from DEH_String — cannot use c_write! (not a literal).
-            extern "C" {
-                fn snprintf(s: *mut c_char, n: usize, fmt: *const c_char, ...) -> c_int;
-            }
-            let result = snprintf(
+            // SAFETY: `deh_sub` is a valid, null-terminated C string allocated by Z_Malloc via
+            // DEH_String and live for the duration of this call. The format string always contains
+            // exactly two `%i` specifiers (matching the banner patterns), and `version/100` /
+            // `version%100` are both `c_int` values that satisfy them. `expanded` has room for
+            // `gamename_size` bytes. Dynamic format from DEH — cannot use c_write! (not a literal).
+            let result = libc::snprintf(
                 expanded,
                 gamename_size,
                 deh_sub,
