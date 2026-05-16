@@ -100,7 +100,62 @@ impl<S: Source> Source for PannedSource<S> {
     }
 }
 
-pub(crate) struct AudioState;
+struct ChannelState {
+    player: Option<Player>,
+    pan: Arc<PanState>,
+}
+
+impl ChannelState {
+    fn new() -> Self {
+        Self {
+            player: None,
+            pan: Arc::new(PanState::new(127, 127)),
+        }
+    }
+}
+
+pub(crate) struct AudioState {
+    _device_sink: MixerDeviceSink,
+    mixer: rodio::mixer::Mixer,
+    channels: Box<[ChannelState; 8]>,
+}
+
+impl AudioState {
+    pub(crate) fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let device_sink = DeviceSinkBuilder::open_default_sink()?;
+        let mixer = device_sink.mixer().clone();
+        let channels = Box::new(std::array::from_fn(|_| ChannelState::new()));
+        Ok(Self { _device_sink: device_sink, mixer, channels })
+    }
+
+    pub(crate) fn start_sound(&mut self, data: &[u8], vol: i32, sep: i32, channel: usize) -> bool {
+        let Some((sample_rate, samples)) = decode_doom_sfx(data) else { return false; };
+        let pan = Arc::clone(&self.channels[channel].pan);
+        pan.update(vol, sep);
+        let buf = SamplesBuffer::new(
+            std::num::NonZero::new(1u16).unwrap(),
+            std::num::NonZero::new(sample_rate).unwrap(),
+            samples,
+        );
+        let source = PannedSource::new(buf, pan);
+        let player = Player::connect_new(&self.mixer);
+        player.append(source);
+        self.channels[channel].player = Some(player);
+        true
+    }
+
+    pub(crate) fn stop_sound(&mut self, channel: usize) {
+        self.channels[channel].player = None;
+    }
+
+    pub(crate) fn update_sound_params(&self, channel: usize, vol: i32, sep: i32) {
+        self.channels[channel].pan.update(vol, sep);
+    }
+
+    pub(crate) fn is_playing(&self, channel: usize) -> bool {
+        self.channels[channel].player.as_ref().map_or(false, |p| !p.empty())
+    }
+}
 
 #[cfg(test)]
 mod tests {
