@@ -174,14 +174,12 @@ const MIDI_PPQ: u16 = 70; // ticks per beat; 1 tick = 1 MUS tick (1/140 s)
 
 fn mus_to_midi_channel(mus_ch: u8) -> u8 {
     if mus_ch == 15 {
+        // percussion
         9
-    }
-    // percussion
-    else if mus_ch >= 9 {
+    } else if mus_ch >= 9 {
+        // skip MIDI ch 9
         mus_ch + 1
-    }
-    // skip MIDI ch 9
-    else {
+    } else {
         mus_ch
     }
 }
@@ -452,7 +450,7 @@ mod tests {
         // Tempo meta is 7 bytes at track start (after MThd+MTrk headers = 22 bytes).
         // Note-on event: delta=0 (0x00), status=0x90, note=0x3C, vel=0x64.
         let track_body = &out[22..]; // skip MThd (14 bytes) + MTrk header (8 bytes)
-                                     // Tempo: 00 FF 51 03 0F 42 40 (7 bytes)
+        // Tempo: 00 FF 51 03 0F 42 40 (7 bytes)
         assert_eq!(
             &track_body[0..7],
             &[0x00, 0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20]
