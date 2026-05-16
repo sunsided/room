@@ -1,3 +1,4 @@
+pub(crate) mod audio;
 pub mod doom;
 pub mod headless;
 pub mod types;
