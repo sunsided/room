@@ -613,8 +613,9 @@ pub unsafe extern "C" fn A_FireCGun(player: *mut PlayerT, psp: *mut PspdefT) {
     DecreaseAmmo(player, weaponinfo[(*player).readyweapon as usize].ammo, 1);
 
     let flashstate = weaponinfo[(*player).readyweapon as usize].flashstate;
-    let state_offset =
-        (*psp).state as usize - &info::states[S_CHAIN1 as usize] as *const State as usize;
+    let state_offset = ((*psp).state as usize
+        - &info::states[S_CHAIN1 as usize] as *const State as usize)
+        / std::mem::size_of::<State>();
     P_SetPsprite(player, 1, flashstate + state_offset as c_int);
 
     P_BulletSlope(mo);
