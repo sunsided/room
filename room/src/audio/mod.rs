@@ -7,7 +7,7 @@ use std::sync::Arc;
 use rodio::buffer::SamplesBuffer;
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
 
-pub(crate) use sfx::{PannedSource, decode_doom_sfx};
+pub(crate) use sfx::{PanState, PannedSource, decode_doom_sfx, gains_from};
 
 thread_local! {
     pub(crate) static AUDIO: RefCell<Option<AudioState>> = const { RefCell::new(None) };
