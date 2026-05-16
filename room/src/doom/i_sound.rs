@@ -1,7 +1,10 @@
 #![allow(non_upper_case_globals, non_snake_case)]
 
 use crate::doom::m_config::M_BindVariable;
-use std::ffi::{c_char, c_int, c_void};
+use crate::doom::sounds::SfxInfo;
+use crate::doom::w_wad::{W_CacheLumpNum, W_CheckNumForName, W_LumpLength};
+use crate::doom::z_zone::PU_STATIC;
+use std::ffi::{c_char, c_int, c_uint, c_void};
 
 use crate::types::Boolean;
 
@@ -45,38 +48,124 @@ const fn c_bytes(s: &[u8]) -> &'static [c_char] {
 }
 
 #[no_mangle]
-pub extern "C" fn I_InitSound(_use_sfx_prefix: Boolean) {}
+pub extern "C" fn I_InitSound(_use_sfx_prefix: Boolean) {
+    crate::audio::AUDIO.with_borrow_mut(|audio| {
+        if audio.is_none() {
+            match crate::audio::AudioState::new() {
+                Ok(state) => {
+                    log::info!("Audio initialised");
+                    *audio = Some(state);
+                }
+                Err(e) => log::warn!("Audio init failed (running silent): {e}"),
+            }
+        }
+    });
+}
 
 #[no_mangle]
-pub extern "C" fn I_ShutdownSound() {}
+pub extern "C" fn I_ShutdownSound() {
+    crate::audio::AUDIO.with_borrow_mut(|audio| *audio = None);
+}
 
 #[no_mangle]
-pub extern "C" fn I_GetSfxLumpNum(_sfxinfo: *mut c_void) -> c_int {
-    0
+pub extern "C" fn I_GetSfxLumpNum(sfxinfo: *mut c_void) -> c_int {
+    if sfxinfo.is_null() {
+        return -1;
+    }
+    let sfx = sfxinfo as *const SfxInfo;
+    let mut lump_name = [0u8; 9];
+    lump_name[0] = b'D';
+    lump_name[1] = b'S';
+    unsafe {
+        for (i, &c) in (*sfx).name.iter().take(6).enumerate() {
+            if c == 0 {
+                break;
+            }
+            lump_name[2 + i] = c as u8;
+        }
+        W_CheckNumForName(lump_name.as_ptr() as *const c_char)
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn I_UpdateSound() {}
 
 #[no_mangle]
-pub extern "C" fn I_UpdateSoundParams(_channel: c_int, _vol: c_int, _sep: c_int) {}
-
-#[no_mangle]
-pub extern "C" fn I_StartSound(
-    _sfxinfo: *mut c_void,
-    _channel: c_int,
-    _vol: c_int,
-    _sep: c_int,
-) -> c_int {
-    0
+pub extern "C" fn I_UpdateSoundParams(channel: c_int, vol: c_int, sep: c_int) {
+    if channel < 0 || channel >= 8 {
+        return;
+    }
+    crate::audio::AUDIO.with_borrow(|audio| {
+        if let Some(a) = audio.as_ref() {
+            a.update_sound_params(channel as usize, vol, sep);
+        }
+    });
 }
 
 #[no_mangle]
-pub extern "C" fn I_StopSound(_channel: c_int) {}
+pub extern "C" fn I_StartSound(
+    sfxinfo: *mut c_void,
+    channel: c_int,
+    vol: c_int,
+    sep: c_int,
+) -> c_int {
+    if sfxinfo.is_null() || channel < 0 || channel >= 8 {
+        return -1;
+    }
+    unsafe {
+        let mut sfx = sfxinfo as *mut SfxInfo;
+        while !(*sfx).link.is_null() {
+            sfx = (*sfx).link;
+        }
+        let lumpnum = (*sfx).lumpnum;
+        if lumpnum < 0 {
+            return -1;
+        }
+        let lump_len = W_LumpLength(lumpnum as c_uint);
+        if lump_len <= 0 {
+            return -1;
+        }
+        let ptr = W_CacheLumpNum(lumpnum, PU_STATIC);
+        if ptr.is_null() {
+            return -1;
+        }
+        let data = std::slice::from_raw_parts(ptr as *const u8, lump_len as usize);
+        let mut result = -1;
+        crate::audio::AUDIO.with_borrow_mut(|audio| {
+            if let Some(a) = audio.as_mut() {
+                if a.start_sound(data, vol, sep, channel as usize) {
+                    result = channel;
+                }
+            }
+        });
+        result
+    }
+}
 
 #[no_mangle]
-pub extern "C" fn I_SoundIsPlaying(_channel: c_int) -> c_int {
-    0
+pub extern "C" fn I_StopSound(channel: c_int) {
+    if channel < 0 || channel >= 8 {
+        return;
+    }
+    crate::audio::AUDIO.with_borrow_mut(|audio| {
+        if let Some(a) = audio.as_mut() {
+            a.stop_sound(channel as usize);
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn I_SoundIsPlaying(channel: c_int) -> c_int {
+    if channel < 0 || channel >= 8 {
+        return 0;
+    }
+    let mut playing = 0;
+    crate::audio::AUDIO.with_borrow(|audio| {
+        if let Some(a) = audio.as_ref() {
+            playing = a.is_playing(channel as usize) as c_int;
+        }
+    });
+    playing
 }
 
 #[no_mangle]
