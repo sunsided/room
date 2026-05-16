@@ -149,7 +149,7 @@ impl MusicState {
     }
 
     pub(crate) fn set_volume(&self, vol: i32) {
-        let gain = (vol.clamp(0, 15) as f32 / 15.0).to_bits();
+        let gain = (vol.clamp(0, 127) as f32 / 127.0).to_bits();
         self.volume.store(gain, Ordering::Relaxed);
     }
 
