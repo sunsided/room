@@ -1,5 +1,7 @@
 #![allow(non_upper_case_globals, non_snake_case)]
 
+use crate::audio::music::MusicHandle;
+use crate::doom::m_argv::{M_CheckParmWithArgs, myargv};
 use crate::doom::m_config::M_BindVariable;
 use crate::doom::sounds::SfxInfo;
 use crate::doom::w_wad::{W_CacheLumpNum, W_CheckNumForName, W_LumpLength};
@@ -173,38 +175,143 @@ pub extern "C" fn I_SoundIsPlaying(channel: c_int) -> c_int {
 #[no_mangle]
 pub extern "C" fn I_PrecacheSounds(_sounds: *mut c_void, _num_sounds: c_int) {}
 
-#[no_mangle]
-pub extern "C" fn I_InitMusic() {}
+fn find_soundfont_path() -> Option<std::path::PathBuf> {
+    unsafe {
+        let p = M_CheckParmWithArgs(b"-sf2\0".as_ptr() as *mut c_char, 1);
+        if p != 0 {
+            let arg = *myargv.add((p + 1) as usize);
+            if !arg.is_null() {
+                let s = std::ffi::CStr::from_ptr(arg).to_string_lossy();
+                let path = std::path::PathBuf::from(s.as_ref());
+                if path.exists() {
+                    return Some(path);
+                }
+                log::warn!("-sf2 path not found: {}", path.display());
+            }
+        }
+    }
 
-#[no_mangle]
-pub extern "C" fn I_ShutdownMusic() {}
+    let bundled = std::path::Path::new(
+        "soundfonts/SC55Soundfont-1.2b/SC-55 SoundFont v1.2b.sf2",
+    );
+    if bundled.exists() {
+        return Some(bundled.to_path_buf());
+    }
 
-#[no_mangle]
-pub extern "C" fn I_SetMusicVolume(_volume: c_int) {}
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let p = dir.join(bundled);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
 
-#[no_mangle]
-pub extern "C" fn I_PauseSong() {}
-
-#[no_mangle]
-pub extern "C" fn I_ResumeSong() {}
-
-#[no_mangle]
-pub extern "C" fn I_RegisterSong(_data: *mut c_void, _len: c_int) -> *mut c_void {
-    std::ptr::null_mut()
+    log::warn!("No soundfont found. Use -sf2 <path> to specify one. Music will be silent.");
+    None
 }
 
 #[no_mangle]
-pub extern "C" fn I_UnRegisterSong(_handle: *mut c_void) {}
+pub extern "C" fn I_InitMusic() {
+    if let Some(path) = find_soundfont_path() {
+        crate::audio::AUDIO.with_borrow_mut(|audio| {
+            if let Some(a) = audio.as_mut() {
+                a.music.load_sound_font(&path);
+            }
+        });
+    }
+}
 
 #[no_mangle]
-pub extern "C" fn I_PlaySong(_handle: *mut c_void, _looping: c_int) {}
+pub extern "C" fn I_ShutdownMusic() {
+    crate::audio::AUDIO.with_borrow_mut(|audio| {
+        if let Some(a) = audio.as_mut() {
+            a.music.stop();
+        }
+    });
+}
 
 #[no_mangle]
-pub extern "C" fn I_StopSong() {}
+pub extern "C" fn I_SetMusicVolume(volume: c_int) {
+    crate::audio::AUDIO.with_borrow(|audio| {
+        if let Some(a) = audio.as_ref() {
+            a.music.set_volume(volume);
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn I_PauseSong() {
+    crate::audio::AUDIO.with_borrow(|audio| {
+        if let Some(a) = audio.as_ref() {
+            a.music.pause();
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn I_ResumeSong() {
+    crate::audio::AUDIO.with_borrow(|audio| {
+        if let Some(a) = audio.as_ref() {
+            a.music.resume();
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn I_RegisterSong(data: *mut c_void, len: c_int) -> *mut c_void {
+    if data.is_null() || len <= 0 {
+        return std::ptr::null_mut();
+    }
+    let slice = unsafe { std::slice::from_raw_parts(data as *const u8, len as usize) };
+    match crate::audio::music::mus2midi(slice) {
+        Some(midi_bytes) => Box::into_raw(Box::new(MusicHandle { midi_bytes })) as *mut c_void,
+        None => {
+            log::warn!("I_RegisterSong: MUS-to-MIDI conversion failed");
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn I_UnRegisterSong(handle: *mut c_void) {
+    if !handle.is_null() {
+        unsafe { drop(Box::from_raw(handle as *mut MusicHandle)); }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn I_PlaySong(handle: *mut c_void, looping: c_int) {
+    if handle.is_null() {
+        return;
+    }
+    let music_handle = unsafe { &*(handle as *const MusicHandle) };
+    crate::audio::AUDIO.with_borrow_mut(|audio| {
+        if let Some(a) = audio.as_mut() {
+            let mixer = a.mixer.clone();
+            a.music.play(&music_handle.midi_bytes, looping != 0, &mixer);
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn I_StopSong() {
+    crate::audio::AUDIO.with_borrow_mut(|audio| {
+        if let Some(a) = audio.as_mut() {
+            a.music.stop();
+        }
+    });
+}
 
 #[no_mangle]
 pub extern "C" fn I_MusicIsPlaying() -> c_int {
-    0
+    let mut playing = 0;
+    crate::audio::AUDIO.with_borrow(|audio| {
+        if let Some(a) = audio.as_ref() {
+            playing = a.music.is_playing() as c_int;
+        }
+    });
+    playing
 }
 
 
