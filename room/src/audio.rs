@@ -29,7 +29,7 @@ pub(crate) fn decode_doom_sfx(data: &[u8]) -> Option<(u32, Vec<f32>)> {
 pub(crate) fn gains_from(vol: i32, sep: i32) -> (f32, f32) {
     let v = vol.clamp(0, 127) as f32;
     let s = sep.clamp(0, 254) as f32;
-    (v * (254.0 - s) / (127.0 * 127.0), v * s / (127.0 * 127.0))
+    (v * (254.0 - s) / (127.0 * 254.0), v * s / (127.0 * 254.0))
 }
 
 pub(crate) struct PanState {
@@ -219,14 +219,14 @@ mod tests {
     #[test]
     fn gains_center() {
         let (l, r) = gains_from(127, 127);
-        assert!((l - 1.0_f32).abs() < 1e-4, "l={l}");
-        assert!((r - 1.0_f32).abs() < 1e-4, "r={r}");
+        assert!((l - 0.5_f32).abs() < 1e-4, "l={l}");
+        assert!((r - 0.5_f32).abs() < 1e-4, "r={r}");
     }
 
     #[test]
     fn gains_hard_left() {
         let (l, r) = gains_from(127, 0);
-        assert!((l - 2.0_f32).abs() < 1e-4, "l={l}");
+        assert!((l - 1.0_f32).abs() < 1e-4, "l={l}");
         assert!((r - 0.0_f32).abs() < 1e-4, "r={r}");
     }
 
@@ -234,14 +234,14 @@ mod tests {
     fn gains_hard_right() {
         let (l, r) = gains_from(127, 254);
         assert!((l - 0.0_f32).abs() < 1e-4, "l={l}");
-        assert!((r - 2.0_f32).abs() < 1e-4, "r={r}");
+        assert!((r - 1.0_f32).abs() < 1e-4, "r={r}");
     }
 
     #[test]
     fn gains_clamp_vol() {
         let (l, r) = gains_from(200, 127); // vol clamped to 127
-        assert!((l - 1.0_f32).abs() < 1e-4, "l={l}");
-        assert!((r - 1.0_f32).abs() < 1e-4, "r={r}");
+        assert!((l - 0.5_f32).abs() < 1e-4, "l={l}");
+        assert!((r - 0.5_f32).abs() < 1e-4, "r={r}");
     }
 
     #[test]
@@ -250,7 +250,7 @@ mod tests {
         pan.update(127, 0); // hard left
         let l = f32::from_bits(pan.l_gain.load(Ordering::Relaxed));
         let r = f32::from_bits(pan.r_gain.load(Ordering::Relaxed));
-        assert!((l - 2.0_f32).abs() < 1e-4, "l={l}");
+        assert!((l - 1.0_f32).abs() < 1e-4, "l={l}");
         assert!((r - 0.0_f32).abs() < 1e-4, "r={r}");
     }
 
@@ -263,13 +263,13 @@ mod tests {
 
         let l1 = src.next().unwrap();
         let r1 = src.next().unwrap();
-        assert!((l1 - 1.0_f32).abs() < 1e-4, "l1={l1}");
-        assert!((r1 - 1.0_f32).abs() < 1e-4, "r1={r1}");
+        assert!((l1 - 0.5_f32).abs() < 1e-4, "l1={l1}");
+        assert!((r1 - 0.5_f32).abs() < 1e-4, "r1={r1}");
 
         let l2 = src.next().unwrap();
         let r2 = src.next().unwrap();
-        assert!((l2 - 0.5_f32).abs() < 1e-4, "l2={l2}");
-        assert!((r2 - 0.5_f32).abs() < 1e-4, "r2={r2}");
+        assert!((l2 - 0.25_f32).abs() < 1e-4, "l2={l2}");
+        assert!((r2 - 0.25_f32).abs() < 1e-4, "r2={r2}");
 
         assert!(src.next().is_none());
     }
@@ -283,7 +283,7 @@ mod tests {
         let mut src = PannedSource::new(buf, pan);
         let l = src.next().unwrap();
         let r = src.next().unwrap();
-        assert!((l - 1.0_f32).abs() < 1e-4, "l={l}");  // 0.5 * 2.0
+        assert!((l - 0.5_f32).abs() < 1e-4, "l={l}");  // 0.5 * 1.0
         assert!((r - 0.0_f32).abs() < 1e-4, "r={r}");  // 0.5 * 0.0
     }
 
@@ -313,7 +313,7 @@ mod tests {
         pan.update(127, 0);
         let l2 = src.next().unwrap();
         let r2 = src.next().unwrap();
-        assert!((l2 - 2.0_f32).abs() < 1e-4, "l2={l2}");
+        assert!((l2 - 1.0_f32).abs() < 1e-4, "l2={l2}");
         assert!((r2 - 0.0_f32).abs() < 1e-4, "r2={r2}");
     }
 }
