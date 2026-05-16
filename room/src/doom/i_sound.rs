@@ -72,11 +72,16 @@ pub extern "C" fn I_GetSfxLumpNum(sfxinfo: *mut c_void) -> c_int {
     if sfxinfo.is_null() {
         return -1;
     }
-    let sfx = sfxinfo as *const SfxInfo;
-    let mut lump_name = [0 as c_char; 9];
-    lump_name[0] = b'D' as c_char;
-    lump_name[1] = b'S' as c_char;
     unsafe {
+        let mut sfx = sfxinfo as *const SfxInfo;
+        let mut depth = 0usize;
+        while !(*sfx).link.is_null() && depth < 64 {
+            sfx = (*sfx).link;
+            depth += 1;
+        }
+        let mut lump_name = [0 as c_char; 9];
+        lump_name[0] = b'D' as c_char;
+        lump_name[1] = b'S' as c_char;
         for (i, &c) in (*sfx).name.iter().take(6).enumerate() {
             if c == 0 {
                 break;
@@ -113,12 +118,7 @@ pub extern "C" fn I_StartSound(
         return -1;
     }
     unsafe {
-        let mut sfx = sfxinfo as *mut SfxInfo;
-        let mut depth = 0usize;
-        while !(*sfx).link.is_null() && depth < 64 {
-            sfx = (*sfx).link;
-            depth += 1;
-        }
+        let sfx = sfxinfo as *const SfxInfo;
         let lumpnum = (*sfx).lumpnum;
         if lumpnum < 0 {
             return -1;
