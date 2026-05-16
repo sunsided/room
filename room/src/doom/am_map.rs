@@ -5,7 +5,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::{c_char, c_int, c_void};
+use std::ffi::{c_char, c_int};
 use std::os::raw::c_uint;
 use std::ptr;
 
@@ -27,7 +27,13 @@ use crate::doom::p_setup::{
 };
 use crate::doom::tables::ANGLETOFINESHIFT;
 use crate::doom::tables::{finecosine, finesine};
-use crate::doom::v_video::patch_t;
+use crate::doom::v_video::{patch_t, V_DrawPatch, V_MarkRect};
+use crate::doom::w_wad::{W_CacheLumpName, W_ReleaseLumpName};
+use crate::doom::g_game::{
+    consoleplayer, deathmatch, gameepisode, gamemap, netgame, playeringame, players, singledemo,
+    viewactive,
+};
+use crate::doom::st_stuff::ST_Responder;
 
 use crate::doom::z_zone::PU_STATIC;
 
@@ -95,26 +101,6 @@ unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
 // ---------------------------------------------------------------------------
 // C globals still provided by unported C modules
 // ---------------------------------------------------------------------------
-
-extern "C" {
-    fn ST_Responder(ev: *mut event_t) -> c_int;
-
-    fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void;
-    fn W_ReleaseLumpName(name: *const c_char);
-
-    fn V_DrawPatch(x: c_int, y: c_int, patch: *mut patch_t);
-    fn V_MarkRect(x: c_int, y: c_int, width: c_int, height: c_int);
-
-    static mut gameepisode: c_int;
-    static mut gamemap: c_int;
-    static mut netgame: c_int;
-    static mut deathmatch: c_int;
-    static mut viewactive: c_int;
-    static mut consoleplayer: c_int;
-    static mut singledemo: c_int;
-    static mut players: [PlayerT; MAXPLAYERS];
-    static mut playeringame: [c_int; MAXPLAYERS];
-}
 
 // ---------------------------------------------------------------------------
 // Internal types
