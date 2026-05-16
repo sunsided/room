@@ -7,7 +7,7 @@ use crate::types::Boolean;
 use crate::doom::sha1::{
     sha1_digest_t, SHA1Context, SHA1_Final, SHA1_Init, SHA1_UpdateInt32, SHA1_UpdateString,
 };
-use crate::doom::w_wad::{lumpinfo, lumpinfo_t, numlumps};
+use crate::doom::w_wad::{lumpinfo, numlumps};
 use crate::doom::m_misc::M_StringCopy;
 
 #[repr(C)]
