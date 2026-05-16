@@ -8,6 +8,7 @@ use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
 use crate::doom::d_mode;
+use crate::doom::m_misc::M_StringJoinA;
 use crate::i_error;
 
 const MAX_IWAD_DIRS: usize = 128;
@@ -24,7 +25,6 @@ extern "C" {
     fn printf(fmt: *const c_char, ...) -> c_int;
 
     fn M_FileExists(filename: *mut c_char) -> c_int;
-    fn M_StringJoinA(strs: *const *const c_char) -> *mut c_char;
 
     fn strcasecmp(s1: *const c_char, s2: *const c_char) -> c_int;
     fn strrchr(s: *const c_char, c: c_int) -> *mut c_char;
@@ -176,6 +176,7 @@ unsafe fn CheckDirectoryHasIWAD(dir: *mut c_char, iwadname: *mut c_char) -> *mut
             iwadname as *const c_char,
             ptr::null(),
         ];
+        // SAFETY: null-terminated pointer array; caller frees result with free().
         filename = M_StringJoinA(strs.as_ptr());
     }
 
@@ -259,6 +260,7 @@ pub unsafe extern "C" fn D_FindWADByName(name: *mut c_char) -> *mut c_char {
             name as *const c_char,
             ptr::null(),
         ];
+        // SAFETY: null-terminated pointer array; caller frees result with free().
         let path = M_StringJoinA(strs.as_ptr());
 
         if M_FileExists(path) != 0 {

@@ -128,6 +128,7 @@ pub extern "C" fn M_TempFile(s: *mut c_char) -> *mut c_char {
         let tempdir = b"/tmp\0".as_ptr() as *const c_char;
         let sep = DIR_SEPARATOR_S.as_ptr() as *const c_char;
         let strs: [*const c_char; 4] = [tempdir, sep, s as *const c_char, std::ptr::null()];
+        // SAFETY: null-terminated pointer array; ownership transferred to caller via return.
         M_StringJoinA(strs.as_ptr())
     }
 }
@@ -386,6 +387,9 @@ pub extern "C" fn M_HomeDir() -> *const c_char {
     unsafe { getenv(b"HOME\0".as_ptr() as *const c_char) }
 }
 
+// Returns a heap-allocated path (via M_StringJoinA/malloc) in the normal case, or a
+// static literal when HOME is unset. Callers cannot distinguish the two, so the
+// returned pointer must NOT be freed. This matches the behaviour of the original C.
 #[no_mangle]
 pub extern "C" fn M_DefaultConfigDir() -> *const c_char {
     unsafe {
@@ -397,6 +401,7 @@ pub extern "C" fn M_DefaultConfigDir() -> *const c_char {
         if !xdg.is_null() {
             let strs: [*const c_char; 3] =
                 [xdg, b"/doom\0".as_ptr() as *const c_char, std::ptr::null()];
+            // SAFETY: null-terminated pointer array; result intentionally leaked (see above).
             return M_StringJoinA(strs.as_ptr());
         }
         let strs: [*const c_char; 3] = [
@@ -404,6 +409,7 @@ pub extern "C" fn M_DefaultConfigDir() -> *const c_char {
             b"/.config/doom\0".as_ptr() as *const c_char,
             std::ptr::null(),
         ];
+        // SAFETY: null-terminated pointer array; result intentionally leaked (see above).
         M_StringJoinA(strs.as_ptr())
     }
 }

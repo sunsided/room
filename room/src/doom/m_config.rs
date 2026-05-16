@@ -558,6 +558,7 @@ pub extern "C" fn M_LoadDefaults() {
             );
         } else {
             let strs: [*const c_char; 3] = [configdir, default_main_config, std::ptr::null()];
+            // SAFETY: null-terminated pointer array; result lives for the duration of the program.
             doom_defaults.filename = M_StringJoinA(strs.as_ptr());
         }
 
@@ -575,6 +576,7 @@ pub extern "C" fn M_LoadDefaults() {
             );
         } else {
             let strs: [*const c_char; 3] = [configdir, default_extra_config, std::ptr::null()];
+            // SAFETY: null-terminated pointer array; result lives for the duration of the program.
             extra_defaults.filename = M_StringJoinA(strs.as_ptr());
         }
 
@@ -680,6 +682,7 @@ pub extern "C" fn M_GetSaveGameDir(_iwadname: *mut c_char) -> *mut c_char {
                 b".savegame/\0".as_ptr() as *const c_char,
                 std::ptr::null(),
             ];
+            // SAFETY: null-terminated pointer array; ownership transferred to caller via return.
             let savegamedir = M_StringJoinA(strs.as_ptr());
             M_MakeDirectory(savegamedir);
             printf(
