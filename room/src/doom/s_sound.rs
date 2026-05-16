@@ -532,7 +532,7 @@ pub extern "C" fn S_ChangeMusic(musicnum: c_int, looping: c_int) {
             let mut namebuf: [c_char; 9] = [0; 9];
             let name_str = std::ffi::CStr::from_ptr(music.name).to_string_lossy();
             c_write!(namebuf, "d_{}", name_str);
-            music.lumpnum = W_GetNumForName(namebuf.as_ptr() as *mut c_char);
+            music.lumpnum = W_GetNumForName(namebuf.as_ptr() as *const c_char);
         }
 
         music.data = W_CacheLumpNum(music.lumpnum, PU_STATIC);

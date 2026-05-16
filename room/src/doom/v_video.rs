@@ -373,14 +373,14 @@ pub extern "C" fn V_DrawShadowedPatch(x: c_int, y: c_int, patch: *mut patch_t) {
 #[no_mangle]
 pub extern "C" fn V_LoadTintTable() {
     unsafe {
-        tinttable = W_CacheLumpName(b"TINTTAB\0".as_ptr() as *mut c_char, PU_STATIC) as *mut u8;
+        tinttable = W_CacheLumpName(b"TINTTAB\0".as_ptr() as *const c_char, PU_STATIC) as *mut u8;
     }
 }
 
 #[no_mangle]
 pub extern "C" fn V_LoadXlaTable() {
     unsafe {
-        xlatab = W_CacheLumpName(b"XLATAB\0".as_ptr() as *mut c_char, PU_STATIC) as *mut u8;
+        xlatab = W_CacheLumpName(b"XLATAB\0".as_ptr() as *const c_char, PU_STATIC) as *mut u8;
     }
 }
 
@@ -582,7 +582,7 @@ pub extern "C" fn V_ScreenShot(format: *mut c_char) {
             I_VideoBuffer,
             SCREENWIDTH,
             SCREENHEIGHT,
-            W_CacheLumpName(b"PLAYPAL\0".as_ptr() as *mut c_char, PU_CACHE) as *mut u8,
+            W_CacheLumpName(b"PLAYPAL\0".as_ptr() as *const c_char, PU_CACHE) as *mut u8,
         );
     }
 }

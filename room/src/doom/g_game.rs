@@ -1481,7 +1481,7 @@ pub unsafe extern "C" fn G_ExitLevel() {
 
 #[no_mangle]
 pub unsafe extern "C" fn G_SecretExitLevel() {
-    if gamemode == commercial && W_CheckNumForName(b"map31\0".as_ptr() as *mut c_char) < 0 {
+    if gamemode == commercial && W_CheckNumForName(b"map31\0".as_ptr() as *const c_char) < 0 {
         secretexit = 0;
     } else {
         secretexit = 1;

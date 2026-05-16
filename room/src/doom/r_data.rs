@@ -28,7 +28,7 @@ fn LONG(x: c_int) -> c_int {
     x
 }
 
-unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
+unsafe fn DEH_String(s: *const c_char) -> *const c_char {
     s
 }
 
@@ -406,7 +406,7 @@ pub unsafe extern "C" fn R_InitTextures() {
     let mut name: [c_char; 9] = [0; 9];
 
     let names =
-        W_CacheLumpName(DEH_String(b"PNAMES\0".as_ptr() as *mut c_char), PU_STATIC) as *mut c_int;
+        W_CacheLumpName(DEH_String(b"PNAMES\0".as_ptr() as *const c_char),PU_STATIC) as *mut c_int;
     let nummappatches = LONG(*names);
     let name_p = names.add(1) as *mut c_char;
 
@@ -420,13 +420,13 @@ pub unsafe extern "C" fn R_InitTextures() {
         M_StringCopy(name.as_mut_ptr(), name_p.add(i * 8), name.len());
         *patchlookup.add(i) = W_CheckNumForName(name.as_mut_ptr());
     }
-    W_ReleaseLumpName(DEH_String(b"PNAMES\0".as_ptr() as *mut c_char));
+    W_ReleaseLumpName(DEH_String(b"PNAMES\0".as_ptr() as *const c_char));
 
     let maptex1 =
-        W_CacheLumpName(DEH_String(b"TEXTURE1\0".as_ptr() as *mut c_char), PU_STATIC) as *mut c_int;
+        W_CacheLumpName(DEH_String(b"TEXTURE1\0".as_ptr() as *const c_char),PU_STATIC) as *mut c_int;
     let numtextures1 = LONG(*maptex1);
     let maxoff = W_LumpLength(W_GetNumForName(DEH_String(
-        b"TEXTURE1\0".as_ptr() as *mut c_char
+        b"TEXTURE1\0".as_ptr() as *const c_char
     )) as c_uint);
     let mut directory = maptex1.add(1);
 
@@ -434,12 +434,12 @@ pub unsafe extern "C" fn R_InitTextures() {
     let mut numtextures2: c_int = 0;
     let mut maxoff2: c_int = 0;
 
-    if W_CheckNumForName(DEH_String(b"TEXTURE2\0".as_ptr() as *mut c_char)) != -1 {
-        maptex2 = W_CacheLumpName(DEH_String(b"TEXTURE2\0".as_ptr() as *mut c_char), PU_STATIC)
+    if W_CheckNumForName(DEH_String(b"TEXTURE2\0".as_ptr() as *const c_char)) != -1 {
+        maptex2 = W_CacheLumpName(DEH_String(b"TEXTURE2\0".as_ptr() as *const c_char),PU_STATIC)
             as *mut c_int;
         numtextures2 = LONG(*maptex2);
         maxoff2 = W_LumpLength(W_GetNumForName(DEH_String(
-            b"TEXTURE2\0".as_ptr() as *mut c_char
+            b"TEXTURE2\0".as_ptr() as *const c_char
         )) as c_uint);
     }
 
@@ -481,8 +481,8 @@ pub unsafe extern "C" fn R_InitTextures() {
         ptr::null_mut(),
     ) as *mut c_int;
 
-    let temp1 = W_GetNumForName(DEH_String(b"S_START\0".as_ptr() as *mut c_char));
-    let temp2 = W_GetNumForName(DEH_String(b"S_END\0".as_ptr() as *mut c_char)) - 1;
+    let temp1 = W_GetNumForName(DEH_String(b"S_START\0".as_ptr() as *const c_char));
+    let temp2 = W_GetNumForName(DEH_String(b"S_END\0".as_ptr() as *const c_char)) - 1;
     let temp3 = ((temp2 - temp1 + 63) / 64) + ((numtextures + 63) / 64);
 
     if I_ConsoleStdout() != 0 {
@@ -569,9 +569,9 @@ pub unsafe extern "C" fn R_InitTextures() {
     }
 
     Z_Free(patchlookup as *mut c_void);
-    W_ReleaseLumpName(DEH_String(b"TEXTURE1\0".as_ptr() as *mut c_char));
+    W_ReleaseLumpName(DEH_String(b"TEXTURE1\0".as_ptr() as *const c_char));
     if !maptex2.is_null() {
-        W_ReleaseLumpName(DEH_String(b"TEXTURE2\0".as_ptr() as *mut c_char));
+        W_ReleaseLumpName(DEH_String(b"TEXTURE2\0".as_ptr() as *const c_char));
     }
 
     for i in 0..numtextures as usize {
@@ -596,8 +596,8 @@ pub unsafe extern "C" fn R_InitTextures() {
 
 #[no_mangle]
 pub unsafe extern "C" fn R_InitFlats() {
-    firstflat = W_GetNumForName(DEH_String(b"F_START\0".as_ptr() as *mut c_char)) + 1;
-    lastflat = W_GetNumForName(DEH_String(b"F_END\0".as_ptr() as *mut c_char)) - 1;
+    firstflat = W_GetNumForName(DEH_String(b"F_START\0".as_ptr() as *const c_char)) + 1;
+    lastflat = W_GetNumForName(DEH_String(b"F_END\0".as_ptr() as *const c_char)) - 1;
     numflats = lastflat - firstflat + 1;
 
     flattranslation = Z_Malloc(
@@ -617,8 +617,8 @@ pub unsafe extern "C" fn R_InitFlats() {
 
 #[no_mangle]
 pub unsafe extern "C" fn R_InitSpriteLumps() {
-    firstspritelump = W_GetNumForName(DEH_String(b"S_START\0".as_ptr() as *mut c_char)) + 1;
-    lastspritelump = W_GetNumForName(DEH_String(b"S_END\0".as_ptr() as *mut c_char)) - 1;
+    firstspritelump = W_GetNumForName(DEH_String(b"S_START\0".as_ptr() as *const c_char)) + 1;
+    lastspritelump = W_GetNumForName(DEH_String(b"S_END\0".as_ptr() as *const c_char)) - 1;
     numspritelumps = lastspritelump - firstspritelump + 1;
 
     spritewidth = Z_Malloc(
@@ -655,7 +655,7 @@ pub unsafe extern "C" fn R_InitSpriteLumps() {
 
 #[no_mangle]
 pub unsafe extern "C" fn R_InitColormaps() {
-    let lump = W_GetNumForName(DEH_String(b"COLORMAP\0".as_ptr() as *mut c_char));
+    let lump = W_GetNumForName(DEH_String(b"COLORMAP\0".as_ptr() as *const c_char));
     colormaps = W_CacheLumpNum(lump, PU_STATIC) as *mut u8;
 }
 

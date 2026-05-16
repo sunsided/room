@@ -902,7 +902,7 @@ pub unsafe extern "C" fn ST_loadGraphics() {
 
 #[no_mangle]
 pub unsafe extern "C" fn ST_loadData() {
-    lu_palette = W_GetNumForName(b"PLAYPAL\0".as_ptr() as *mut c_char);
+    lu_palette = W_GetNumForName(b"PLAYPAL\0".as_ptr() as *const c_char);
     ST_loadGraphics();
 }
 

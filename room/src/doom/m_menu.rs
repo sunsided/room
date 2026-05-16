@@ -447,7 +447,7 @@ extern "C" fn M_DrawLoad() {
         V_DrawPatchDirect(
             72,
             28,
-            W_CacheLumpName(b"M_LOADG\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_LOADG\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
 
         for i in 0..load_end {
@@ -469,7 +469,7 @@ fn M_DrawSaveLoadBorder(x: c_int, y: c_int) {
         V_DrawPatchDirect(
             x - 8,
             y + 7,
-            W_CacheLumpName(b"M_LSLEFT\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_LSLEFT\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
 
         let mut xi = x;
@@ -477,7 +477,7 @@ fn M_DrawSaveLoadBorder(x: c_int, y: c_int) {
             V_DrawPatchDirect(
                 xi,
                 y + 7,
-                W_CacheLumpName(b"M_LSCNTR\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+                W_CacheLumpName(b"M_LSCNTR\0".as_ptr() as *const c_char, 0) as *mut patch_t,
             );
             xi += 8;
         }
@@ -485,7 +485,7 @@ fn M_DrawSaveLoadBorder(x: c_int, y: c_int) {
         V_DrawPatchDirect(
             xi,
             y + 7,
-            W_CacheLumpName(b"M_LSRGHT\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_LSRGHT\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
     }
 }
@@ -519,7 +519,7 @@ extern "C" fn M_DrawSave() {
         V_DrawPatchDirect(
             72,
             28,
-            W_CacheLumpName(b"M_SAVEG\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_SAVEG\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
         for i in 0..load_end {
             M_DrawSaveLoadBorder(
@@ -713,7 +713,7 @@ extern "C" fn M_DrawReadThis1() {
             }
         }
 
-        V_DrawPatchDirect(0, 0, W_CacheLumpName(lumpname as *mut c_char, 0) as *mut patch_t);
+        V_DrawPatchDirect(0, 0, W_CacheLumpName(lumpname, 0) as *mut patch_t);
         ReadDef1.x = skullx;
         ReadDef1.y = skully;
     }
@@ -725,7 +725,7 @@ extern "C" fn M_DrawReadThis2() {
         V_DrawPatchDirect(
             0,
             0,
-            W_CacheLumpName(b"HELP1\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"HELP1\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
     }
 }
@@ -736,7 +736,7 @@ extern "C" fn M_DrawSound() {
         V_DrawPatchDirect(
             60,
             38,
-            W_CacheLumpName(b"M_SVOL\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_SVOL\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
 
         M_DrawThermo(
@@ -796,7 +796,7 @@ extern "C" fn M_DrawMainMenu() {
         V_DrawPatchDirect(
             94,
             2,
-            W_CacheLumpName(b"M_DOOM\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_DOOM\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
     }
 }
@@ -806,12 +806,12 @@ extern "C" fn M_DrawNewGame() {
         V_DrawPatchDirect(
             96,
             14,
-            W_CacheLumpName(b"M_NEWG\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_NEWG\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
         V_DrawPatchDirect(
             54,
             38,
-            W_CacheLumpName(b"M_SKILL\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_SKILL\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
     }
 }
@@ -840,7 +840,7 @@ extern "C" fn M_DrawEpisode() {
         V_DrawPatchDirect(
             54,
             38,
-            W_CacheLumpName(b"M_EPISOD\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_EPISOD\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
     }
 }
@@ -900,16 +900,16 @@ extern "C" fn M_DrawOptions() {
         V_DrawPatchDirect(
             108,
             15,
-            W_CacheLumpName(b"M_OPTTTL\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_OPTTTL\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
 
-        let detail_names: [*mut c_char; 2] = [
-            b"M_GDHIGH\0".as_ptr() as *mut c_char,
-            b"M_GDLOW\0".as_ptr() as *mut c_char,
+        let detail_names: [*const c_char; 2] = [
+            b"M_GDHIGH\0".as_ptr() as *const c_char,
+            b"M_GDLOW\0".as_ptr() as *const c_char,
         ];
-        let msg_names: [*mut c_char; 2] = [
-            b"M_MSGOFF\0".as_ptr() as *mut c_char,
-            b"M_MSGON\0".as_ptr() as *mut c_char,
+        let msg_names: [*const c_char; 2] = [
+            b"M_MSGOFF\0".as_ptr() as *const c_char,
+            b"M_MSGON\0".as_ptr() as *const c_char,
         ];
 
         V_DrawPatchDirect(
@@ -1101,27 +1101,27 @@ fn M_DrawThermo(x: c_int, y: c_int, thermWidth: c_int, thermDot: c_int) {
         V_DrawPatchDirect(
             xx,
             y,
-            W_CacheLumpName(b"M_THERML\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_THERML\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
         xx += 8;
         for _ in 0..thermWidth {
             V_DrawPatchDirect(
                 xx,
                 y,
-                W_CacheLumpName(b"M_THERMM\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+                W_CacheLumpName(b"M_THERMM\0".as_ptr() as *const c_char, 0) as *mut patch_t,
             );
             xx += 8;
         }
         V_DrawPatchDirect(
             xx,
             y,
-            W_CacheLumpName(b"M_THERMR\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_THERMR\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
 
         V_DrawPatchDirect(
             (x + 8) + thermDot * 8,
             y,
-            W_CacheLumpName(b"M_THERMO\0".as_ptr() as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(b"M_THERMO\0".as_ptr() as *const c_char, 0) as *mut patch_t,
         );
     }
 }
@@ -1482,7 +1482,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
                     usegamma = 0;
                 }
                 M_Menu_SetPlayerMessage(gammamsg[usegamma as usize].as_ptr());
-                I_SetPalette(W_CacheLumpName(b"PLAYPAL\0".as_ptr() as *mut c_char, 0) as *mut u8);
+                I_SetPalette(W_CacheLumpName(b"PLAYPAL\0".as_ptr() as *const c_char, 0) as *mut u8);
                 return Boolean::TRUE;
             }
         }
@@ -1652,14 +1652,14 @@ pub extern "C" fn M_Drawer() {
         for i in 0..max {
             let name = (*(*currentMenu).menuitems.add(i)).name.as_ptr();
             if *name != 0 {
-                V_DrawPatchDirect(x, y + LINEHEIGHT * i as c_int, W_CacheLumpName(name as *mut c_char, 0) as *mut patch_t);
+                V_DrawPatchDirect(x, y + LINEHEIGHT * i as c_int, W_CacheLumpName(name, 0) as *mut patch_t);
             }
         }
 
         V_DrawPatchDirect(
             x + SKULLXOFF,
             (*currentMenu).y as c_int - 5 + itemOn as c_int * LINEHEIGHT,
-            W_CacheLumpName(skullName[whichSkull as usize] as *mut c_char, 0) as *mut patch_t,
+            W_CacheLumpName(skullName[whichSkull as usize], 0) as *mut patch_t,
         );
     }
 }

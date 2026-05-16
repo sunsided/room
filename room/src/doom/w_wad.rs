@@ -212,7 +212,7 @@ pub extern "C" fn W_NumLumps() -> c_int {
 }
 
 #[no_mangle]
-pub extern "C" fn W_CheckNumForName(name: *mut c_char) -> c_int {
+pub extern "C" fn W_CheckNumForName(name: *const c_char) -> c_int {
     unsafe {
         if !lumphash.is_null() {
             let hash = (W_LumpNameHash(name) % numlumps) as usize;
@@ -239,7 +239,7 @@ pub extern "C" fn W_CheckNumForName(name: *mut c_char) -> c_int {
 }
 
 #[no_mangle]
-pub extern "C" fn W_GetNumForName(name: *mut c_char) -> c_int {
+pub extern "C" fn W_GetNumForName(name: *const c_char) -> c_int {
     unsafe {
         let i = W_CheckNumForName(name);
         if i < 0 {
@@ -327,7 +327,7 @@ pub extern "C" fn W_CacheLumpNum(lumpnum: c_int, tag: c_int) -> *mut c_void {
 }
 
 #[no_mangle]
-pub extern "C" fn W_CacheLumpName(name: *mut c_char, tag: c_int) -> *mut c_void {
+pub extern "C" fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void {
     unsafe { W_CacheLumpNum(W_GetNumForName(name), tag) }
 }
 
@@ -347,7 +347,7 @@ pub extern "C" fn W_ReleaseLumpNum(lumpnum: c_int) {
 }
 
 #[no_mangle]
-pub extern "C" fn W_ReleaseLumpName(name: *mut c_char) {
+pub extern "C" fn W_ReleaseLumpName(name: *const c_char) {
     unsafe { W_ReleaseLumpNum(W_GetNumForName(name)) }
 }
 
@@ -425,14 +425,14 @@ pub unsafe extern "C" fn W_Wad_Link_Anchor() {
     W_LumpNameHash(ptr::null());
     W_AddFile(ptr::null_mut());
     W_NumLumps();
-    W_CheckNumForName(ptr::null_mut());
-    W_GetNumForName(ptr::null_mut());
+    W_CheckNumForName(ptr::null());
+    W_GetNumForName(ptr::null());
     W_LumpLength(0);
     W_ReadLump(0, ptr::null_mut());
     W_CacheLumpNum(0, 0);
-    W_CacheLumpName(ptr::null_mut(), 0);
+    W_CacheLumpName(ptr::null(), 0);
     W_ReleaseLumpNum(0);
-    W_ReleaseLumpName(ptr::null_mut());
+    W_ReleaseLumpName(ptr::null());
     W_GenerateHashTable();
     W_CheckCorrectIWAD(0);
 }

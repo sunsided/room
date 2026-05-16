@@ -77,7 +77,7 @@ pub extern "C" fn STlib_init() {
     unsafe {
         // DEH_String("STTMINUS") is identity — just pass the string.
         sttminus =
-            W_CacheLumpName(b"STTMINUS\0".as_ptr() as *mut c_char, PU_STATIC) as *mut patch_t;
+            W_CacheLumpName(b"STTMINUS\0".as_ptr() as *const c_char, PU_STATIC) as *mut patch_t;
     }
 }
 

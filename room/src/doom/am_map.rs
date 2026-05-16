@@ -99,8 +99,8 @@ unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
 extern "C" {
     fn ST_Responder(ev: *mut event_t) -> c_int;
 
-    fn W_CacheLumpName(name: *mut c_char, tag: c_int) -> *mut c_void;
-    fn W_ReleaseLumpName(name: *mut c_char);
+    fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void;
+    fn W_ReleaseLumpName(name: *const c_char);
 
     fn V_DrawPatch(x: c_int, y: c_int, patch: *mut patch_t);
     fn V_MarkRect(x: c_int, y: c_int, width: c_int, height: c_int);

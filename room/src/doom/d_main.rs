@@ -607,7 +607,7 @@ pub extern "C" fn D_Display() {
         // Set palette on state change (non-level states)
         if gamestate != GS_LEVEL && gamestate != D_DISP_OLD_GAMESTATE {
             I_SetPalette(W_CacheLumpName(
-                DEH_String(b"PLAYPAL\0".as_ptr() as *const c_char) as *mut c_char,
+                DEH_String(b"PLAYPAL\0".as_ptr() as *const c_char),
                 PU_CACHE,
             ) as *mut byte);
         }
@@ -651,7 +651,7 @@ pub extern "C" fn D_Display() {
             V_DrawPatchDirect(
                 viewwindowx + (scaledviewwidth - 68) / 2,
                 y,
-                W_CacheLumpName(DEH_String(b"M_PAUSE\0".as_ptr() as *const c_char) as *mut c_char, PU_CACHE)
+                W_CacheLumpName(DEH_String(b"M_PAUSE\0".as_ptr() as *const c_char), PU_CACHE)
                     as *mut patch_t,
             );
         }
@@ -996,7 +996,7 @@ pub extern "C" fn D_DoAdvanceDemo() {
 
         // BFG Edition workaround: TITLEPIC missing, use INTERPIC
         if bfgedition != 0 && c_str_eq(pagename, b"TITLEPIC\0".as_ptr() as *const c_char) {
-            if W_CheckNumForName(b"titlepic\0".as_ptr() as *mut c_char) < 0 {
+            if W_CheckNumForName(b"titlepic\0".as_ptr() as *const c_char) < 0 {
                 pagename = b"INTERPIC\0".as_ptr() as *mut c_char;
             }
         }
@@ -1126,9 +1126,9 @@ pub extern "C" fn D_IdentifyVersion() {
         let logical_mission = logical_gamemission();
         if logical_mission == d_mode::doom {
             // Doom 1. But which version?
-            if W_CheckNumForName(b"E4M1\0".as_ptr() as *mut c_char) > 0 {
+            if W_CheckNumForName(b"E4M1\0".as_ptr() as *const c_char) > 0 {
                 gamemode = d_mode::retail;
-            } else if W_CheckNumForName(b"E3M1\0".as_ptr() as *mut c_char) > 0 {
+            } else if W_CheckNumForName(b"E3M1\0".as_ptr() as *const c_char) > 0 {
                 gamemode = d_mode::registered;
             } else {
                 gamemode = d_mode::shareware;
@@ -1165,8 +1165,8 @@ unsafe fn logical_gamemission() -> c_int {
 #[no_mangle]
 pub extern "C" fn D_SetGameDescription() {
     unsafe {
-        let is_freedoom = W_CheckNumForName(b"FREEDOOM\0".as_ptr() as *mut c_char) >= 0;
-        let is_freedm = W_CheckNumForName(b"FREEDM\0".as_ptr() as *mut c_char) >= 0;
+        let is_freedoom = W_CheckNumForName(b"FREEDOOM\0".as_ptr() as *const c_char) >= 0;
+        let is_freedm = W_CheckNumForName(b"FREEDM\0".as_ptr() as *const c_char) >= 0;
 
         gamedescription = b"Unknown\0".as_ptr() as *mut c_char;
 
@@ -1371,7 +1371,7 @@ extern "C" fn D_Endoom() {
             return;
         }
 
-        let endoom = W_CacheLumpName(DEH_String(b"ENDOOM\0".as_ptr() as *const c_char) as *mut c_char, PU_STATIC)
+        let endoom = W_CacheLumpName(DEH_String(b"ENDOOM\0".as_ptr() as *const c_char), PU_STATIC)
             as *mut c_char;
         I_Endoom(endoom);
 
@@ -1479,7 +1479,7 @@ pub extern "C" fn D_DoomMain() {
         InitGameVersion();
 
         // BFG Edition check
-        if W_CheckNumForName(b"dmenupic\0".as_ptr() as *mut c_char) >= 0 {
+        if W_CheckNumForName(b"dmenupic\0".as_ptr() as *const c_char) >= 0 {
             println!("BFG Edition: Using workarounds as needed.");
             bfgedition = 1;
 
@@ -1546,7 +1546,7 @@ pub extern "C" fn D_DoomMain() {
             // Check for fake IWAD
             if gamemode == d_mode::registered {
                 for i in 0..23 {
-                    if W_CheckNumForName(IWAD_CHECK_NAMES[i].0 as *mut c_char) < 0 {
+                    if W_CheckNumForName(IWAD_CHECK_NAMES[i].0) < 0 {
                         i_error!("\nThis is not the registered version.");
                     }
                 }
@@ -1554,8 +1554,8 @@ pub extern "C" fn D_DoomMain() {
         }
 
         // Warning about modified sprites
-        if W_CheckNumForName(b"SS_START\0".as_ptr() as *mut c_char) >= 0
-            || W_CheckNumForName(b"FF_END\0".as_ptr() as *mut c_char) >= 0
+        if W_CheckNumForName(b"SS_START\0".as_ptr() as *const c_char) >= 0
+            || W_CheckNumForName(b"FF_END\0".as_ptr() as *const c_char) >= 0
         {
             println!(
                 " WARNING: The loaded WAD file contains modified sprites or\n\
@@ -1569,8 +1569,8 @@ pub extern "C" fn D_DoomMain() {
         PrintDehackedBanners();
 
         // Freedoom warning
-        if W_CheckNumForName(b"FREEDOOM\0".as_ptr() as *mut c_char) >= 0
-            && W_CheckNumForName(b"FREEDM\0".as_ptr() as *mut c_char) < 0
+        if W_CheckNumForName(b"FREEDOOM\0".as_ptr() as *const c_char) >= 0
+            && W_CheckNumForName(b"FREEDM\0".as_ptr() as *const c_char) < 0
         {
             println!(
                 " WARNING: You are playing using one of the Freedoom IWAD\n\
@@ -1685,7 +1685,7 @@ pub extern "C" fn D_DoomMain() {
 
         // Store demo check
         if gamemode == d_mode::commercial
-            && W_CheckNumForName(b"map01\0".as_ptr() as *mut c_char) < 0
+            && W_CheckNumForName(b"map01\0".as_ptr() as *const c_char) < 0
         {
             storedemo = 1;
         }
