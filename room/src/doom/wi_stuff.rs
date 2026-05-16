@@ -439,11 +439,30 @@ fn anim_config(epsd: usize, j: usize) -> &'static anim_config_t {
 
 /// Returns a raw pointer to the mutable state for animation `j` in episode `epsd`.
 /// SAFETY: Doom is single-threaded; caller must not alias across concurrent frames.
+/// Cast *mut [T; N] → *mut T directly to avoid creating any intermediate &mut reference.
 unsafe fn anim_state_ptr(epsd: usize, j: usize) -> *mut anim_state_t {
     match epsd {
-        0 => (*EPSD0_STATE.0.get()).as_mut_ptr().add(j),
-        1 => (*EPSD1_STATE.0.get()).as_mut_ptr().add(j),
-        2 => (*EPSD2_STATE.0.get()).as_mut_ptr().add(j),
+        0 => {
+            debug_assert!(
+                j < EPSD0_NANIM,
+                "j={j} out of bounds for epsd0 (len={EPSD0_NANIM})"
+            );
+            (EPSD0_STATE.0.get() as *mut anim_state_t).add(j)
+        }
+        1 => {
+            debug_assert!(
+                j < EPSD1_NANIM,
+                "j={j} out of bounds for epsd1 (len={EPSD1_NANIM})"
+            );
+            (EPSD1_STATE.0.get() as *mut anim_state_t).add(j)
+        }
+        2 => {
+            debug_assert!(
+                j < EPSD2_NANIM,
+                "j={j} out of bounds for epsd2 (len={EPSD2_NANIM})"
+            );
+            (EPSD2_STATE.0.get() as *mut anim_state_t).add(j)
+        }
         _ => ptr::null_mut(),
     }
 }
