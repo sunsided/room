@@ -3,7 +3,7 @@
 use crate::doom::m_config::M_BindVariable;
 use crate::doom::sounds::SfxInfo;
 use crate::doom::w_wad::{W_CacheLumpNum, W_CheckNumForName, W_LumpLength};
-use crate::doom::z_zone::PU_STATIC;
+use crate::doom::z_zone::PU_CACHE;
 use std::ffi::{c_char, c_int, c_uint, c_void};
 
 use crate::types::Boolean;
@@ -127,7 +127,7 @@ pub extern "C" fn I_StartSound(
         if lump_len <= 0 {
             return -1;
         }
-        let ptr = W_CacheLumpNum(lumpnum, PU_STATIC);
+        let ptr = W_CacheLumpNum(lumpnum, PU_CACHE);
         if ptr.is_null() {
             return -1;
         }
