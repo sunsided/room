@@ -53,6 +53,53 @@ impl PanState {
     }
 }
 
+pub(crate) struct PannedSource<S> {
+    inner: S,
+    pan: Arc<PanState>,
+    buffered: Option<f32>,
+}
+
+impl<S: Source> PannedSource<S> {
+    pub(crate) fn new(inner: S, pan: Arc<PanState>) -> Self {
+        Self { inner, pan, buffered: None }
+    }
+}
+
+impl<S: Source> Iterator for PannedSource<S> {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<f32> {
+        match self.buffered.take() {
+            None => {
+                // Left sample: read mono, buffer raw value for the upcoming right.
+                let s = self.inner.next()?;
+                let l = s * f32::from_bits(self.pan.l_gain.load(Ordering::Relaxed));
+                self.buffered = Some(s);
+                Some(l)
+            }
+            Some(s) => {
+                // Right sample: use buffered mono value.
+                Some(s * f32::from_bits(self.pan.r_gain.load(Ordering::Relaxed)))
+            }
+        }
+    }
+}
+
+impl<S: Source> Source for PannedSource<S> {
+    fn current_span_len(&self) -> Option<usize> {
+        self.inner.current_span_len().map(|n| n * 2)
+    }
+    fn channels(&self) -> rodio::ChannelCount {
+        std::num::NonZero::new(2).unwrap()
+    }
+    fn sample_rate(&self) -> rodio::SampleRate {
+        self.inner.sample_rate()
+    }
+    fn total_duration(&self) -> Option<Duration> {
+        self.inner.total_duration()
+    }
+}
+
 pub(crate) struct AudioState;
 
 #[cfg(test)]
@@ -139,5 +186,68 @@ mod tests {
         let r = f32::from_bits(pan.r_gain.load(Ordering::Relaxed));
         assert!((l - 2.0_f32).abs() < 1e-4, "l={l}");
         assert!((r - 0.0_f32).abs() < 1e-4, "r={r}");
+    }
+
+    #[test]
+    fn panned_source_center_two_samples() {
+        use std::num::NonZero;
+        let buf = SamplesBuffer::new(NonZero::new(1).unwrap(), NonZero::new(11025).unwrap(), vec![1.0_f32, 0.5_f32]);
+        let pan = Arc::new(PanState::new(127, 127)); // center: l=r=1.0
+        let mut src = PannedSource::new(buf, Arc::clone(&pan));
+
+        let l1 = src.next().unwrap();
+        let r1 = src.next().unwrap();
+        assert!((l1 - 1.0_f32).abs() < 1e-4, "l1={l1}");
+        assert!((r1 - 1.0_f32).abs() < 1e-4, "r1={r1}");
+
+        let l2 = src.next().unwrap();
+        let r2 = src.next().unwrap();
+        assert!((l2 - 0.5_f32).abs() < 1e-4, "l2={l2}");
+        assert!((r2 - 0.5_f32).abs() < 1e-4, "r2={r2}");
+
+        assert!(src.next().is_none());
+    }
+
+    #[test]
+    fn panned_source_hard_left() {
+        use std::num::NonZero;
+        // vol=127, sep=0: l=2.0, r=0.0
+        let buf = SamplesBuffer::new(NonZero::new(1).unwrap(), NonZero::new(11025).unwrap(), vec![0.5_f32]);
+        let pan = Arc::new(PanState::new(127, 0));
+        let mut src = PannedSource::new(buf, pan);
+        let l = src.next().unwrap();
+        let r = src.next().unwrap();
+        assert!((l - 1.0_f32).abs() < 1e-4, "l={l}");  // 0.5 * 2.0
+        assert!((r - 0.0_f32).abs() < 1e-4, "r={r}");  // 0.5 * 0.0
+    }
+
+    #[test]
+    fn panned_source_channels_is_2() {
+        use std::num::NonZero;
+        use rodio::Source;
+        let buf = SamplesBuffer::new(NonZero::new(1).unwrap(), NonZero::new(11025).unwrap(), vec![0.0_f32]);
+        let pan = Arc::new(PanState::new(127, 127));
+        let src = PannedSource::new(buf, pan);
+        assert_eq!(src.channels().get(), 2);
+    }
+
+    #[test]
+    fn panned_source_live_pan_update() {
+        use std::num::NonZero;
+        // Start centered, then update to hard left mid-stream
+        let buf = SamplesBuffer::new(NonZero::new(1).unwrap(), NonZero::new(11025).unwrap(), vec![1.0_f32, 1.0_f32]);
+        let pan = Arc::new(PanState::new(127, 127));
+        let mut src = PannedSource::new(buf, Arc::clone(&pan));
+
+        // Consume first stereo pair at center
+        let _ = src.next(); // L1
+        let _ = src.next(); // R1
+
+        // Update to hard left before second pair
+        pan.update(127, 0);
+        let l2 = src.next().unwrap();
+        let r2 = src.next().unwrap();
+        assert!((l2 - 2.0_f32).abs() < 1e-4, "l2={l2}");
+        assert!((r2 - 0.0_f32).abs() < 1e-4, "r2={r2}");
     }
 }
