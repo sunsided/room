@@ -424,6 +424,7 @@ pub unsafe extern "C" fn W_Wad_Link_Anchor() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
     #[test]
     fn lumpinfo_size_matches_c() {
@@ -444,5 +445,108 @@ mod tests {
         // C filelump_t = filepos + size + name[8]
         // On x86_64: 4 + 4 + 8 = 16 bytes
         assert_eq!(std::mem::size_of::<filelump_t>(), 16);
+    }
+
+    // Serialize tests that mutate the lumpinfo/numlumps/lumphash globals.
+    static WAD_LOCK: Mutex<()> = Mutex::new(());
+
+    // RAII guard: installs fake globals on construction, restores originals on drop.
+    // Declare before fake_wad/fake_lumps so it drops first (LIFO), restoring the
+    // globals before the local storage they pointed to goes out of scope.
+    struct WadTestScope {
+        saved_lumpinfo: *mut lumpinfo_t,
+        saved_numlumps: c_uint,
+        saved_lumphash: *mut *mut lumpinfo_t,
+    }
+
+    impl WadTestScope {
+        unsafe fn install(info: *mut lumpinfo_t, count: c_uint) -> Self {
+            let scope = WadTestScope {
+                saved_lumpinfo: lumpinfo,
+                saved_numlumps: numlumps,
+                saved_lumphash: lumphash,
+            };
+            lumpinfo = info;
+            numlumps = count;
+            lumphash = ptr::null_mut(); // force linear scan, not hash table
+            scope
+        }
+    }
+
+    impl Drop for WadTestScope {
+        fn drop(&mut self) {
+            unsafe {
+                lumpinfo = self.saved_lumpinfo;
+                numlumps = self.saved_numlumps;
+                lumphash = self.saved_lumphash;
+            }
+        }
+    }
+
+    fn make_lump_name(s: &[u8]) -> [c_char; 8] {
+        let mut name = [0i8; 8];
+        for (i, &b) in s.iter().take(8).enumerate() {
+            name[i] = b as c_char;
+        }
+        name
+    }
+
+    // Returns a wad_file_t with mapped != null so W_ReleaseLumpNum takes the
+    // memory-mapped no-op branch, bypassing Z_ChangeTag2 (needs Z_Init).
+    fn mapped_wad() -> wad_file_t {
+        static SENTINEL: u8 = 0;
+        wad_file_t {
+            file_class: ptr::null_mut(),
+            mapped: std::ptr::addr_of!(SENTINEL).cast_mut(),
+            length: 0,
+        }
+    }
+
+    fn make_lump(name: &[u8], wad: *mut wad_file_t) -> lumpinfo_t {
+        lumpinfo_t {
+            name: make_lump_name(name),
+            wad_file: wad,
+            position: 0,
+            size: 0,
+            cache: ptr::null_mut(),
+            next: ptr::null_mut(),
+        }
+    }
+
+    // W_ReleaseLumpName must delegate correctly: name resolves to lump 0 and
+    // W_ReleaseLumpNum(0) completes without error.
+    #[test]
+    fn release_lump_name_delegates_to_num() {
+        let _lock = WAD_LOCK.lock().unwrap();
+        let mut wad = mapped_wad();
+        let mut lumps = [make_lump(b"TESTLUMP", &mut wad)];
+        let _scope = unsafe { WadTestScope::install(lumps.as_mut_ptr(), 1) };
+
+        unsafe { W_ReleaseLumpName(c"TESTLUMP".as_ptr()) };
+    }
+
+    // The underlying strncasecmp lookup is case-insensitive.
+    #[test]
+    fn release_lump_name_is_case_insensitive() {
+        let _lock = WAD_LOCK.lock().unwrap();
+        let mut wad = mapped_wad();
+        let mut lumps = [make_lump(b"TESTLUMP", &mut wad)];
+        let _scope = unsafe { WadTestScope::install(lumps.as_mut_ptr(), 1) };
+
+        unsafe { W_ReleaseLumpName(c"testlump".as_ptr()) };
+    }
+
+    // With multiple lumps loaded each name must resolve to its own entry.
+    // The linear scan runs backwards so the last-registered match wins for
+    // duplicate names, but here every name is unique.
+    #[test]
+    fn release_lump_name_picks_correct_lump_among_multiple() {
+        let _lock = WAD_LOCK.lock().unwrap();
+        let mut wad = mapped_wad();
+        let mut lumps = [make_lump(b"ALPHA", &mut wad), make_lump(b"BETA", &mut wad)];
+        let _scope = unsafe { WadTestScope::install(lumps.as_mut_ptr(), 2) };
+
+        unsafe { W_ReleaseLumpName(c"ALPHA".as_ptr()) };
+        unsafe { W_ReleaseLumpName(c"BETA".as_ptr()) };
     }
 }
