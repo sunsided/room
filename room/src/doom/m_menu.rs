@@ -141,29 +141,9 @@ use crate::doom::m_misc::M_StringCopy;
 use crate::doom::p_saveg::P_SaveGameFile;
 use crate::doom::r_main::R_SetViewSize;
 use crate::doom::s_sound::{S_SetMusicVolume, S_SetSfxVolume, S_StartSound};
+use crate::doom::sounds::Sfx;
 use crate::doom::v_video::{patch_t, V_DrawPatchDirect};
 use crate::doom::w_wad::W_CacheLumpName;
-
-const SFX_PISTOL: c_int = 1;
-const SFX_PSTOP: c_int = 19;
-const SFX_STNMOV: c_int = 22;
-const SFX_SWTCHN: c_int = 23;
-const SFX_SWTCHX: c_int = 24;
-const SFX_SLOP: c_int = 31;
-const SFX_OOF: c_int = 34;
-const SFX_TELEPT: c_int = 35;
-const SFX_POSIT1: c_int = 36;
-const SFX_POSIT3: c_int = 38;
-const SFX_SGTATK: c_int = 52;
-const SFX_SKESWG: c_int = 56;
-const SFX_PLDETH: c_int = 57;
-const SFX_DMPAIN: c_int = 26;
-const SFX_POPAIN: c_int = 27;
-const SFX_KNTDTH: c_int = 72;
-const SFX_BSPACT: c_int = 78;
-const SFX_VILACT: c_int = 80;
-const SFX_GETPOW: c_int = 93;
-const SFX_BOSCUB: c_int = 95;
 
 #[no_mangle]
 pub static mut mouseSensitivity: c_int = 5;
@@ -593,7 +573,7 @@ fn M_QuickSave() {
     const GS_LEVEL: c_int = 0;
     unsafe {
         if usergame == 0 {
-            S_StartSound(ptr::null_mut(), SFX_OOF);
+            S_StartSound(ptr::null_mut(), Sfx::Oof as c_int);
             return;
         }
         if gamestate != GS_LEVEL {
@@ -627,7 +607,7 @@ extern "C" fn M_QuickSaveResponse(key: c_int) {
     unsafe {
         if key == key_menu_confirm {
             M_DoSave(quickSaveSlot);
-            S_StartSound(ptr::null_mut(), SFX_SWTCHX);
+            S_StartSound(ptr::null_mut(), Sfx::Swtchx as c_int);
         }
     }
 }
@@ -673,7 +653,7 @@ extern "C" fn M_QuickLoadResponse(key: c_int) {
     unsafe {
         if key == key_menu_confirm {
             M_LoadSelect(quickSaveSlot);
-            S_StartSound(ptr::null_mut(), SFX_SWTCHX);
+            S_StartSound(ptr::null_mut(), Sfx::Swtchx as c_int);
         }
     }
 }
@@ -955,7 +935,7 @@ extern "C" fn M_EndGameResponse(key: c_int) {
 extern "C" fn M_EndGame(_choice: c_int) {
     unsafe {
         if usergame == 0 {
-            S_StartSound(ptr::null_mut(), SFX_OOF);
+            S_StartSound(ptr::null_mut(), Sfx::Oof as c_int);
             return;
         }
         if netgame != 0 {
@@ -993,10 +973,24 @@ extern "C" fn M_ReadThis2(_choice: c_int) {
 extern "C" fn M_FinishReadThis(_choice: c_int) {}
 
 static mut quitsounds: [c_int; 8] = [
-    SFX_PLDETH, SFX_DMPAIN, SFX_POPAIN, SFX_SLOP, SFX_TELEPT, SFX_POSIT1, SFX_POSIT3, SFX_SGTATK,
+    Sfx::Pldeth as c_int,
+    Sfx::Dmpain as c_int,
+    Sfx::Popain as c_int,
+    Sfx::Slop as c_int,
+    Sfx::Telept as c_int,
+    Sfx::Posit1 as c_int,
+    Sfx::Posit3 as c_int,
+    Sfx::Sgtatk as c_int,
 ];
 static mut quitsounds2: [c_int; 8] = [
-    SFX_VILACT, SFX_GETPOW, SFX_BOSCUB, SFX_SLOP, SFX_SKESWG, SFX_KNTDTH, SFX_BSPACT, SFX_SGTATK,
+    Sfx::Vilact as c_int,
+    Sfx::Getpow as c_int,
+    Sfx::Boscub as c_int,
+    Sfx::Slop as c_int,
+    Sfx::Skeswg as c_int,
+    Sfx::Kntdth as c_int,
+    Sfx::Bspact as c_int,
+    Sfx::Sgtatk as c_int,
 ];
 
 extern "C" fn M_QuitResponse(key: c_int) {
@@ -1245,7 +1239,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
             {
                 M_QuitResponse(key_menu_confirm);
             } else {
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
                 M_QuitDOOM(0);
             }
             return Boolean::TRUE;
@@ -1386,7 +1380,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
                 r(key);
             }
             menuactive = 0;
-            S_StartSound(ptr::null_mut(), SFX_SWTCHX);
+            S_StartSound(ptr::null_mut(), Sfx::Swtchx as c_int);
             return Boolean::TRUE;
         }
 
@@ -1403,14 +1397,14 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
                     return Boolean::FALSE;
                 }
                 M_SizeDisplay(0);
-                S_StartSound(ptr::null_mut(), SFX_STNMOV);
+                S_StartSound(ptr::null_mut(), Sfx::Stnmov as c_int);
                 return Boolean::TRUE;
             } else if key == key_menu_incscreen {
                 if automapactive != 0 || chat_on != 0 {
                     return Boolean::FALSE;
                 }
                 M_SizeDisplay(1);
-                S_StartSound(ptr::null_mut(), SFX_STNMOV);
+                S_StartSound(ptr::null_mut(), Sfx::Stnmov as c_int);
                 return Boolean::TRUE;
             } else if key == key_menu_help {
                 M_StartControlPanel();
@@ -1420,46 +1414,46 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
                     currentMenu = &raw mut ReadDef1;
                 }
                 itemOn = 0;
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
                 return Boolean::TRUE;
             } else if key == key_menu_save {
                 M_StartControlPanel();
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
                 M_SaveGame(0);
                 return Boolean::TRUE;
             } else if key == key_menu_load {
                 M_StartControlPanel();
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
                 M_LoadGame(0);
                 return Boolean::TRUE;
             } else if key == key_menu_volume {
                 M_StartControlPanel();
                 currentMenu = &raw mut SoundDef;
                 itemOn = sfx_vol as i16;
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
                 return Boolean::TRUE;
             } else if key == key_menu_detail {
                 M_ChangeDetail(0);
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
                 return Boolean::TRUE;
             } else if key == key_menu_qsave {
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
                 M_QuickSave();
                 return Boolean::TRUE;
             } else if key == key_menu_endgame {
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
                 M_EndGame(0);
                 return Boolean::TRUE;
             } else if key == key_menu_messages {
                 M_ChangeMessages(0);
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
                 return Boolean::TRUE;
             } else if key == key_menu_qload {
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
                 M_QuickLoad();
                 return Boolean::TRUE;
             } else if key == key_menu_quit {
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
                 M_QuitDOOM(0);
                 return Boolean::TRUE;
             } else if key == key_menu_gamma {
@@ -1477,7 +1471,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
         if menuactive == 0 {
             if key == key_menu_activate {
                 M_StartControlPanel();
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
                 return Boolean::TRUE;
             }
             return Boolean::FALSE;
@@ -1491,7 +1485,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
                 } else {
                     itemOn += 1;
                 }
-                S_StartSound(ptr::null_mut(), SFX_PSTOP);
+                S_StartSound(ptr::null_mut(), Sfx::Pstop as c_int);
                 if (*(*currentMenu).menuitems.offset(itemOn as isize)).status != -1 {
                     break;
                 }
@@ -1504,7 +1498,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
                 } else {
                     itemOn -= 1;
                 }
-                S_StartSound(ptr::null_mut(), SFX_PSTOP);
+                S_StartSound(ptr::null_mut(), Sfx::Pstop as c_int);
                 if (*(*currentMenu).menuitems.offset(itemOn as isize)).status != -1 {
                     break;
                 }
@@ -1514,7 +1508,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
             let item = &*(*currentMenu).menuitems.offset(itemOn as isize);
             if item.status == 2 {
                 if let Some(routine) = item.routine {
-                    S_StartSound(ptr::null_mut(), SFX_STNMOV);
+                    S_StartSound(ptr::null_mut(), Sfx::Stnmov as c_int);
                     routine(0);
                 }
             }
@@ -1523,7 +1517,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
             let item = &*(*currentMenu).menuitems.offset(itemOn as isize);
             if item.status == 2 {
                 if let Some(routine) = item.routine {
-                    S_StartSound(ptr::null_mut(), SFX_STNMOV);
+                    S_StartSound(ptr::null_mut(), Sfx::Stnmov as c_int);
                     routine(1);
                 }
             }
@@ -1535,10 +1529,10 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
                     (*currentMenu).lastOn = itemOn;
                     if item.status == 2 {
                         routine(1);
-                        S_StartSound(ptr::null_mut(), SFX_STNMOV);
+                        S_StartSound(ptr::null_mut(), Sfx::Stnmov as c_int);
                     } else {
                         routine(itemOn as c_int);
-                        S_StartSound(ptr::null_mut(), SFX_PISTOL);
+                        S_StartSound(ptr::null_mut(), Sfx::Pistol as c_int);
                     }
                 }
             }
@@ -1546,14 +1540,14 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
         } else if key == key_menu_activate {
             (*currentMenu).lastOn = itemOn;
             M_ClearMenus();
-            S_StartSound(ptr::null_mut(), SFX_SWTCHX);
+            S_StartSound(ptr::null_mut(), Sfx::Swtchx as c_int);
             return Boolean::TRUE;
         } else if key == key_menu_back {
             (*currentMenu).lastOn = itemOn;
             if !(*currentMenu).prevMenu.is_null() {
                 currentMenu = (*currentMenu).prevMenu;
                 itemOn = (*currentMenu).lastOn;
-                S_StartSound(ptr::null_mut(), SFX_SWTCHN);
+                S_StartSound(ptr::null_mut(), Sfx::Swtchn as c_int);
             }
             return Boolean::TRUE;
         }
@@ -1564,14 +1558,14 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
             for i in (itemOn + 1)..(*currentMenu).numitems {
                 if (*(*currentMenu).menuitems.offset(i as isize)).alphaKey == ch_u {
                     itemOn = i;
-                    S_StartSound(ptr::null_mut(), SFX_PSTOP);
+                    S_StartSound(ptr::null_mut(), Sfx::Pstop as c_int);
                     return Boolean::TRUE;
                 }
             }
             for i in 0..=itemOn {
                 if (*(*currentMenu).menuitems.offset(i as isize)).alphaKey == ch_u {
                     itemOn = i;
-                    S_StartSound(ptr::null_mut(), SFX_PSTOP);
+                    S_StartSound(ptr::null_mut(), Sfx::Pstop as c_int);
                     return Boolean::TRUE;
                 }
             }

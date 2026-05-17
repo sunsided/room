@@ -11,7 +11,6 @@ use crate::doom::d_player::PlayerT;
 use crate::doom::info::*;
 use crate::doom::p_tick::thinker_t;
 use crate::doom::tables::ANGLETOFINESHIFT;
-const SFX_TELEPT: c_int = 35; // sfx_telept enum value
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -130,6 +129,7 @@ use crate::doom::p_mobj::{P_MobjThinker, P_SpawnMobj};
 use crate::doom::p_setup::{numsectors, sectors};
 use crate::doom::p_tick::thinkercap;
 use crate::doom::s_sound::S_StartSound;
+use crate::doom::sounds::Sfx;
 use crate::doom::tables::{finecosine, finesine};
 
 // Type alias for cross-module pointer cast (#[repr(C)] identical layout).
@@ -206,7 +206,7 @@ pub extern "C" fn EV_Teleport(line: *mut line_t, side: c_int, thing: *mut mobj_t
 
                 // Spawn teleport fog at source
                 let fog = P_SpawnMobj(oldx, oldy, oldz, MT_TFOG);
-                S_StartSound(fog as *mut c_void, SFX_TELEPT);
+                S_StartSound(fog as *mut c_void, Sfx::Telept as c_int);
 
                 // Spawn teleport fog at destination
                 let an = ((*m).angle >> ANGLETOFINESHIFT) as usize;
@@ -216,7 +216,7 @@ pub extern "C" fn EV_Teleport(line: *mut line_t, side: c_int, thing: *mut mobj_t
                     (*thing).z,
                     MT_TFOG,
                 );
-                S_StartSound(fog as *mut c_void, SFX_TELEPT);
+                S_StartSound(fog as *mut c_void, Sfx::Telept as c_int);
 
                 // Don't move for a bit
                 if !(*thing).player.is_null() {

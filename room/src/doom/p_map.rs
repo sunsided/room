@@ -80,6 +80,7 @@ use crate::doom::p_switch::P_UseSpecialLine;
 use crate::doom::p_tick::leveltime;
 use crate::doom::r_sky::skyflatnum;
 use crate::doom::s_sound::S_StartSound;
+use crate::doom::sounds::Sfx;
 
 // Type aliases for cross-module pointer casts (all #[repr(C)] identical layouts).
 type TeleptMobj = crate::doom::p_telept::mobj_t;
@@ -866,7 +867,7 @@ pub unsafe extern "C" fn PTR_UseTraverse(in_: *mut intercept_t) -> c_uint {
     if (*in_.d.line).special == 0 {
         P_LineOpening(in_.d.line);
         if openrange <= 0 {
-            S_StartSound(usething as *mut c_void, 81); // sfx_noway
+            S_StartSound(usething as *mut c_void, Sfx::Noway as c_int);
             return 0;
         }
         return 1;
