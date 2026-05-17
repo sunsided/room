@@ -24,16 +24,16 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-/// Number of power-up slots in `PlayerT::powers`.  Matches `NUMPOWERS` in `p_local.h`.
+/// Number of power-up slots in `PlayerT::powers`.  Matches `NUMPOWERS` in `doomdef.h`.
 pub const NUMPOWERS: usize = 6;
 
-/// Number of key card slots in `PlayerT::cards`.  Matches `NUMCARDS` in `p_local.h`.
+/// Number of key card slots in `PlayerT::cards`.  Matches `NUMCARDS` in `doomdef.h`.
 pub const NUMCARDS: usize = 6;
 
-/// Number of weapon slots in `PlayerT::weaponowned`.  Matches `NUMWEAPONS` in `d_items.h`.
+/// Number of weapon slots in `PlayerT::weaponowned`.  Matches `NUMWEAPONS` in `doomdef.h`.
 pub const NUMWEAPONS: usize = 9;
 
-/// Number of ammo type slots in `PlayerT::ammo` / `maxammo`.  Matches `NUMAMMO` in `d_items.h`.
+/// Number of ammo type slots in `PlayerT::ammo` / `maxammo`.  Matches `NUMAMMO` in `doomdef.h`.
 pub const NUMAMMO: usize = 4;
 
 /// Number of player-sprite (weapon overlay) slots in `PlayerT::psprites`.  Matches `NUMPSPRITES` in `p_pspr.h`.
