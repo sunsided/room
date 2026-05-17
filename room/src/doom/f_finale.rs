@@ -35,8 +35,6 @@ const FF_FRAMEMASK: c_int = 0x7fff;
 
 const MAXPLAYERS: usize = 4;
 
-// Sfx indices (from sounds.c)
-
 // ---------------------------------------------------------------------------
 // Finale text strings (from d_englsh.h)
 // ---------------------------------------------------------------------------

@@ -90,8 +90,6 @@ const perpetualRaise: c_int = 0;
 const build8: c_int = 0;
 const turbo16: c_int = 1;
 
-// sfx
-
 // powers
 const pw_ironfeet: usize = 3;
 

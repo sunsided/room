@@ -34,8 +34,6 @@ const crushAndRaise: c_int = 3;
 const fastCrushAndRaise: c_int = 4;
 const silentCrushAndRaise: c_int = 5;
 
-// sfx enum values
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ceiling_t {

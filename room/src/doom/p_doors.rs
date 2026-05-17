@@ -40,8 +40,6 @@ const result_ok: c_int = 0;
 const result_crushed: c_int = 1;
 const result_pastdest: c_int = 2;
 
-// sfx enum values
-
 // card indices
 const it_bluecard: usize = 0;
 const it_yellowcard: usize = 1;

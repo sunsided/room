@@ -30,8 +30,6 @@ const top: c_int = 0;
 const middle: c_int = 1;
 const bottom: c_int = 2;
 
-// sfx enum values
-
 // vldoor_e values
 const vld_normal: c_int = 0;
 const vld_close: c_int = 2;

@@ -46,8 +46,6 @@ const raiseAndChange: c_int = 2;
 const raiseToNearestAndChange: c_int = 3;
 const blazeDWUS: c_int = 4;
 
-// sfx enum values
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct plat_t {

@@ -74,8 +74,6 @@ const pw_ironfeet: usize = 3;
 const pw_allmap: usize = 4;
 const pw_infrared: usize = 5;
 
-// Sound effects
-
 // Game version
 const exe_chex: c_int = 9;
 

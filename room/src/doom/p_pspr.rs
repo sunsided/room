@@ -61,8 +61,6 @@ const MISSILERANGE: c_int = 32 * 64 * FRACUNIT;
 // Dehacked default
 const DEH_DEFAULT_BFG_CELLS_PER_SHOT: c_int = 40;
 
-// Sound effect constants
-
 use crate::doom::p_enemy::P_NoiseAlert;
 use crate::doom::p_inter::P_DamageMobj;
 use crate::doom::p_map::{linetarget, P_AimLineAttack, P_LineAttack};
