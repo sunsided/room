@@ -19,7 +19,7 @@ use crate::doom::s_sound::S_StartSound;
 use crate::doom::z_zone::{Z_Malloc, PU_LEVSPEC};
 
 const CEILSPEED: fixed_t = FRACUNIT;
-const MAXCEILINGS: usize = 30;
+pub const MAXCEILINGS: usize = 30;
 
 // result_e enum values
 const result_ok: c_int = 0;

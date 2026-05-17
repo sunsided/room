@@ -14,7 +14,7 @@ use crate::doom::d_player::{
     NUMWEAPONS,
 };
 use crate::doom::info::{mobjinfo, states, MobjInfo, State};
-use crate::doom::p_ceilng::{ceiling_t, P_AddActiveCeiling, T_MoveCeiling};
+use crate::doom::p_ceilng::{ceiling_t, P_AddActiveCeiling, T_MoveCeiling, MAXCEILINGS};
 use crate::doom::p_doors::{vldoor_t, T_VerticalDoor};
 use crate::doom::p_floor::{floormove_t, side_t, T_MoveFloor};
 use crate::doom::p_lights::{
@@ -51,21 +51,6 @@ pub static mut savegame_error: c_int = 0;
 // ---------------------------------------------------------------------------
 
 extern "C" {
-    fn fread(
-        ptr: *mut c_void,
-        size: libc::size_t,
-        nmemb: libc::size_t,
-        stream: *mut c_void,
-    ) -> libc::size_t;
-    fn fwrite(
-        ptr: *const c_void,
-        size: libc::size_t,
-        nmemb: libc::size_t,
-        stream: *mut c_void,
-    ) -> libc::size_t;
-    fn ftell(stream: *mut c_void) -> libc::c_long;
-    fn fprintf(stream: *mut c_void, format: *const c_char, ...) -> c_int;
-
     fn P_MobjThinker(mobj: *mut c_void);
     fn P_SetThingPosition(thing: *mut c_void);
     fn P_RemoveMobj(th: *mut c_void);
@@ -92,7 +77,6 @@ unsafe fn saveg_read8() -> u8 {
     if n < 1 && savegame_error == 0 {
         savegame_error = 1;
     }
-    savegamelength += 1;
     result
 }
 
@@ -181,13 +165,9 @@ unsafe fn saveg_write_state_ptr(state: *const State) -> u32 {
     }
 }
 
-/// Deserialize state pointer from index.
+/// Deserialize state pointer from index into global `states` array.
 unsafe fn saveg_read_state_ptr(index: u32) -> *mut State {
-    if index == 0 {
-        std::ptr::null_mut()
-    } else {
-        std::ptr::addr_of_mut!(states[0]).add(index as usize)
-    }
+    std::ptr::addr_of_mut!(states[0]).add(index as usize)
 }
 
 /// Serialize player pointer as player index + 1 (0 = NULL).
@@ -212,82 +192,28 @@ unsafe fn saveg_read_player_ptr(value: u32) -> *mut PlayerT {
 // Thinker function pointer reassignment helpers
 // ---------------------------------------------------------------------------
 
-fn actionf_p1_move_ceiling() -> actionf_t {
-    actionf_t {
-        acp1: Some(unsafe {
-            core::mem::transmute::<
-                unsafe extern "C" fn(*mut ceiling_t),
-                unsafe extern "C" fn(*mut c_void),
-            >(T_MoveCeiling)
-        }),
-    }
+macro_rules! make_actionf_p1 {
+    ($fn_name:ident, $arg_ty:ty, $c_fn:expr) => {
+        fn $fn_name() -> actionf_t {
+            actionf_t {
+                acp1: Some(unsafe {
+                    core::mem::transmute::<
+                        unsafe extern "C" fn(*mut $arg_ty),
+                        unsafe extern "C" fn(*mut c_void),
+                    >($c_fn)
+                }),
+            }
+        }
+    };
 }
 
-fn actionf_p1_vertical_door() -> actionf_t {
-    actionf_t {
-        acp1: Some(unsafe {
-            core::mem::transmute::<
-                unsafe extern "C" fn(*mut vldoor_t),
-                unsafe extern "C" fn(*mut c_void),
-            >(T_VerticalDoor)
-        }),
-    }
-}
-
-fn actionf_p1_move_floor() -> actionf_t {
-    actionf_t {
-        acp1: Some(unsafe {
-            core::mem::transmute::<
-                unsafe extern "C" fn(*mut floormove_t),
-                unsafe extern "C" fn(*mut c_void),
-            >(T_MoveFloor)
-        }),
-    }
-}
-
-fn actionf_p1_plat_raise() -> actionf_t {
-    actionf_t {
-        acp1: Some(unsafe {
-            core::mem::transmute::<
-                unsafe extern "C" fn(*mut plat_t),
-                unsafe extern "C" fn(*mut c_void),
-            >(T_PlatRaise)
-        }),
-    }
-}
-
-fn actionf_p1_light_flash() -> actionf_t {
-    actionf_t {
-        acp1: Some(unsafe {
-            core::mem::transmute::<
-                unsafe extern "C" fn(*mut lightflash_t),
-                unsafe extern "C" fn(*mut c_void),
-            >(T_LightFlash)
-        }),
-    }
-}
-
-fn actionf_p1_strobe_flash() -> actionf_t {
-    actionf_t {
-        acp1: Some(unsafe {
-            core::mem::transmute::<
-                unsafe extern "C" fn(*mut strobe_t),
-                unsafe extern "C" fn(*mut c_void),
-            >(T_StrobeFlash)
-        }),
-    }
-}
-
-fn actionf_p1_glow() -> actionf_t {
-    actionf_t {
-        acp1: Some(unsafe {
-            core::mem::transmute::<
-                unsafe extern "C" fn(*mut glow_t),
-                unsafe extern "C" fn(*mut c_void),
-            >(T_Glow)
-        }),
-    }
-}
+make_actionf_p1!(actionf_p1_move_ceiling, ceiling_t, T_MoveCeiling);
+make_actionf_p1!(actionf_p1_vertical_door, vldoor_t, T_VerticalDoor);
+make_actionf_p1!(actionf_p1_move_floor, floormove_t, T_MoveFloor);
+make_actionf_p1!(actionf_p1_plat_raise, plat_t, T_PlatRaise);
+make_actionf_p1!(actionf_p1_light_flash, lightflash_t, T_LightFlash);
+make_actionf_p1!(actionf_p1_strobe_flash, strobe_t, T_StrobeFlash);
+make_actionf_p1!(actionf_p1_glow, glow_t, T_Glow);
 
 // ---------------------------------------------------------------------------
 // Struct serialization
@@ -297,8 +223,8 @@ fn actionf_p1_glow() -> actionf_t {
 // mapthing_t
 //
 
-unsafe fn saveg_read_mapthing_t(str: *mut crate::doom::c_ffi::mapthing_t) {
-    let s = &mut *str;
+unsafe fn saveg_read_mapthing_t(mt: *mut crate::doom::c_ffi::mapthing_t) {
+    let s = &mut *mt;
     s.x = saveg_read16() as i16;
     s.y = saveg_read16() as i16;
     s.angle = saveg_read16() as i16;
@@ -306,8 +232,8 @@ unsafe fn saveg_read_mapthing_t(str: *mut crate::doom::c_ffi::mapthing_t) {
     s.options = saveg_read16() as i16;
 }
 
-unsafe fn saveg_write_mapthing_t(str: *const crate::doom::c_ffi::mapthing_t) {
-    let s = &*str;
+unsafe fn saveg_write_mapthing_t(mt: *const crate::doom::c_ffi::mapthing_t) {
+    let s = &*mt;
     saveg_write16(s.x as u16);
     saveg_write16(s.y as u16);
     saveg_write16(s.angle as u16);
@@ -319,8 +245,8 @@ unsafe fn saveg_write_mapthing_t(str: *const crate::doom::c_ffi::mapthing_t) {
 // thinker_t
 //
 
-unsafe fn saveg_read_thinker_t(str: *mut thinker_t) {
-    let s = &mut *str;
+unsafe fn saveg_read_thinker_t(th: *mut thinker_t) {
+    let s = &mut *th;
     // Read prev/next as raw pointer indices (will be rebuilt)
     s.prev = saveg_read32() as usize as *mut thinker_t;
     s.next = saveg_read32() as usize as *mut thinker_t;
@@ -336,8 +262,8 @@ unsafe fn saveg_read_thinker_t(str: *mut thinker_t) {
     };
 }
 
-unsafe fn saveg_write_thinker_t(str: *const thinker_t) {
-    let s = &*str;
+unsafe fn saveg_write_thinker_t(th: *const thinker_t) {
+    let s = &*th;
     saveg_write32(s.prev as u32);
     saveg_write32(s.next as u32);
     saveg_write32(s.function.acp1.map(|f| f as usize as u32).unwrap_or(0));
@@ -563,8 +489,8 @@ unsafe fn saveg_write_mobj_t(mobj: *const c_void) {
 // Only serialize the 6 fields the C version writes. TiccmdT has extra fields.
 //
 
-unsafe fn saveg_read_ticcmd_t(str: *mut TiccmdT) {
-    let s = &mut *str;
+unsafe fn saveg_read_ticcmd_t(cmd: *mut TiccmdT) {
+    let s = &mut *cmd;
     s.forwardmove = saveg_read8() as i8;
     s.sidemove = saveg_read8() as i8;
     s.angleturn = saveg_read16() as i16;
@@ -573,8 +499,8 @@ unsafe fn saveg_read_ticcmd_t(str: *mut TiccmdT) {
     s.buttons = saveg_read8();
 }
 
-unsafe fn saveg_write_ticcmd_t(str: *const TiccmdT) {
-    let s = &*str;
+unsafe fn saveg_write_ticcmd_t(cmd: *const TiccmdT) {
+    let s = &*cmd;
     saveg_write8(s.forwardmove as u8);
     saveg_write8(s.sidemove as u8);
     saveg_write16(s.angleturn as u16);
@@ -587,17 +513,22 @@ unsafe fn saveg_write_ticcmd_t(str: *const TiccmdT) {
 // pspdef_t
 //
 
-unsafe fn saveg_read_pspdef_t(str: *mut PspdefT) {
-    let s = &mut *str;
+unsafe fn saveg_read_pspdef_t(psp: *mut PspdefT) {
+    let s = &mut *psp;
     let state_idx = saveg_read32();
-    s.state = saveg_read_state_ptr(state_idx) as *mut crate::doom::d_player::state_t;
+    // C guards state == 0 → NULL for pspdef (unlike mobj which always indexes states[]).
+    s.state = if state_idx == 0 {
+        std::ptr::null_mut()
+    } else {
+        saveg_read_state_ptr(state_idx) as *mut crate::doom::d_player::state_t
+    };
     s.tics = saveg_read32() as c_int;
     s.sx = saveg_read32() as c_int;
     s.sy = saveg_read32() as c_int;
 }
 
-unsafe fn saveg_write_pspdef_t(str: *const PspdefT) {
-    let s = &*str;
+unsafe fn saveg_write_pspdef_t(psp: *const PspdefT) {
+    let s = &*psp;
     if s.state.is_null() {
         saveg_write32(0);
     } else {
@@ -612,8 +543,8 @@ unsafe fn saveg_write_pspdef_t(str: *const PspdefT) {
 // player_t
 //
 
-unsafe fn saveg_read_player_t(str: *mut PlayerT) {
-    let s = &mut *str;
+unsafe fn saveg_read_player_t(pl: *mut PlayerT) {
+    let s = &mut *pl;
 
     // mo (raw pointer, will be NULL after)
     s.mo = saveg_read32() as *mut crate::doom::d_player::mobj_t;
@@ -709,8 +640,8 @@ unsafe fn saveg_read_player_t(str: *mut PlayerT) {
     s.didsecret = saveg_read32() as c_int;
 }
 
-unsafe fn saveg_write_player_t(str: *const PlayerT) {
-    let s = &*str;
+unsafe fn saveg_write_player_t(pl: *const PlayerT) {
+    let s = &*pl;
 
     saveg_write32(s.mo as u32);
     saveg_write_enum(s.playerstate as u32);
@@ -767,8 +698,8 @@ unsafe fn saveg_write_player_t(str: *const PlayerT) {
 // ceiling_t
 //
 
-unsafe fn saveg_read_ceiling_t(str: *mut ceiling_t) {
-    let s = &mut *str;
+unsafe fn saveg_read_ceiling_t(ceil: *mut ceiling_t) {
+    let s = &mut *ceil;
     saveg_read_thinker_t(&mut s.thinker);
     s.r#type = saveg_read_enum() as c_int;
     let sector_idx = saveg_read32();
@@ -782,8 +713,8 @@ unsafe fn saveg_read_ceiling_t(str: *mut ceiling_t) {
     s.olddirection = saveg_read32() as c_int;
 }
 
-unsafe fn saveg_write_ceiling_t(str: *const ceiling_t) {
-    let s = &*str;
+unsafe fn saveg_write_ceiling_t(ceil: *const ceiling_t) {
+    let s = &*ceil;
     saveg_write_thinker_t(&s.thinker);
     saveg_write_enum(s.r#type as u32);
     saveg_write32(saveg_write_sector_ptr(s.sector));
@@ -800,8 +731,8 @@ unsafe fn saveg_write_ceiling_t(str: *const ceiling_t) {
 // vldoor_t
 //
 
-unsafe fn saveg_read_vldoor_t(str: *mut vldoor_t) {
-    let s = &mut *str;
+unsafe fn saveg_read_vldoor_t(door: *mut vldoor_t) {
+    let s = &mut *door;
     saveg_read_thinker_t(&mut s.thinker);
     s.r#type = saveg_read_enum() as c_int;
     let sector_idx = saveg_read32();
@@ -813,8 +744,8 @@ unsafe fn saveg_read_vldoor_t(str: *mut vldoor_t) {
     s.topcountdown = saveg_read32() as c_int;
 }
 
-unsafe fn saveg_write_vldoor_t(str: *const vldoor_t) {
-    let s = &*str;
+unsafe fn saveg_write_vldoor_t(door: *const vldoor_t) {
+    let s = &*door;
     saveg_write_thinker_t(&s.thinker);
     saveg_write_enum(s.r#type as u32);
     saveg_write32(saveg_write_sector_ptr(s.sector));
@@ -829,8 +760,8 @@ unsafe fn saveg_write_vldoor_t(str: *const vldoor_t) {
 // floormove_t
 //
 
-unsafe fn saveg_read_floormove_t(str: *mut floormove_t) {
-    let s = &mut *str;
+unsafe fn saveg_read_floormove_t(floor: *mut floormove_t) {
+    let s = &mut *floor;
     saveg_read_thinker_t(&mut s.thinker);
     s.r#type = saveg_read_enum() as c_int;
     s.crush = saveg_read32() as c_int;
@@ -843,8 +774,8 @@ unsafe fn saveg_read_floormove_t(str: *mut floormove_t) {
     s.speed = saveg_read32() as c_int;
 }
 
-unsafe fn saveg_write_floormove_t(str: *const floormove_t) {
-    let s = &*str;
+unsafe fn saveg_write_floormove_t(floor: *const floormove_t) {
+    let s = &*floor;
     saveg_write_thinker_t(&s.thinker);
     saveg_write_enum(s.r#type as u32);
     saveg_write32(s.crush as u32);
@@ -860,8 +791,8 @@ unsafe fn saveg_write_floormove_t(str: *const floormove_t) {
 // plat_t
 //
 
-unsafe fn saveg_read_plat_t(str: *mut plat_t) {
-    let s = &mut *str;
+unsafe fn saveg_read_plat_t(plat: *mut plat_t) {
+    let s = &mut *plat;
     saveg_read_thinker_t(&mut s.thinker);
     let sector_idx = saveg_read32();
     s.sector = saveg_read_sector_ptr(sector_idx);
@@ -877,8 +808,8 @@ unsafe fn saveg_read_plat_t(str: *mut plat_t) {
     s.r#type = saveg_read_enum() as c_int;
 }
 
-unsafe fn saveg_write_plat_t(str: *const plat_t) {
-    let s = &*str;
+unsafe fn saveg_write_plat_t(plat: *const plat_t) {
+    let s = &*plat;
     saveg_write_thinker_t(&s.thinker);
     saveg_write32(saveg_write_sector_ptr(s.sector));
     saveg_write32(s.speed as u32);
@@ -897,8 +828,8 @@ unsafe fn saveg_write_plat_t(str: *const plat_t) {
 // lightflash_t
 //
 
-unsafe fn saveg_read_lightflash_t(str: *mut lightflash_t) {
-    let s = &mut *str;
+unsafe fn saveg_read_lightflash_t(flash: *mut lightflash_t) {
+    let s = &mut *flash;
     saveg_read_thinker_t(&mut s.thinker);
     let sector_idx = saveg_read32();
     s.sector = saveg_read_sector_ptr(sector_idx);
@@ -909,8 +840,8 @@ unsafe fn saveg_read_lightflash_t(str: *mut lightflash_t) {
     s.mintime = saveg_read32() as c_int;
 }
 
-unsafe fn saveg_write_lightflash_t(str: *const lightflash_t) {
-    let s = &*str;
+unsafe fn saveg_write_lightflash_t(flash: *const lightflash_t) {
+    let s = &*flash;
     saveg_write_thinker_t(&s.thinker);
     saveg_write32(saveg_write_sector_ptr(s.sector));
     saveg_write32(s.count as u32);
@@ -924,8 +855,8 @@ unsafe fn saveg_write_lightflash_t(str: *const lightflash_t) {
 // strobe_t
 //
 
-unsafe fn saveg_read_strobe_t(str: *mut strobe_t) {
-    let s = &mut *str;
+unsafe fn saveg_read_strobe_t(strobe: *mut strobe_t) {
+    let s = &mut *strobe;
     saveg_read_thinker_t(&mut s.thinker);
     let sector_idx = saveg_read32();
     s.sector = saveg_read_sector_ptr(sector_idx);
@@ -936,8 +867,8 @@ unsafe fn saveg_read_strobe_t(str: *mut strobe_t) {
     s.brighttime = saveg_read32() as c_int;
 }
 
-unsafe fn saveg_write_strobe_t(str: *const strobe_t) {
-    let s = &*str;
+unsafe fn saveg_write_strobe_t(strobe: *const strobe_t) {
+    let s = &*strobe;
     saveg_write_thinker_t(&s.thinker);
     saveg_write32(saveg_write_sector_ptr(s.sector));
     saveg_write32(s.count as u32);
@@ -951,8 +882,8 @@ unsafe fn saveg_write_strobe_t(str: *const strobe_t) {
 // glow_t
 //
 
-unsafe fn saveg_read_glow_t(str: *mut glow_t) {
-    let s = &mut *str;
+unsafe fn saveg_read_glow_t(glow: *mut glow_t) {
+    let s = &mut *glow;
     saveg_read_thinker_t(&mut s.thinker);
     let sector_idx = saveg_read32();
     s.sector = saveg_read_sector_ptr(sector_idx);
@@ -961,8 +892,8 @@ unsafe fn saveg_read_glow_t(str: *mut glow_t) {
     s.direction = saveg_read32() as c_int;
 }
 
-unsafe fn saveg_write_glow_t(str: *const glow_t) {
-    let s = &*str;
+unsafe fn saveg_write_glow_t(glow: *const glow_t) {
+    let s = &*glow;
     saveg_write_thinker_t(&s.thinker);
     saveg_write32(saveg_write_sector_ptr(s.sector));
     saveg_write32(s.minlight as u32);
@@ -1227,8 +1158,8 @@ pub unsafe extern "C" fn P_UnArchiveWorld() {
     // do sectors
     for i in 0..num_sec {
         let sec = sectors.add(i);
-        (*sec).floorheight = (saveg_read16() as c_int) << 16;
-        (*sec).ceilingheight = (saveg_read16() as c_int) << 16;
+        (*sec).floorheight = (saveg_read16() as i16 as c_int) << 16;
+        (*sec).ceilingheight = (saveg_read16() as i16 as c_int) << 16;
         (*sec).floorpic = saveg_read16() as i16;
         (*sec).ceilingpic = saveg_read16() as i16;
         (*sec).lightlevel = saveg_read16() as i16;
@@ -1249,8 +1180,8 @@ pub unsafe extern "C" fn P_UnArchiveWorld() {
                 continue;
             }
             let si = sides.add((*li).sidenum[j as usize] as usize);
-            (*si).textureoffset = (saveg_read16() as c_int) << 16;
-            (*si).rowoffset = (saveg_read16() as c_int) << 16;
+            (*si).textureoffset = (saveg_read16() as i16 as c_int) << 16;
+            (*si).rowoffset = (saveg_read16() as i16 as c_int) << 16;
             (*si).toptexture = saveg_read16() as i16;
             (*si).bottomtexture = saveg_read16() as i16;
             (*si).midtexture = saveg_read16() as i16;
@@ -1397,10 +1328,9 @@ pub unsafe extern "C" fn P_ArchiveSpecials() {
         // Check for ceiling (acv == NULL means in activeceilings list)
         if func.acv.is_none() {
             // Check if it's in activeceilings
-            let maxceilings: usize = 30;
             let activeceilings_ptr = std::ptr::addr_of!(crate::doom::p_ceilng::activeceilings[0]);
             let mut found = false;
-            for i in 0..maxceilings {
+            for i in 0..MAXCEILINGS {
                 if *activeceilings_ptr.add(i) == th as *mut ceiling_t {
                     found = true;
                     break;
