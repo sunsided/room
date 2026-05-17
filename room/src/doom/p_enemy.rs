@@ -1059,7 +1059,7 @@ pub unsafe extern "C" fn A_StartFire(actor: *mut mobj_t) {
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_FireCrackle(actor: *mut mobj_t) {
-    S_StartSound(actor as *mut c_void, Sfx::Flamst as c_int);
+    S_StartSound(actor as *mut c_void, Sfx::Flame as c_int);
     A_Fire(actor);
 }
 #[no_mangle]
