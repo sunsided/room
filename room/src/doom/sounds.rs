@@ -35,8 +35,9 @@ const _: () = assert!(
 /// Sound effect IDs, matching the `sfxenum_t` C enum in `sounds.h`.
 #[non_exhaustive]
 #[repr(C)]
-#[derive(PartialEq, Clone, Copy)]
+#[derive(Default, PartialEq, Clone, Copy)]
 pub enum Sfx {
+    #[default]
     #[doc(alias = "sfx_None")]
     None = 0,
     #[doc(alias = "sfx_pistol")]
@@ -260,9 +261,10 @@ pub enum Sfx {
 unsafe impl Sync for SfxInfo {}
 unsafe impl Sync for MusicInfo {}
 
-const fn name(s: &str) -> [c_char; 9] {
+const fn name<const N: usize>(s: &str) -> [c_char; N] {
     let b = s.as_bytes();
-    let mut a = [0i8; 9];
+    debug_assert!(b.len() < N, "String is too long for the array");
+    let mut a = [0i8; N];
     let mut i = 0;
     while i < b.len() {
         a[i] = b[i] as c_char;
@@ -381,135 +383,73 @@ const N_skesit: [c_char; 9] = name("skesit");
 const N_skeatk: [c_char; 9] = name("skeatk");
 const N_radio: [c_char; 9] = name("radio");
 
-const fn mp(s: &str) -> *mut c_char {
-    s.as_ptr() as *mut c_char
-}
-
-static MUS_e1m1: [c_char; 5] = [b'e' as _, b'1' as _, b'm' as _, b'1' as _, 0];
-static MUS_e1m2: [c_char; 5] = [b'e' as _, b'1' as _, b'm' as _, b'2' as _, 0];
-static MUS_e1m3: [c_char; 5] = [b'e' as _, b'1' as _, b'm' as _, b'3' as _, 0];
-static MUS_e1m4: [c_char; 5] = [b'e' as _, b'1' as _, b'm' as _, b'4' as _, 0];
-static MUS_e1m5: [c_char; 5] = [b'e' as _, b'1' as _, b'm' as _, b'5' as _, 0];
-static MUS_e1m6: [c_char; 5] = [b'e' as _, b'1' as _, b'm' as _, b'6' as _, 0];
-static MUS_e1m7: [c_char; 5] = [b'e' as _, b'1' as _, b'm' as _, b'7' as _, 0];
-static MUS_e1m8: [c_char; 5] = [b'e' as _, b'1' as _, b'm' as _, b'8' as _, 0];
-static MUS_e1m9: [c_char; 5] = [b'e' as _, b'1' as _, b'm' as _, b'9' as _, 0];
-static MUS_e2m1: [c_char; 5] = [b'e' as _, b'2' as _, b'm' as _, b'1' as _, 0];
-static MUS_e2m2: [c_char; 5] = [b'e' as _, b'2' as _, b'm' as _, b'2' as _, 0];
-static MUS_e2m3: [c_char; 5] = [b'e' as _, b'2' as _, b'm' as _, b'3' as _, 0];
-static MUS_e2m4: [c_char; 5] = [b'e' as _, b'2' as _, b'm' as _, b'4' as _, 0];
-static MUS_e2m5: [c_char; 5] = [b'e' as _, b'2' as _, b'm' as _, b'5' as _, 0];
-static MUS_e2m6: [c_char; 5] = [b'e' as _, b'2' as _, b'm' as _, b'6' as _, 0];
-static MUS_e2m7: [c_char; 5] = [b'e' as _, b'2' as _, b'm' as _, b'7' as _, 0];
-static MUS_e2m8: [c_char; 5] = [b'e' as _, b'2' as _, b'm' as _, b'8' as _, 0];
-static MUS_e2m9: [c_char; 5] = [b'e' as _, b'2' as _, b'm' as _, b'9' as _, 0];
-static MUS_e3m1: [c_char; 5] = [b'e' as _, b'3' as _, b'm' as _, b'1' as _, 0];
-static MUS_e3m2: [c_char; 5] = [b'e' as _, b'3' as _, b'm' as _, b'2' as _, 0];
-static MUS_e3m3: [c_char; 5] = [b'e' as _, b'3' as _, b'm' as _, b'3' as _, 0];
-static MUS_e3m4: [c_char; 5] = [b'e' as _, b'3' as _, b'm' as _, b'4' as _, 0];
-static MUS_e3m5: [c_char; 5] = [b'e' as _, b'3' as _, b'm' as _, b'5' as _, 0];
-static MUS_e3m6: [c_char; 5] = [b'e' as _, b'3' as _, b'm' as _, b'6' as _, 0];
-static MUS_e3m7: [c_char; 5] = [b'e' as _, b'3' as _, b'm' as _, b'7' as _, 0];
-static MUS_e3m8: [c_char; 5] = [b'e' as _, b'3' as _, b'm' as _, b'8' as _, 0];
-static MUS_e3m9: [c_char; 5] = [b'e' as _, b'3' as _, b'm' as _, b'9' as _, 0];
-static MUS_inter: [c_char; 6] = [b'i' as _, b'n' as _, b't' as _, b'e' as _, b'r' as _, 0];
-static MUS_intro: [c_char; 6] = [b'i' as _, b'n' as _, b't' as _, b'r' as _, b'o' as _, 0];
-static MUS_bunny: [c_char; 6] = [b'b' as _, b'u' as _, b'n' as _, b'n' as _, b'y' as _, 0];
-static MUS_victor: [c_char; 7] = [
-    b'v' as _, b'i' as _, b'c' as _, b't' as _, b'o' as _, b'r' as _, 0,
-];
-static MUS_introa: [c_char; 7] = [
-    b'i' as _, b'n' as _, b't' as _, b'r' as _, b'o' as _, b'a' as _, 0,
-];
-static MUS_runnin: [c_char; 7] = [
-    b'r' as _, b'u' as _, b'n' as _, b'n' as _, b'i' as _, b'n' as _, 0,
-];
-static MUS_stalks: [c_char; 7] = [
-    b's' as _, b't' as _, b'a' as _, b'l' as _, b'k' as _, b's' as _, 0,
-];
-static MUS_countd: [c_char; 7] = [
-    b'c' as _, b'o' as _, b'u' as _, b'n' as _, b't' as _, b'd' as _, 0,
-];
-static MUS_betwee: [c_char; 7] = [
-    b'b' as _, b'e' as _, b't' as _, b'w' as _, b'e' as _, b'e' as _, 0,
-];
-static MUS_doom: [c_char; 5] = [b'd' as _, b'o' as _, b'o' as _, b'm' as _, 0];
-static MUS_the_da: [c_char; 7] = [
-    b't' as _, b'h' as _, b'e' as _, b'_' as _, b'd' as _, b'a' as _, 0,
-];
-static MUS_shawn: [c_char; 6] = [b's' as _, b'h' as _, b'a' as _, b'w' as _, b'n' as _, 0];
-static MUS_ddtblu: [c_char; 7] = [
-    b'd' as _, b'd' as _, b't' as _, b'b' as _, b'l' as _, b'u' as _, 0,
-];
-static MUS_in_cit: [c_char; 7] = [
-    b'i' as _, b'n' as _, b'_' as _, b'c' as _, b'i' as _, b't' as _, 0,
-];
-static MUS_dead: [c_char; 5] = [b'd' as _, b'e' as _, b'a' as _, b'd' as _, 0];
-static MUS_stlks2: [c_char; 7] = [
-    b's' as _, b't' as _, b'l' as _, b'k' as _, b's' as _, b'2' as _, 0,
-];
-static MUS_theda2: [c_char; 7] = [
-    b't' as _, b'h' as _, b'e' as _, b'd' as _, b'a' as _, b'2' as _, 0,
-];
-static MUS_doom2: [c_char; 6] = [b'd' as _, b'o' as _, b'o' as _, b'm' as _, b'2' as _, 0];
-static MUS_ddtbl2: [c_char; 7] = [
-    b'd' as _, b'd' as _, b't' as _, b'b' as _, b'l' as _, b'2' as _, 0,
-];
-static MUS_runni2: [c_char; 7] = [
-    b'r' as _, b'u' as _, b'n' as _, b'n' as _, b'i' as _, b'2' as _, 0,
-];
-static MUS_dead2: [c_char; 6] = [b'd' as _, b'e' as _, b'a' as _, b'd' as _, b'2' as _, 0];
-static MUS_stlks3: [c_char; 7] = [
-    b's' as _, b't' as _, b'l' as _, b'k' as _, b's' as _, b'3' as _, 0,
-];
-static MUS_romero: [c_char; 7] = [
-    b'r' as _, b'o' as _, b'm' as _, b'e' as _, b'r' as _, b'o' as _, 0,
-];
-static MUS_shawn2: [c_char; 7] = [
-    b's' as _, b'h' as _, b'a' as _, b'w' as _, b'n' as _, b'2' as _, 0,
-];
-static MUS_messag: [c_char; 7] = [
-    b'm' as _, b'e' as _, b's' as _, b's' as _, b'a' as _, b'g' as _, 0,
-];
-static MUS_count2: [c_char; 7] = [
-    b'c' as _, b'o' as _, b'u' as _, b'n' as _, b't' as _, b'2' as _, 0,
-];
-static MUS_ddtbl3: [c_char; 7] = [
-    b'd' as _, b'd' as _, b't' as _, b'b' as _, b'l' as _, b'3' as _, 0,
-];
-static MUS_ampie: [c_char; 6] = [b'a' as _, b'm' as _, b'p' as _, b'i' as _, b'e' as _, 0];
-static MUS_theda3: [c_char; 7] = [
-    b't' as _, b'h' as _, b'e' as _, b'd' as _, b'a' as _, b'3' as _, 0,
-];
-static MUS_adrian: [c_char; 7] = [
-    b'a' as _, b'd' as _, b'r' as _, b'i' as _, b'a' as _, b'n' as _, 0,
-];
-static MUS_messg2: [c_char; 7] = [
-    b'm' as _, b'e' as _, b's' as _, b's' as _, b'g' as _, b'2' as _, 0,
-];
-static MUS_romer2: [c_char; 7] = [
-    b'r' as _, b'o' as _, b'm' as _, b'e' as _, b'r' as _, b'2' as _, 0,
-];
-static MUS_tense: [c_char; 6] = [b't' as _, b'e' as _, b'n' as _, b's' as _, b'e' as _, 0];
-static MUS_shawn3: [c_char; 7] = [
-    b's' as _, b'h' as _, b'a' as _, b'w' as _, b'n' as _, b'3' as _, 0,
-];
-static MUS_openin: [c_char; 7] = [
-    b'o' as _, b'p' as _, b'e' as _, b'n' as _, b'i' as _, b'n' as _, 0,
-];
-static MUS_evil: [c_char; 5] = [b'e' as _, b'v' as _, b'i' as _, b'l' as _, 0];
-static MUS_ultima: [c_char; 7] = [
-    b'u' as _, b'l' as _, b't' as _, b'i' as _, b'm' as _, b'a' as _, 0,
-];
-static MUS_read_m: [c_char; 7] = [
-    b'r' as _, b'e' as _, b'a' as _, b'd' as _, b'_' as _, b'm' as _, 0,
-];
-static MUS_dm2ttl: [c_char; 7] = [
-    b'd' as _, b'm' as _, b'2' as _, b't' as _, b't' as _, b'l' as _, 0,
-];
-static MUS_dm2int: [c_char; 7] = [
-    b'd' as _, b'm' as _, b'2' as _, b'i' as _, b'n' as _, b't' as _, 0,
-];
+static MUS_e1m1: [c_char; 5] = name("e1m1");
+static MUS_e1m2: [c_char; 5] = name("e1m2");
+static MUS_e1m3: [c_char; 5] = name("e1m3");
+static MUS_e1m4: [c_char; 5] = name("e1m4");
+static MUS_e1m5: [c_char; 5] = name("e1m5");
+static MUS_e1m6: [c_char; 5] = name("e1m6");
+static MUS_e1m7: [c_char; 5] = name("e1m7");
+static MUS_e1m8: [c_char; 5] = name("e1m8");
+static MUS_e1m9: [c_char; 5] = name("e1m9");
+static MUS_e2m1: [c_char; 5] = name("e2m1");
+static MUS_e2m2: [c_char; 5] = name("e2m2");
+static MUS_e2m3: [c_char; 5] = name("e2m3");
+static MUS_e2m4: [c_char; 5] = name("e2m4");
+static MUS_e2m5: [c_char; 5] = name("e2m5");
+static MUS_e2m6: [c_char; 5] = name("e2m6");
+static MUS_e2m7: [c_char; 5] = name("e2m7");
+static MUS_e2m8: [c_char; 5] = name("e2m8");
+static MUS_e2m9: [c_char; 5] = name("e2m9");
+static MUS_e3m1: [c_char; 5] = name("e3m1");
+static MUS_e3m2: [c_char; 5] = name("e3m2");
+static MUS_e3m3: [c_char; 5] = name("e3m3");
+static MUS_e3m4: [c_char; 5] = name("e3m4");
+static MUS_e3m5: [c_char; 5] = name("e3m5");
+static MUS_e3m6: [c_char; 5] = name("e3m6");
+static MUS_e3m7: [c_char; 5] = name("e3m7");
+static MUS_e3m8: [c_char; 5] = name("e3m8");
+static MUS_e3m9: [c_char; 5] = name("e3m9");
+static MUS_inter: [c_char; 6] = name("inter");
+static MUS_intro: [c_char; 6] = name("intro");
+static MUS_bunny: [c_char; 6] = name("bunny");
+static MUS_victor: [c_char; 7] = name("victor");
+static MUS_introa: [c_char; 7] = name("introa");
+static MUS_runnin: [c_char; 7] = name("runnin");
+static MUS_stalks: [c_char; 7] = name("stalks");
+static MUS_countd: [c_char; 7] = name("countd");
+static MUS_betwee: [c_char; 7] = name("betwee");
+static MUS_doom: [c_char; 5] = name("doom");
+static MUS_the_da: [c_char; 7] = name("the_da");
+static MUS_shawn: [c_char; 6] = name("shawn");
+static MUS_ddtblu: [c_char; 7] = name("ddtblu");
+static MUS_in_cit: [c_char; 7] = name("in_cit");
+static MUS_dead: [c_char; 5] = name("dead");
+static MUS_stlks2: [c_char; 7] = name("stlks2");
+static MUS_theda2: [c_char; 7] = name("theda2");
+static MUS_doom2: [c_char; 6] = name("doom2");
+static MUS_ddtbl2: [c_char; 7] = name("ddtbl2");
+static MUS_runni2: [c_char; 7] = name("runni2");
+static MUS_dead2: [c_char; 6] = name("dead2");
+static MUS_stlks3: [c_char; 7] = name("stlks3");
+static MUS_romero: [c_char; 7] = name("romero");
+static MUS_shawn2: [c_char; 7] = name("shawn2");
+static MUS_messag: [c_char; 7] = name("messag");
+static MUS_count2: [c_char; 7] = name("count2");
+static MUS_ddtbl3: [c_char; 7] = name("ddtbl3");
+static MUS_ampie: [c_char; 6] = name("ampie");
+static MUS_theda3: [c_char; 7] = name("theda3");
+static MUS_adrian: [c_char; 7] = name("adrian");
+static MUS_messg2: [c_char; 7] = name("messg2");
+static MUS_romer2: [c_char; 7] = name("romer2");
+static MUS_tense: [c_char; 6] = name("tense");
+static MUS_shawn3: [c_char; 7] = name("shawn3");
+static MUS_openin: [c_char; 7] = name("openin");
+static MUS_evil: [c_char; 5] = name("evil");
+static MUS_ultima: [c_char; 7] = name("ultima");
+static MUS_read_m: [c_char; 7] = name("read_m");
+static MUS_dm2ttl: [c_char; 7] = name("dm2ttl");
+static MUS_dm2int: [c_char; 7] = name("dm2int");
 
 #[no_mangle]
 pub static mut S_sfx: [SfxInfo; NUMSFX] = [

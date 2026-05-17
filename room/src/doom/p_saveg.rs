@@ -1657,6 +1657,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::erasing_op)]
     fn padding_calculation() {
         let _g = LOCK.lock().unwrap();
         // Test padding calculation: (4 - (pos & 3)) & 3

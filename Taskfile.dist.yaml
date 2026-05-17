@@ -16,7 +16,7 @@ tasks:
       - sh: command -v cargo >/dev/null 2>&1
         msg: cargo is not installed. Please install Rust via https://rustup.rs
     cmds:
-      - cargo clippy
+      - cargo clippy --all-targets
 
   lint:fix:
     desc: Lint the code
