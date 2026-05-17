@@ -428,11 +428,11 @@ pub unsafe extern "C" fn P_ChangeSwitchTexture(line: *mut line_t, useAgain: c_in
     let texMid = (*sides.offset(sidenum)).midtexture;
     let texBot = (*sides.offset(sidenum)).bottomtexture;
 
-    let mut sound = Sfx::SWTCHN;
+    let mut sound = Sfx::Swtchn as c_int;
 
     // EXIT SWITCH?
     if (*line).special == 11 {
-        sound = Sfx::SWTCHX;
+        sound = Sfx::Swtchx as c_int;
     }
 
     for i in 0..(numswitches * 2) as usize {

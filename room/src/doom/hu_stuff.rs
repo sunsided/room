@@ -472,9 +472,9 @@ pub extern "C" fn HU_Ticker() {
                                     message_on = 1;
                                     message_counter = HU_MSGTIMEOUT;
                                     if gamemode == d_mode::commercial {
-                                        S_StartSound(ptr::null_mut(), Sfx::RADIO);
+                                        S_StartSound(ptr::null_mut(), Sfx::Radio as c_int);
                                     } else {
-                                        S_StartSound(ptr::null_mut(), Sfx::TINK);
+                                        S_StartSound(ptr::null_mut(), Sfx::Tink as c_int);
                                     }
                                 }
                                 HUlib_resetIText(&mut w_inputbuffer[i]);

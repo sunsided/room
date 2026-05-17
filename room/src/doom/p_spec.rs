@@ -880,7 +880,7 @@ pub unsafe extern "C" fn P_UpdateSpecials() {
                 }
                 S_StartSound(
                     &mut buttonlist[i].soundorg as *mut _ as *mut c_void,
-                    Sfx::SWTCHN,
+                    Sfx::Swtchn as c_int,
                 );
                 buttonlist[i] = std::mem::zeroed();
             }
@@ -1157,7 +1157,7 @@ mod tests {
         assert_eq!(MAXLINEANIMS, 64);
         assert_eq!(MAX_ADJOINING_SECTORS, 20);
         assert_eq!(PU_LEVSPEC, 6);
-        assert_eq!(Sfx::SWTCHN, 23);
+        assert_eq!(Sfx::Swtchn as c_int, 23);
         assert_eq!(CF_GODMODE, 2);
         assert_eq!(pw_ironfeet, 3);
     }

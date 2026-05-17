@@ -93,7 +93,7 @@ pub unsafe extern "C" fn T_MoveCeiling(ceiling: *mut ceiling_t) {
             _ => {
                 S_StartSound(
                     &(*(*ceiling).sector).soundorg as *const [u8; 40] as *mut c_void,
-                    Sfx::STNMOV,
+                    Sfx::Stnmov as c_int,
                 );
             }
         }
@@ -107,7 +107,7 @@ pub unsafe extern "C" fn T_MoveCeiling(ceiling: *mut ceiling_t) {
             x if x == silentCrushAndRaise => {
                 S_StartSound(
                     &(*(*ceiling).sector).soundorg as *const [u8; 40] as *mut c_void,
-                    Sfx::PSTOP,
+                    Sfx::Pstop as c_int,
                 );
             }
             x if x == fastCrushAndRaise || x == crushAndRaise => {

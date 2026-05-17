@@ -696,8 +696,8 @@ pub extern "C" fn F_CastTicker() {
             }
             let info = &*std::ptr::addr_of!(crate::doom::info::mobjinfo[0])
                 .add(CASTORDER[castnum as usize].type_ as usize);
-            if info.seesound != 0 {
-                S_StartSound(ptr::null_mut(), info.seesound);
+            if info.seesound != Sfx::None {
+                S_StartSound(ptr::null_mut(), info.seesound as c_int);
             }
             let st = info.seestate;
             caststate = &mut crate::doom::info::states[st as usize];
@@ -714,23 +714,23 @@ pub extern "C" fn F_CastTicker() {
             castframes += 1;
 
             let sfx = match st {
-                S_PLAY_ATK1 => Sfx::DSHTGN,
-                S_POSS_ATK2 => Sfx::PISTOL,
-                S_SPOS_ATK2 => Sfx::SHOTGN,
-                S_VILE_ATK2 => Sfx::VILATK,
-                S_SKEL_FIST2 => Sfx::SKESWG,
-                S_SKEL_FIST4 => Sfx::SKEPCH,
-                S_SKEL_MISS2 => Sfx::SKEATK,
-                S_FATT_ATK8 | S_FATT_ATK5 | S_FATT_ATK2 => Sfx::FIRSHT,
-                S_CPOS_ATK2 | S_CPOS_ATK3 | S_CPOS_ATK4 => Sfx::SHOTGN,
-                S_TROO_ATK3 => Sfx::CLAW,
-                S_SARG_ATK2 => Sfx::SGTATK,
-                S_BOSS_ATK2 | S_BOS2_ATK2 | S_HEAD_ATK2 => Sfx::FIRSHT,
-                S_SKULL_ATK2 => Sfx::SKLATK,
-                S_SPID_ATK2 | S_SPID_ATK3 => Sfx::SHOTGN,
-                S_BSPI_ATK2 => Sfx::PLASMA,
-                S_CYBER_ATK2 | S_CYBER_ATK4 | S_CYBER_ATK6 => Sfx::RLAUNC,
-                S_PAIN_ATK3 => Sfx::SKLATK,
+                S_PLAY_ATK1 => Sfx::Dshtgn as c_int,
+                S_POSS_ATK2 => Sfx::Pistol as c_int,
+                S_SPOS_ATK2 => Sfx::Shotgn as c_int,
+                S_VILE_ATK2 => Sfx::Vilatk as c_int,
+                S_SKEL_FIST2 => Sfx::Skeswg as c_int,
+                S_SKEL_FIST4 => Sfx::Skepch as c_int,
+                S_SKEL_MISS2 => Sfx::Skeatk as c_int,
+                S_FATT_ATK8 | S_FATT_ATK5 | S_FATT_ATK2 => Sfx::Firsht as c_int,
+                S_CPOS_ATK2 | S_CPOS_ATK3 | S_CPOS_ATK4 => Sfx::Shotgn as c_int,
+                S_TROO_ATK3 => Sfx::Claw as c_int,
+                S_SARG_ATK2 => Sfx::Sgtatk as c_int,
+                S_BOSS_ATK2 | S_BOS2_ATK2 | S_HEAD_ATK2 => Sfx::Firsht as c_int,
+                S_SKULL_ATK2 => Sfx::Sklatk as c_int,
+                S_SPID_ATK2 | S_SPID_ATK3 => Sfx::Shotgn as c_int,
+                S_BSPI_ATK2 => Sfx::Plasma as c_int,
+                S_CYBER_ATK2 | S_CYBER_ATK4 | S_CYBER_ATK6 => Sfx::Rlaunc as c_int,
+                S_PAIN_ATK3 => Sfx::Sklatk as c_int,
                 _ => 0,
             };
 
@@ -815,8 +815,8 @@ pub extern "C" fn F_CastResponder(ev: *mut event_t) -> c_int {
         casttics = (*caststate).tics;
         castframes = 0;
         castattacking = 0;
-        if info.deathsound != 0 {
-            S_StartSound(ptr::null_mut(), info.deathsound);
+        if info.deathsound != Sfx::None {
+            S_StartSound(ptr::null_mut(), info.deathsound as c_int);
         }
         1
     }
@@ -961,7 +961,7 @@ pub extern "C" fn F_BunnyScroll() {
             stage = 6;
         }
         if stage > LAST_STAGE {
-            S_StartSound(ptr::null_mut(), Sfx::PISTOL);
+            S_StartSound(ptr::null_mut(), Sfx::Pistol as c_int);
             LAST_STAGE = stage;
         }
 

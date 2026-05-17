@@ -253,7 +253,7 @@ pub unsafe extern "C" fn P_GiveWeapon(
             player,
             std::ptr::addr_of_mut!(players[0]).add(consoleplayer as usize),
         ) {
-            S_StartSound(std::ptr::null_mut(), Sfx::WPNUP);
+            S_StartSound(std::ptr::null_mut(), Sfx::Wpnup as c_int);
         }
         return 0;
     }
@@ -373,7 +373,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
         return;
     }
 
-    let mut sound: c_int = Sfx::ITEMUP;
+    let mut sound: c_int = Sfx::Itemup as c_int;
     let player = (*toucher).player as *mut PlayerT;
 
     match (*special).sprite {
@@ -418,7 +418,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             let mo = (*player).mo as *mut mobj_t;
             (*mo).health = (*player).health;
             (*player).message = DEH_String(GOTSUPER);
-            sound = Sfx::GETPOW;
+            sound = Sfx::Getpow as c_int;
         }
         SPR_MEGA => {
             if gamemode != commercial {
@@ -429,7 +429,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             (*mo).health = (*player).health;
             P_GiveArmor(player, 2);
             (*player).message = DEH_String(GOTMSPHERE);
-            sound = Sfx::GETPOW;
+            sound = Sfx::Getpow as c_int;
         }
         // cards
         SPR_BKEY => {
@@ -521,7 +521,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
                 return;
             }
             (*player).message = DEH_String(GOTINVUL);
-            sound = Sfx::GETPOW;
+            sound = Sfx::Getpow as c_int;
         }
         SPR_PSTR => {
             if P_GivePower(player, pw_strength as c_int) == 0 {
@@ -531,35 +531,35 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             if (*player).readyweapon != wp_fist {
                 (*player).pendingweapon = wp_fist;
             }
-            sound = Sfx::GETPOW;
+            sound = Sfx::Getpow as c_int;
         }
         SPR_PINS => {
             if P_GivePower(player, pw_invisibility as c_int) == 0 {
                 return;
             }
             (*player).message = DEH_String(GOTINVIS);
-            sound = Sfx::GETPOW;
+            sound = Sfx::Getpow as c_int;
         }
         SPR_SUIT => {
             if P_GivePower(player, pw_ironfeet as c_int) == 0 {
                 return;
             }
             (*player).message = DEH_String(GOTSUIT);
-            sound = Sfx::GETPOW;
+            sound = Sfx::Getpow as c_int;
         }
         SPR_PMAP => {
             if P_GivePower(player, pw_allmap as c_int) == 0 {
                 return;
             }
             (*player).message = DEH_String(GOTMAP);
-            sound = Sfx::GETPOW;
+            sound = Sfx::Getpow as c_int;
         }
         SPR_PVIS => {
             if P_GivePower(player, pw_infrared as c_int) == 0 {
                 return;
             }
             (*player).message = DEH_String(GOTVISOR);
-            sound = Sfx::GETPOW;
+            sound = Sfx::Getpow as c_int;
         }
         // ammo
         SPR_CLIP => {
@@ -634,7 +634,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
                 return;
             }
             (*player).message = DEH_String(GOTBFG9000);
-            sound = Sfx::WPNUP;
+            sound = Sfx::Wpnup as c_int;
         }
         SPR_MGUN => {
             if P_GiveWeapon(
@@ -646,28 +646,28 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
                 return;
             }
             (*player).message = DEH_String(GOTCHAINGUN);
-            sound = Sfx::WPNUP;
+            sound = Sfx::Wpnup as c_int;
         }
         SPR_CSAW => {
             if P_GiveWeapon(player, wp_chainsaw, 0) == 0 {
                 return;
             }
             (*player).message = DEH_String(GOTCHAINSAW);
-            sound = Sfx::WPNUP;
+            sound = Sfx::Wpnup as c_int;
         }
         SPR_LAUN => {
             if P_GiveWeapon(player, wp_missile, 0) == 0 {
                 return;
             }
             (*player).message = DEH_String(GOTLAUNCHER);
-            sound = Sfx::WPNUP;
+            sound = Sfx::Wpnup as c_int;
         }
         SPR_PLAS => {
             if P_GiveWeapon(player, wp_plasma, 0) == 0 {
                 return;
             }
             (*player).message = DEH_String(GOTPLASMA);
-            sound = Sfx::WPNUP;
+            sound = Sfx::Wpnup as c_int;
         }
         SPR_SHOT => {
             if P_GiveWeapon(
@@ -679,7 +679,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
                 return;
             }
             (*player).message = DEH_String(GOTSHOTGUN);
-            sound = Sfx::WPNUP;
+            sound = Sfx::Wpnup as c_int;
         }
         SPR_SGN2 => {
             if P_GiveWeapon(
@@ -691,7 +691,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
                 return;
             }
             (*player).message = DEH_String(GOTSHOTGUN2);
-            sound = Sfx::WPNUP;
+            sound = Sfx::Wpnup as c_int;
         }
         _ => {
             i_error!("P_SpecialThing: Unknown gettable thing");

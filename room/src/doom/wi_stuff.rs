@@ -978,13 +978,13 @@ unsafe fn WI_updateDeathmatchStats() {
                 dm_totals[i] = WI_fragSum(i as c_int);
             }
         }
-        S_StartSound(ptr::null_mut(), Sfx::BAREXP);
+        S_StartSound(ptr::null_mut(), Sfx::Barexp as c_int);
         dm_state = 4;
     }
 
     if dm_state == 2 {
         if bcnt & 3 == 0 {
-            S_StartSound(ptr::null_mut(), Sfx::PISTOL);
+            S_StartSound(ptr::null_mut(), Sfx::Pistol as c_int);
         }
         let mut stillticking = false;
         for i in 0..MAXPLAYERS {
@@ -1016,12 +1016,12 @@ unsafe fn WI_updateDeathmatchStats() {
             }
         }
         if !stillticking {
-            S_StartSound(ptr::null_mut(), Sfx::BAREXP);
+            S_StartSound(ptr::null_mut(), Sfx::Barexp as c_int);
             dm_state += 1;
         }
     } else if dm_state == 4 {
         if acceleratestage != 0 {
-            S_StartSound(ptr::null_mut(), Sfx::SLOP);
+            S_StartSound(ptr::null_mut(), Sfx::Slop as c_int);
             if gamemode == d_mode::commercial {
                 WI_initNoState();
             } else {
@@ -1134,13 +1134,13 @@ unsafe fn WI_updateNetgameStats() {
                 cnt_frags[i] = WI_fragSum(i as c_int);
             }
         }
-        S_StartSound(ptr::null_mut(), Sfx::BAREXP);
+        S_StartSound(ptr::null_mut(), Sfx::Barexp as c_int);
         ng_state = 10;
     }
 
     if ng_state == 2 {
         if bcnt & 3 == 0 {
-            S_StartSound(ptr::null_mut(), Sfx::PISTOL);
+            S_StartSound(ptr::null_mut(), Sfx::Pistol as c_int);
         }
         let mut stillticking = false;
         for i in 0..MAXPLAYERS {
@@ -1156,12 +1156,12 @@ unsafe fn WI_updateNetgameStats() {
             }
         }
         if !stillticking {
-            S_StartSound(ptr::null_mut(), Sfx::BAREXP);
+            S_StartSound(ptr::null_mut(), Sfx::Barexp as c_int);
             ng_state += 1;
         }
     } else if ng_state == 4 {
         if bcnt & 3 == 0 {
-            S_StartSound(ptr::null_mut(), Sfx::PISTOL);
+            S_StartSound(ptr::null_mut(), Sfx::Pistol as c_int);
         }
         let mut stillticking = false;
         for i in 0..MAXPLAYERS {
@@ -1177,12 +1177,12 @@ unsafe fn WI_updateNetgameStats() {
             }
         }
         if !stillticking {
-            S_StartSound(ptr::null_mut(), Sfx::BAREXP);
+            S_StartSound(ptr::null_mut(), Sfx::Barexp as c_int);
             ng_state += 1;
         }
     } else if ng_state == 6 {
         if bcnt & 3 == 0 {
-            S_StartSound(ptr::null_mut(), Sfx::PISTOL);
+            S_StartSound(ptr::null_mut(), Sfx::Pistol as c_int);
         }
         let mut stillticking = false;
         for i in 0..MAXPLAYERS {
@@ -1198,12 +1198,12 @@ unsafe fn WI_updateNetgameStats() {
             }
         }
         if !stillticking {
-            S_StartSound(ptr::null_mut(), Sfx::BAREXP);
+            S_StartSound(ptr::null_mut(), Sfx::Barexp as c_int);
             ng_state += 1 + 2 * if dofrags == 0 { 1 } else { 0 };
         }
     } else if ng_state == 8 {
         if bcnt & 3 == 0 {
-            S_StartSound(ptr::null_mut(), Sfx::PISTOL);
+            S_StartSound(ptr::null_mut(), Sfx::Pistol as c_int);
         }
         let mut stillticking = false;
         for i in 0..MAXPLAYERS {
@@ -1219,12 +1219,12 @@ unsafe fn WI_updateNetgameStats() {
             }
         }
         if !stillticking {
-            S_StartSound(ptr::null_mut(), Sfx::PLDETH);
+            S_StartSound(ptr::null_mut(), Sfx::Pldeth as c_int);
             ng_state += 1;
         }
     } else if ng_state == 10 {
         if acceleratestage != 0 {
-            S_StartSound(ptr::null_mut(), Sfx::SGCOCK);
+            S_StartSound(ptr::null_mut(), Sfx::Sgcock as c_int);
             if gamemode == d_mode::commercial {
                 WI_initNoState();
             } else {
@@ -1325,46 +1325,46 @@ unsafe fn WI_updateStats() {
         cnt_secret[0] = ((*plrs.offset(me as isize)).ssecret * 100) / (*wbs).maxsecret;
         cnt_time = (*plrs.offset(me as isize)).stime / TICRATE;
         cnt_par = (*wbs).partime / TICRATE;
-        S_StartSound(ptr::null_mut(), Sfx::BAREXP);
+        S_StartSound(ptr::null_mut(), Sfx::Barexp as c_int);
         sp_state = 10;
     }
 
     if sp_state == 2 {
         cnt_kills[0] += 2;
         if bcnt & 3 == 0 {
-            S_StartSound(ptr::null_mut(), Sfx::PISTOL);
+            S_StartSound(ptr::null_mut(), Sfx::Pistol as c_int);
         }
         let target = ((*plrs.offset(me as isize)).skills * 100) / (*wbs).maxkills;
         if cnt_kills[0] >= target {
             cnt_kills[0] = target;
-            S_StartSound(ptr::null_mut(), Sfx::BAREXP);
+            S_StartSound(ptr::null_mut(), Sfx::Barexp as c_int);
             sp_state += 1;
         }
     } else if sp_state == 4 {
         cnt_items[0] += 2;
         if bcnt & 3 == 0 {
-            S_StartSound(ptr::null_mut(), Sfx::PISTOL);
+            S_StartSound(ptr::null_mut(), Sfx::Pistol as c_int);
         }
         let target = ((*plrs.offset(me as isize)).sitems * 100) / (*wbs).maxitems;
         if cnt_items[0] >= target {
             cnt_items[0] = target;
-            S_StartSound(ptr::null_mut(), Sfx::BAREXP);
+            S_StartSound(ptr::null_mut(), Sfx::Barexp as c_int);
             sp_state += 1;
         }
     } else if sp_state == 6 {
         cnt_secret[0] += 2;
         if bcnt & 3 == 0 {
-            S_StartSound(ptr::null_mut(), Sfx::PISTOL);
+            S_StartSound(ptr::null_mut(), Sfx::Pistol as c_int);
         }
         let target = ((*plrs.offset(me as isize)).ssecret * 100) / (*wbs).maxsecret;
         if cnt_secret[0] >= target {
             cnt_secret[0] = target;
-            S_StartSound(ptr::null_mut(), Sfx::BAREXP);
+            S_StartSound(ptr::null_mut(), Sfx::Barexp as c_int);
             sp_state += 1;
         }
     } else if sp_state == 8 {
         if bcnt & 3 == 0 {
-            S_StartSound(ptr::null_mut(), Sfx::PISTOL);
+            S_StartSound(ptr::null_mut(), Sfx::Pistol as c_int);
         }
         cnt_time += 3;
         let target_time = (*plrs.offset(me as isize)).stime / TICRATE;
@@ -1376,13 +1376,13 @@ unsafe fn WI_updateStats() {
         if cnt_par >= target_par {
             cnt_par = target_par;
             if cnt_time >= target_time {
-                S_StartSound(ptr::null_mut(), Sfx::BAREXP);
+                S_StartSound(ptr::null_mut(), Sfx::Barexp as c_int);
                 sp_state += 1;
             }
         }
     } else if sp_state == 10 {
         if acceleratestage != 0 {
-            S_StartSound(ptr::null_mut(), Sfx::SGCOCK);
+            S_StartSound(ptr::null_mut(), Sfx::Sgcock as c_int);
             if gamemode == d_mode::commercial {
                 WI_initNoState();
             } else {

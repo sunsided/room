@@ -104,7 +104,7 @@ pub unsafe extern "C" fn T_PlatRaise(plat: *mut plat_t) {
             {
                 S_StartSound(
                     &(*(*plat).sector).soundorg as *const [u8; 40] as *mut c_void,
-                    Sfx::STNMOV,
+                    Sfx::Stnmov as c_int,
                 );
             }
 
@@ -113,14 +113,14 @@ pub unsafe extern "C" fn T_PlatRaise(plat: *mut plat_t) {
                 (*plat).status = down;
                 S_StartSound(
                     &(*(*plat).sector).soundorg as *const [u8; 40] as *mut c_void,
-                    Sfx::PSTART,
+                    Sfx::Pstart as c_int,
                 );
             } else if res == result_pastdest {
                 (*plat).count = (*plat).wait;
                 (*plat).status = waiting;
                 S_StartSound(
                     &(*(*plat).sector).soundorg as *const [u8; 40] as *mut c_void,
-                    Sfx::PSTOP,
+                    Sfx::Pstop as c_int,
                 );
 
                 match (*plat).r#type {
@@ -143,7 +143,7 @@ pub unsafe extern "C" fn T_PlatRaise(plat: *mut plat_t) {
                 (*plat).status = waiting;
                 S_StartSound(
                     &(*(*plat).sector).soundorg as *const [u8; 40] as *mut c_void,
-                    Sfx::PSTOP,
+                    Sfx::Pstop as c_int,
                 );
             }
         }
@@ -157,7 +157,7 @@ pub unsafe extern "C" fn T_PlatRaise(plat: *mut plat_t) {
                 }
                 S_StartSound(
                     &(*(*plat).sector).soundorg as *const [u8; 40] as *mut c_void,
-                    Sfx::PSTART,
+                    Sfx::Pstart as c_int,
                 );
             }
         }
@@ -218,7 +218,7 @@ pub unsafe extern "C" fn EV_DoPlat(line: *mut line_t, plattype: c_int, amount: c
                 (*sec).special = 0;
                 S_StartSound(
                     &(*sec).soundorg as *const [u8; 40] as *mut c_void,
-                    Sfx::STNMOV,
+                    Sfx::Stnmov as c_int,
                 );
             }
             x if x == raiseAndChange => {
@@ -230,7 +230,7 @@ pub unsafe extern "C" fn EV_DoPlat(line: *mut line_t, plattype: c_int, amount: c
                 (*plat).status = up;
                 S_StartSound(
                     &(*sec).soundorg as *const [u8; 40] as *mut c_void,
-                    Sfx::STNMOV,
+                    Sfx::Stnmov as c_int,
                 );
             }
             x if x == downWaitUpStay => {
@@ -244,7 +244,7 @@ pub unsafe extern "C" fn EV_DoPlat(line: *mut line_t, plattype: c_int, amount: c
                 (*plat).status = down;
                 S_StartSound(
                     &(*sec).soundorg as *const [u8; 40] as *mut c_void,
-                    Sfx::PSTART,
+                    Sfx::Pstart as c_int,
                 );
             }
             x if x == blazeDWUS => {
@@ -258,7 +258,7 @@ pub unsafe extern "C" fn EV_DoPlat(line: *mut line_t, plattype: c_int, amount: c
                 (*plat).status = down;
                 S_StartSound(
                     &(*sec).soundorg as *const [u8; 40] as *mut c_void,
-                    Sfx::PSTART,
+                    Sfx::Pstart as c_int,
                 );
             }
             x if x == perpetualRaise => {
@@ -275,7 +275,7 @@ pub unsafe extern "C" fn EV_DoPlat(line: *mut line_t, plattype: c_int, amount: c
                 (*plat).status = P_Random() & 1;
                 S_StartSound(
                     &(*sec).soundorg as *const [u8; 40] as *mut c_void,
-                    Sfx::PSTART,
+                    Sfx::Pstart as c_int,
                 );
             }
             _ => {}

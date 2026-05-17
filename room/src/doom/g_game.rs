@@ -1370,7 +1370,7 @@ pub unsafe extern "C" fn G_CheckSpot(playernum: c_int, mthing: *mut mapthing_t) 
     let mo = P_SpawnMobj(x + 20 * xa, y + 20 * ya, floorheight, MT_TFOG);
 
     if players[consoleplayer as usize].viewz != 1 {
-        S_StartSound(mo as *mut c_void, Sfx::TELEPT);
+        S_StartSound(mo as *mut c_void, Sfx::Telept as c_int);
     }
     1
 }
