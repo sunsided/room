@@ -35,6 +35,7 @@ const _: () = assert!(
 );
 
 /// Sound effect IDs, matching the `sfxenum_t` C enum in `sounds.h`.
+#[doc(alias = "sfxenum_t")]
 #[repr(C)]
 #[derive(Default, PartialEq, Clone, Copy)]
 pub enum Sfx {
