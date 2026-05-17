@@ -25,7 +25,8 @@ pub struct MusicInfo {
     pub handle: *mut c_void,
 }
 
-pub const NUMSFX: usize = 109;
+// sfxenum_t in sounds.h ends with NUMSFX = 109
+pub const NUMSFX: usize = Sfx::Radio as usize + 1;
 pub const NUMMUSIC: usize = 68;
 
 const _: () = assert!(
@@ -34,7 +35,6 @@ const _: () = assert!(
 );
 
 /// Sound effect IDs, matching the `sfxenum_t` C enum in `sounds.h`.
-#[non_exhaustive]
 #[repr(C)]
 #[derive(Default, PartialEq, Clone, Copy)]
 pub enum Sfx {
@@ -695,6 +695,11 @@ pub extern "C" fn S_InitSfxLinks() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numsfx_matches_c_source() {
+        assert_eq!(NUMSFX, 109);
+    }
 
     #[test]
     fn sfx_table_has_correct_length() {
