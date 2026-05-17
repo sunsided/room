@@ -326,6 +326,7 @@ use crate::doom::m_menu::{
 use crate::doom::s_sound::{
     musicVolume, sfxVolume, snd_channels, S_Init, S_StartMusic, S_UpdateSounds,
 };
+use crate::doom::sounds::Mus;
 
 // r_main.rs
 use crate::doom::r_main::{setsizeneeded, R_ExecuteSetViewSize, R_Init, R_RenderPlayerView};
@@ -952,9 +953,9 @@ pub extern "C" fn D_DoAdvanceDemo() {
                 gamestate = GS_DEMOSCREEN;
                 pagename = c"TITLEPIC".as_ptr().cast_mut();
                 if gamemode == d_mode::commercial {
-                    S_StartMusic(66); // mus_dm2ttl
+                    S_StartMusic(Mus::Dm2ttl as c_int);
                 } else {
-                    S_StartMusic(29); // mus_intro
+                    S_StartMusic(Mus::Intro as c_int);
                 }
             }
             1 => {
@@ -973,7 +974,7 @@ pub extern "C" fn D_DoAdvanceDemo() {
                 if gamemode == d_mode::commercial {
                     pagetic = TICRATE * 11;
                     pagename = c"TITLEPIC".as_ptr().cast_mut();
-                    S_StartMusic(66); // mus_dm2ttl
+                    S_StartMusic(Mus::Dm2ttl as c_int);
                 } else {
                     pagetic = 200;
                     if gamemode == d_mode::retail {

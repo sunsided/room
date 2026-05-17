@@ -31,6 +31,7 @@ use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 use crate::doom::m_misc::M_StringCopy;
 use crate::doom::m_random::M_Random;
 use crate::doom::s_sound::{S_ChangeMusic, S_StartSound};
+use crate::doom::sounds::Mus;
 use crate::doom::v_video::patch_t;
 use crate::doom::v_video::V_DrawPatch;
 use crate::doom::w_wad::{W_CacheLumpName, W_CheckNumForName, W_ReleaseLumpName};
@@ -65,10 +66,6 @@ const DM_VICTIMSX: c_int = 5;
 const DM_VICTIMSY: c_int = 50;
 
 const SHOWNEXTLOCDELAY: c_int = 4;
-
-// Sound / music IDs
-const mus_inter: c_int = 28;
-const mus_dm2int: c_int = 67;
 
 // ---------------------------------------------------------------------------
 // Types that must match C layout (g_game.c is still C)
@@ -1463,9 +1460,9 @@ pub unsafe extern "C" fn WI_Ticker() {
 
     if bcnt == 1 {
         if gamemode == d_mode::commercial {
-            S_ChangeMusic(mus_dm2int, 1);
+            S_ChangeMusic(Mus::Dm2int as c_int, 1);
         } else {
-            S_ChangeMusic(mus_inter, 1);
+            S_ChangeMusic(Mus::Inter as c_int, 1);
         }
     }
 

@@ -35,12 +35,6 @@ const FF_FRAMEMASK: c_int = 0x7fff;
 
 const MAXPLAYERS: usize = 4;
 
-// Music indices (from sounds.c)
-const mus_victor: c_int = 31;
-const mus_read_m: c_int = 65;
-const mus_bunny: c_int = 30;
-const mus_evil: c_int = 63;
-
 // Sfx indices (from sounds.c)
 
 // ---------------------------------------------------------------------------
@@ -195,6 +189,7 @@ use crate::doom::v_video::{V_DrawPatch, V_DrawPatchFlipped, V_MarkRect};
 
 // s_sound.rs
 use crate::doom::s_sound::{S_ChangeMusic, S_StartMusic, S_StartSound};
+use crate::doom::sounds::Mus;
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -496,9 +491,9 @@ pub extern "C" fn F_StartFinale() {
         automapactive = 0;
 
         if logical_gamemission() == d_mode::doom {
-            S_ChangeMusic(mus_victor, 1);
+            S_ChangeMusic(Mus::Victor as c_int, 1);
         } else {
-            S_ChangeMusic(mus_read_m, 1);
+            S_ChangeMusic(Mus::ReadM as c_int, 1);
         }
 
         finaletext = ptr::null_mut();
@@ -586,7 +581,7 @@ pub extern "C" fn F_Ticker() {
                 FINALE_STAGE = FinaleStage::ArtScreen;
                 wipegamestate = -1;
                 if gameepisode == 3 {
-                    S_StartMusic(mus_bunny);
+                    S_StartMusic(Mus::Bunny as c_int);
                 }
             }
         }
@@ -671,7 +666,7 @@ pub extern "C" fn F_StartCast() {
         castframes = 0;
         castonmelee = 0;
         castattacking = 0;
-        S_ChangeMusic(mus_evil, 1);
+        S_ChangeMusic(Mus::Evil as c_int, 1);
     }
 }
 

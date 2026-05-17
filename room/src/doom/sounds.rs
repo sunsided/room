@@ -27,11 +27,16 @@ pub struct MusicInfo {
 
 // sfxenum_t in sounds.h ends with NUMSFX = 109
 pub const NUMSFX: usize = Sfx::Radio as usize + 1;
-pub const NUMMUSIC: usize = 68;
+// musicenum_t in sounds.h ends with NUMMUSIC = 68
+pub const NUMMUSIC: usize = Mus::Dm2int as usize + 1;
 
 const _: () = assert!(
     std::mem::size_of::<Sfx>() == std::mem::size_of::<std::ffi::c_int>(),
     "Sfx must be the same size as c_int"
+);
+const _: () = assert!(
+    std::mem::size_of::<Mus>() == std::mem::size_of::<std::ffi::c_int>(),
+    "Mus must be the same size as c_int"
 );
 
 /// Sound effect IDs, matching the `sfxenum_t` C enum in `sounds.h`.
@@ -260,6 +265,150 @@ pub enum Sfx {
     Radio = 108,
 }
 
+/// Music track IDs, matching the `musicenum_t` C enum in `sounds.h`.
+#[doc(alias = "musicenum_t")]
+#[repr(C)]
+#[derive(Default, PartialEq, Clone, Copy)]
+pub enum Mus {
+    #[default]
+    #[doc(alias = "mus_None")]
+    None = 0,
+    #[doc(alias = "mus_e1m1")]
+    E1m1 = 1,
+    #[doc(alias = "mus_e1m2")]
+    E1m2 = 2,
+    #[doc(alias = "mus_e1m3")]
+    E1m3 = 3,
+    #[doc(alias = "mus_e1m4")]
+    E1m4 = 4,
+    #[doc(alias = "mus_e1m5")]
+    E1m5 = 5,
+    #[doc(alias = "mus_e1m6")]
+    E1m6 = 6,
+    #[doc(alias = "mus_e1m7")]
+    E1m7 = 7,
+    #[doc(alias = "mus_e1m8")]
+    E1m8 = 8,
+    #[doc(alias = "mus_e1m9")]
+    E1m9 = 9,
+    #[doc(alias = "mus_e2m1")]
+    E2m1 = 10,
+    #[doc(alias = "mus_e2m2")]
+    E2m2 = 11,
+    #[doc(alias = "mus_e2m3")]
+    E2m3 = 12,
+    #[doc(alias = "mus_e2m4")]
+    E2m4 = 13,
+    #[doc(alias = "mus_e2m5")]
+    E2m5 = 14,
+    #[doc(alias = "mus_e2m6")]
+    E2m6 = 15,
+    #[doc(alias = "mus_e2m7")]
+    E2m7 = 16,
+    #[doc(alias = "mus_e2m8")]
+    E2m8 = 17,
+    #[doc(alias = "mus_e2m9")]
+    E2m9 = 18,
+    #[doc(alias = "mus_e3m1")]
+    E3m1 = 19,
+    #[doc(alias = "mus_e3m2")]
+    E3m2 = 20,
+    #[doc(alias = "mus_e3m3")]
+    E3m3 = 21,
+    #[doc(alias = "mus_e3m4")]
+    E3m4 = 22,
+    #[doc(alias = "mus_e3m5")]
+    E3m5 = 23,
+    #[doc(alias = "mus_e3m6")]
+    E3m6 = 24,
+    #[doc(alias = "mus_e3m7")]
+    E3m7 = 25,
+    #[doc(alias = "mus_e3m8")]
+    E3m8 = 26,
+    #[doc(alias = "mus_e3m9")]
+    E3m9 = 27,
+    #[doc(alias = "mus_inter")]
+    Inter = 28,
+    #[doc(alias = "mus_intro")]
+    Intro = 29,
+    #[doc(alias = "mus_bunny")]
+    Bunny = 30,
+    #[doc(alias = "mus_victor")]
+    Victor = 31,
+    #[doc(alias = "mus_introa")]
+    Introa = 32,
+    #[doc(alias = "mus_runnin")]
+    Runnin = 33,
+    #[doc(alias = "mus_stalks")]
+    Stalks = 34,
+    #[doc(alias = "mus_countd")]
+    Countd = 35,
+    #[doc(alias = "mus_betwee")]
+    Betwee = 36,
+    #[doc(alias = "mus_doom")]
+    Doom = 37,
+    #[doc(alias = "mus_the_da")]
+    TheDa = 38,
+    #[doc(alias = "mus_shawn")]
+    Shawn = 39,
+    #[doc(alias = "mus_ddtblu")]
+    Ddtblu = 40,
+    #[doc(alias = "mus_in_cit")]
+    InCit = 41,
+    #[doc(alias = "mus_dead")]
+    Dead = 42,
+    #[doc(alias = "mus_stlks2")]
+    Stlks2 = 43,
+    #[doc(alias = "mus_theda2")]
+    Theda2 = 44,
+    #[doc(alias = "mus_doom2")]
+    Doom2 = 45,
+    #[doc(alias = "mus_ddtbl2")]
+    Ddtbl2 = 46,
+    #[doc(alias = "mus_runni2")]
+    Runni2 = 47,
+    #[doc(alias = "mus_dead2")]
+    Dead2 = 48,
+    #[doc(alias = "mus_stlks3")]
+    Stlks3 = 49,
+    #[doc(alias = "mus_romero")]
+    Romero = 50,
+    #[doc(alias = "mus_shawn2")]
+    Shawn2 = 51,
+    #[doc(alias = "mus_messag")]
+    Messag = 52,
+    #[doc(alias = "mus_count2")]
+    Count2 = 53,
+    #[doc(alias = "mus_ddtbl3")]
+    Ddtbl3 = 54,
+    #[doc(alias = "mus_ampie")]
+    Ampie = 55,
+    #[doc(alias = "mus_theda3")]
+    Theda3 = 56,
+    #[doc(alias = "mus_adrian")]
+    Adrian = 57,
+    #[doc(alias = "mus_messg2")]
+    Messg2 = 58,
+    #[doc(alias = "mus_romer2")]
+    Romer2 = 59,
+    #[doc(alias = "mus_tense")]
+    Tense = 60,
+    #[doc(alias = "mus_shawn3")]
+    Shawn3 = 61,
+    #[doc(alias = "mus_openin")]
+    Openin = 62,
+    #[doc(alias = "mus_evil")]
+    Evil = 63,
+    #[doc(alias = "mus_ultima")]
+    Ultima = 64,
+    #[doc(alias = "mus_read_m")]
+    ReadM = 65,
+    #[doc(alias = "mus_dm2ttl")]
+    Dm2ttl = 66,
+    #[doc(alias = "mus_dm2int")]
+    Dm2int = 67,
+}
+
 unsafe impl Sync for SfxInfo {}
 unsafe impl Sync for MusicInfo {}
 
@@ -277,6 +426,16 @@ impl SfxInfo {
             numchannels: -1,
             driver_data: std::ptr::null_mut(),
         }
+    }
+
+    const fn with_pitch(mut self, pitch: c_int) -> Self {
+        self.pitch = pitch;
+        self
+    }
+
+    const fn with_volume(mut self, volume: c_int) -> Self {
+        self.volume = volume;
+        self
     }
 }
 
@@ -422,73 +581,73 @@ const N_skesit: [c_char; 9] = name("skesit");
 const N_skeatk: [c_char; 9] = name("skeatk");
 const N_radio: [c_char; 9] = name("radio");
 
-static MUS_e1m1: [c_char; 5] = name("e1m1");
-static MUS_e1m2: [c_char; 5] = name("e1m2");
-static MUS_e1m3: [c_char; 5] = name("e1m3");
-static MUS_e1m4: [c_char; 5] = name("e1m4");
-static MUS_e1m5: [c_char; 5] = name("e1m5");
-static MUS_e1m6: [c_char; 5] = name("e1m6");
-static MUS_e1m7: [c_char; 5] = name("e1m7");
-static MUS_e1m8: [c_char; 5] = name("e1m8");
-static MUS_e1m9: [c_char; 5] = name("e1m9");
-static MUS_e2m1: [c_char; 5] = name("e2m1");
-static MUS_e2m2: [c_char; 5] = name("e2m2");
-static MUS_e2m3: [c_char; 5] = name("e2m3");
-static MUS_e2m4: [c_char; 5] = name("e2m4");
-static MUS_e2m5: [c_char; 5] = name("e2m5");
-static MUS_e2m6: [c_char; 5] = name("e2m6");
-static MUS_e2m7: [c_char; 5] = name("e2m7");
-static MUS_e2m8: [c_char; 5] = name("e2m8");
-static MUS_e2m9: [c_char; 5] = name("e2m9");
-static MUS_e3m1: [c_char; 5] = name("e3m1");
-static MUS_e3m2: [c_char; 5] = name("e3m2");
-static MUS_e3m3: [c_char; 5] = name("e3m3");
-static MUS_e3m4: [c_char; 5] = name("e3m4");
-static MUS_e3m5: [c_char; 5] = name("e3m5");
-static MUS_e3m6: [c_char; 5] = name("e3m6");
-static MUS_e3m7: [c_char; 5] = name("e3m7");
-static MUS_e3m8: [c_char; 5] = name("e3m8");
-static MUS_e3m9: [c_char; 5] = name("e3m9");
-static MUS_inter: [c_char; 6] = name("inter");
-static MUS_intro: [c_char; 6] = name("intro");
-static MUS_bunny: [c_char; 6] = name("bunny");
-static MUS_victor: [c_char; 7] = name("victor");
-static MUS_introa: [c_char; 7] = name("introa");
-static MUS_runnin: [c_char; 7] = name("runnin");
-static MUS_stalks: [c_char; 7] = name("stalks");
-static MUS_countd: [c_char; 7] = name("countd");
-static MUS_betwee: [c_char; 7] = name("betwee");
-static MUS_doom: [c_char; 5] = name("doom");
-static MUS_the_da: [c_char; 7] = name("the_da");
-static MUS_shawn: [c_char; 6] = name("shawn");
-static MUS_ddtblu: [c_char; 7] = name("ddtblu");
-static MUS_in_cit: [c_char; 7] = name("in_cit");
-static MUS_dead: [c_char; 5] = name("dead");
-static MUS_stlks2: [c_char; 7] = name("stlks2");
-static MUS_theda2: [c_char; 7] = name("theda2");
-static MUS_doom2: [c_char; 6] = name("doom2");
-static MUS_ddtbl2: [c_char; 7] = name("ddtbl2");
-static MUS_runni2: [c_char; 7] = name("runni2");
-static MUS_dead2: [c_char; 6] = name("dead2");
-static MUS_stlks3: [c_char; 7] = name("stlks3");
-static MUS_romero: [c_char; 7] = name("romero");
-static MUS_shawn2: [c_char; 7] = name("shawn2");
-static MUS_messag: [c_char; 7] = name("messag");
-static MUS_count2: [c_char; 7] = name("count2");
-static MUS_ddtbl3: [c_char; 7] = name("ddtbl3");
-static MUS_ampie: [c_char; 6] = name("ampie");
-static MUS_theda3: [c_char; 7] = name("theda3");
-static MUS_adrian: [c_char; 7] = name("adrian");
-static MUS_messg2: [c_char; 7] = name("messg2");
-static MUS_romer2: [c_char; 7] = name("romer2");
-static MUS_tense: [c_char; 6] = name("tense");
-static MUS_shawn3: [c_char; 7] = name("shawn3");
-static MUS_openin: [c_char; 7] = name("openin");
-static MUS_evil: [c_char; 5] = name("evil");
-static MUS_ultima: [c_char; 7] = name("ultima");
-static MUS_read_m: [c_char; 7] = name("read_m");
-static MUS_dm2ttl: [c_char; 7] = name("dm2ttl");
-static MUS_dm2int: [c_char; 7] = name("dm2int");
+const MUS_e1m1: [c_char; 5] = name("e1m1");
+const MUS_e1m2: [c_char; 5] = name("e1m2");
+const MUS_e1m3: [c_char; 5] = name("e1m3");
+const MUS_e1m4: [c_char; 5] = name("e1m4");
+const MUS_e1m5: [c_char; 5] = name("e1m5");
+const MUS_e1m6: [c_char; 5] = name("e1m6");
+const MUS_e1m7: [c_char; 5] = name("e1m7");
+const MUS_e1m8: [c_char; 5] = name("e1m8");
+const MUS_e1m9: [c_char; 5] = name("e1m9");
+const MUS_e2m1: [c_char; 5] = name("e2m1");
+const MUS_e2m2: [c_char; 5] = name("e2m2");
+const MUS_e2m3: [c_char; 5] = name("e2m3");
+const MUS_e2m4: [c_char; 5] = name("e2m4");
+const MUS_e2m5: [c_char; 5] = name("e2m5");
+const MUS_e2m6: [c_char; 5] = name("e2m6");
+const MUS_e2m7: [c_char; 5] = name("e2m7");
+const MUS_e2m8: [c_char; 5] = name("e2m8");
+const MUS_e2m9: [c_char; 5] = name("e2m9");
+const MUS_e3m1: [c_char; 5] = name("e3m1");
+const MUS_e3m2: [c_char; 5] = name("e3m2");
+const MUS_e3m3: [c_char; 5] = name("e3m3");
+const MUS_e3m4: [c_char; 5] = name("e3m4");
+const MUS_e3m5: [c_char; 5] = name("e3m5");
+const MUS_e3m6: [c_char; 5] = name("e3m6");
+const MUS_e3m7: [c_char; 5] = name("e3m7");
+const MUS_e3m8: [c_char; 5] = name("e3m8");
+const MUS_e3m9: [c_char; 5] = name("e3m9");
+const MUS_inter: [c_char; 6] = name("inter");
+const MUS_intro: [c_char; 6] = name("intro");
+const MUS_bunny: [c_char; 6] = name("bunny");
+const MUS_victor: [c_char; 7] = name("victor");
+const MUS_introa: [c_char; 7] = name("introa");
+const MUS_runnin: [c_char; 7] = name("runnin");
+const MUS_stalks: [c_char; 7] = name("stalks");
+const MUS_countd: [c_char; 7] = name("countd");
+const MUS_betwee: [c_char; 7] = name("betwee");
+const MUS_doom: [c_char; 5] = name("doom");
+const MUS_the_da: [c_char; 7] = name("the_da");
+const MUS_shawn: [c_char; 6] = name("shawn");
+const MUS_ddtblu: [c_char; 7] = name("ddtblu");
+const MUS_in_cit: [c_char; 7] = name("in_cit");
+const MUS_dead: [c_char; 5] = name("dead");
+const MUS_stlks2: [c_char; 7] = name("stlks2");
+const MUS_theda2: [c_char; 7] = name("theda2");
+const MUS_doom2: [c_char; 6] = name("doom2");
+const MUS_ddtbl2: [c_char; 7] = name("ddtbl2");
+const MUS_runni2: [c_char; 7] = name("runni2");
+const MUS_dead2: [c_char; 6] = name("dead2");
+const MUS_stlks3: [c_char; 7] = name("stlks3");
+const MUS_romero: [c_char; 7] = name("romero");
+const MUS_shawn2: [c_char; 7] = name("shawn2");
+const MUS_messag: [c_char; 7] = name("messag");
+const MUS_count2: [c_char; 7] = name("count2");
+const MUS_ddtbl3: [c_char; 7] = name("ddtbl3");
+const MUS_ampie: [c_char; 6] = name("ampie");
+const MUS_theda3: [c_char; 7] = name("theda3");
+const MUS_adrian: [c_char; 7] = name("adrian");
+const MUS_messg2: [c_char; 7] = name("messg2");
+const MUS_romer2: [c_char; 7] = name("romer2");
+const MUS_tense: [c_char; 6] = name("tense");
+const MUS_shawn3: [c_char; 7] = name("shawn3");
+const MUS_openin: [c_char; 7] = name("openin");
+const MUS_evil: [c_char; 5] = name("evil");
+const MUS_ultima: [c_char; 7] = name("ultima");
+const MUS_read_m: [c_char; 7] = name("read_m");
+const MUS_dm2ttl: [c_char; 7] = name("dm2ttl");
+const MUS_dm2int: [c_char; 7] = name("dm2int");
 
 #[no_mangle]
 pub static mut S_sfx: [SfxInfo; NUMSFX] = [
@@ -578,18 +737,7 @@ pub static mut S_sfx: [SfxInfo; NUMSFX] = [
     SfxInfo::new(N_punch, 64),
     SfxInfo::new(N_hoof, 70),
     SfxInfo::new(N_metal, 70),
-    SfxInfo {
-        tagname: std::ptr::null_mut(),
-        name: N_chgun,
-        priority: 64,
-        link: std::ptr::null_mut(),
-        pitch: 150,
-        volume: 0,
-        usefulness: 0,
-        lumpnum: 0,
-        numchannels: -1,
-        driver_data: std::ptr::null_mut(),
-    },
+    SfxInfo::new(N_chgun, 64).with_volume(0).with_pitch(150),
     SfxInfo::new(N_tink, 60),
     SfxInfo::new(N_bdopn, 100),
     SfxInfo::new(N_bdcls, 100),
@@ -700,6 +848,11 @@ mod tests {
     #[test]
     fn numsfx_matches_c_source() {
         assert_eq!(NUMSFX, 109);
+    }
+
+    #[test]
+    fn nummusic_matches_c_source() {
+        assert_eq!(NUMMUSIC, 68);
     }
 
     #[test]

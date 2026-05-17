@@ -6,7 +6,9 @@ use crate::types::Boolean;
 
 use crate::doom::d_mode;
 use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
-use crate::doom::sounds::{MusicInfo, S_InitSfxLinks, S_music, S_sfx, SfxInfo, NUMMUSIC, NUMSFX};
+use crate::doom::sounds::{
+    Mus, MusicInfo, S_InitSfxLinks, S_music, S_sfx, SfxInfo, NUMMUSIC, NUMSFX,
+};
 use crate::doom::tables::{finesine, ANGLETOFINESHIFT};
 use crate::doom::z_zone::PU_STATIC;
 
@@ -19,75 +21,6 @@ const NORM_PRIORITY: c_int = 64;
 const NORM_SEP: c_int = 128;
 
 const MAXPLAYERS: usize = 4;
-
-const mus_None: c_int = 0;
-const mus_e1m1: c_int = 1;
-const mus_e1m2: c_int = 2;
-const mus_e1m3: c_int = 3;
-const mus_e1m4: c_int = 4;
-const mus_e1m5: c_int = 5;
-const mus_e1m6: c_int = 6;
-const mus_e1m7: c_int = 7;
-const mus_e1m8: c_int = 8;
-const mus_e1m9: c_int = 9;
-const mus_e2m1: c_int = 10;
-const mus_e2m2: c_int = 11;
-const mus_e2m3: c_int = 12;
-const mus_e2m4: c_int = 13;
-const mus_e2m5: c_int = 14;
-const mus_e2m6: c_int = 15;
-const mus_e2m7: c_int = 16;
-const mus_e2m8: c_int = 17;
-const mus_e2m9: c_int = 18;
-const mus_e3m1: c_int = 19;
-const mus_e3m2: c_int = 20;
-const mus_e3m3: c_int = 21;
-const mus_e3m4: c_int = 22;
-const mus_e3m5: c_int = 23;
-const mus_e3m6: c_int = 24;
-const mus_e3m7: c_int = 25;
-const mus_e3m8: c_int = 26;
-const mus_e3m9: c_int = 27;
-const mus_inter: c_int = 28;
-const mus_intro: c_int = 29;
-const mus_bunny: c_int = 30;
-const mus_victor: c_int = 31;
-const mus_introa: c_int = 32;
-const mus_runnin: c_int = 33;
-const mus_stalks: c_int = 34;
-const mus_countd: c_int = 35;
-const mus_betwee: c_int = 36;
-const mus_doom: c_int = 37;
-const mus_the_da: c_int = 38;
-const mus_shawn: c_int = 39;
-const mus_ddtblu: c_int = 40;
-const mus_in_cit: c_int = 41;
-const mus_dead: c_int = 42;
-const mus_stlks2: c_int = 43;
-const mus_theda2: c_int = 44;
-const mus_doom2: c_int = 45;
-const mus_ddtbl2: c_int = 46;
-const mus_runni2: c_int = 47;
-const mus_dead2: c_int = 48;
-const mus_stlks3: c_int = 49;
-const mus_romero: c_int = 50;
-const mus_shawn2: c_int = 51;
-const mus_messag: c_int = 52;
-const mus_count2: c_int = 53;
-const mus_ddtbl3: c_int = 54;
-const mus_ampie: c_int = 55;
-const mus_theda3: c_int = 56;
-const mus_adrian: c_int = 57;
-const mus_messg2: c_int = 58;
-const mus_romer2: c_int = 59;
-const mus_tense: c_int = 60;
-const mus_shawn3: c_int = 61;
-const mus_openin: c_int = 62;
-const mus_evil: c_int = 63;
-const mus_ultima: c_int = 64;
-const mus_read_m: c_int = 65;
-const mus_dm2ttl: c_int = 66;
-const mus_dm2int: c_int = 67;
 
 const SNDDEVICE_ADLIB: c_int = 2;
 const SNDDEVICE_SB: c_int = 3;
@@ -247,15 +180,22 @@ pub extern "C" fn S_Start() {
         let mnum: c_int;
 
         if gamemode == d_mode::commercial {
-            mnum = mus_runnin + gamemap - 1;
+            mnum = Mus::Runnin as c_int + gamemap - 1;
         } else {
             let spmus: [c_int; 9] = [
-                mus_e3m4, mus_e3m2, mus_e3m3, mus_e1m5, mus_e2m7, mus_e2m4, mus_e2m6, mus_e2m5,
-                mus_e1m9,
+                Mus::E3m4 as c_int,
+                Mus::E3m2 as c_int,
+                Mus::E3m3 as c_int,
+                Mus::E1m5 as c_int,
+                Mus::E2m7 as c_int,
+                Mus::E2m4 as c_int,
+                Mus::E2m6 as c_int,
+                Mus::E2m5 as c_int,
+                Mus::E1m9 as c_int,
             ];
 
             if gameepisode < 4 {
-                mnum = mus_e1m1 + (gameepisode - 1) * 9 + gamemap - 1;
+                mnum = Mus::E1m1 as c_int + (gameepisode - 1) * 9 + gamemap - 1;
             } else {
                 mnum = spmus[(gamemap - 1) as usize];
             }
@@ -519,13 +459,13 @@ pub extern "C" fn S_ChangeMusic(musicnum: c_int, looping: c_int) {
     unsafe {
         let mut musicnum = musicnum;
 
-        if musicnum == mus_intro
+        if musicnum == Mus::Intro as c_int
             && (snd_musicdevice == SNDDEVICE_ADLIB || snd_musicdevice == SNDDEVICE_SB)
         {
-            musicnum = mus_introa;
+            musicnum = Mus::Introa as c_int;
         }
 
-        if musicnum <= mus_None || musicnum >= NUMMUSIC as c_int {
+        if musicnum <= Mus::None as c_int || musicnum >= NUMMUSIC as c_int {
             return;
         }
 
