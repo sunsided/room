@@ -1,4 +1,4 @@
-#![allow(non_upper_case_globals, non_snake_case)]
+#![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
 use std::ffi::{c_char, c_int, c_uint};
 
@@ -315,7 +315,6 @@ pub unsafe extern "C" fn SHA1_Final(digest: *mut u8, hd: *mut SHA1Context) {
 #[no_mangle]
 pub unsafe extern "C" fn SHA1_UpdateInt32(context: *mut SHA1Context, val: c_uint) {
     let context = &mut *context;
-    let val = val;
     let buf = [
         ((val >> 24) & 0xff) as u8,
         ((val >> 16) & 0xff) as u8,

@@ -262,14 +262,14 @@ pub unsafe extern "C" fn A_WeaponReady(player: *mut PlayerT, psp: *mut PspdefT) 
 
     // Get out of attack state.
     let state_ptr = (*mo).state as *mut State;
-    if state_ptr == &mut info::states[S_PLAY_ATK1 as usize] as *mut State
-        || state_ptr == &mut info::states[S_PLAY_ATK2 as usize] as *mut State
+    if std::ptr::eq(state_ptr, &info::states[S_PLAY_ATK1 as usize])
+        || std::ptr::eq(state_ptr, &info::states[S_PLAY_ATK2 as usize])
     {
         P_SetMobjState(mo, S_PLAY);
     }
 
     if (*player).readyweapon == wp_chainsaw
-        && (*psp).state as *mut State == &mut info::states[S_SAW as usize] as *mut State
+        && std::ptr::eq((*psp).state as *mut State, &info::states[S_SAW as usize])
     {
         S_StartSound(mo as *mut c_void, sfx_sawidl);
     }

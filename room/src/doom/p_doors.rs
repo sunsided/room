@@ -90,7 +90,7 @@ mod layout_checks {
 
 #[no_mangle]
 pub unsafe extern "C" fn T_VerticalDoor(door: *mut vldoor_t) {
-    let mut res: c_int = result_ok;
+    let res: c_int;
 
     match (*door).direction {
         0 => {
@@ -464,7 +464,7 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
         1 | 26 | 27 | 28 => {
             (*door).r#type = vld_normal;
         }
-        31 | 32 | 33 | 34 => {
+        31..=34 => {
             (*door).r#type = vld_open;
             (*line).special = 0;
         }

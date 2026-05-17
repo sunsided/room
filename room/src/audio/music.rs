@@ -63,7 +63,7 @@ impl Iterator for MusicSource {
             }
         }
         let vol = f32::from_bits(self.volume.load(Ordering::Relaxed));
-        let sample = if self.pos % 2 == 0 {
+        let sample = if self.pos.is_multiple_of(2) {
             self.buf_l[self.pos / 2] * vol
         } else {
             self.buf_r[self.pos / 2] * vol
@@ -160,7 +160,7 @@ impl MusicState {
     }
 
     pub(crate) fn is_playing(&self) -> bool {
-        self.player.as_ref().map_or(false, |p| !p.empty())
+        self.player.as_ref().is_some_and(|p| !p.empty())
     }
 }
 

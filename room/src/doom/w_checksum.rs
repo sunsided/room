@@ -2,8 +2,6 @@
 
 use std::ffi::{c_char, c_int, c_uint, c_void};
 
-use crate::types::Boolean;
-
 use crate::doom::m_misc::M_StringCopy;
 use crate::doom::sha1::{
     sha1_digest_t, SHA1Context, SHA1_Final, SHA1_Init, SHA1_UpdateInt32, SHA1_UpdateString,

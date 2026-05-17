@@ -13,9 +13,7 @@ use crate::doom::info::*;
 use crate::doom::m_fixed::{fixed_t, FixedMul, FRACUNIT};
 use crate::doom::p_telept::mobj_t;
 use crate::doom::p_tick::leveltime;
-use crate::doom::tables::{
-    finecosine, finesine, ANG180, ANG270, ANG90, ANGLETOFINESHIFT, FINEANGLES,
-};
+use crate::doom::tables::{finecosine, finesine, ANG180, ANG90, ANGLETOFINESHIFT, FINEANGLES};
 
 const MAXBOB: c_int = 0x100000;
 const VIEWHEIGHT: fixed_t = 41 * FRACUNIT;
@@ -81,8 +79,6 @@ pub extern "C" fn P_Thrust(player: *mut PlayerT, angle: u32, move_: fixed_t) {
 pub extern "C" fn P_CalcHeight(player: *mut PlayerT) {
     unsafe {
         let mo = (*player).mo as *mut mobj_t;
-        let angle: c_int;
-        let bob: fixed_t;
 
         // Regular movement bobbing
         (*player).bob = FixedMul((*mo).momx, (*mo).momx) + FixedMul((*mo).momy, (*mo).momy);
@@ -104,8 +100,9 @@ pub extern "C" fn P_CalcHeight(player: *mut PlayerT) {
             return;
         }
 
-        angle = ((FINEANGLES as c_int / 20 * leveltime) & (FINEANGLES as c_int - 1)) as c_int;
-        bob = FixedMul((*player).bob / 2, finesine[angle as usize]);
+        let angle: c_int =
+            ((FINEANGLES as c_int / 20 * leveltime) & (FINEANGLES as c_int - 1)) as c_int;
+        let bob: fixed_t = FixedMul((*player).bob / 2, finesine[angle as usize]);
 
         // Move viewheight
         if (*player).playerstate == PST_LIVE {

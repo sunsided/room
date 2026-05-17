@@ -67,7 +67,7 @@ pub extern "C" fn I_ZoneBase(size: *mut c_int) -> *mut u8 {
         let mut default_ram = DEFAULT_RAM;
         let mut min_ram = MIN_RAM;
 
-        let p = M_CheckParmWithArgs(b"-mb\0".as_ptr() as *mut c_char, 1);
+        let p = M_CheckParmWithArgs(c"-mb".as_ptr().cast_mut(), 1);
         if p > 0 {
             default_ram = libc::atoi(*myargv.offset((p + 1) as isize));
             min_ram = default_ram;
@@ -76,7 +76,7 @@ pub extern "C" fn I_ZoneBase(size: *mut c_int) -> *mut u8 {
         let zonemem = AutoAllocMemory(size, default_ram, min_ram);
 
         libc::printf(
-            b"zone memory: %p, %x allocated for zone\n\0".as_ptr() as *const c_char,
+            c"zone memory: %p, %x allocated for zone\n".as_ptr(),
             zonemem,
             *size,
         );
@@ -114,8 +114,7 @@ pub extern "C" fn I_PrintStartupBanner(gamedescription: *mut c_char) {
         I_PrintBanner(gamedescription);
         I_PrintDivider();
         libc::printf(
-            b" Doom Generic is free software, covered by the GNU General Public\n License.  There is NO warranty; not even for MERCHANTABILITY or FITNESS\n FOR A PARTICULAR PURPOSE. You are welcome to change and distribute\n copies under certain conditions. See the source for more information.\n\0"
-                .as_ptr() as *const c_char,
+            c" Room, like Doom Generic, is free software, covered by the GNU General Public\n License.  There is NO warranty; not even for MERCHANTABILITY or FITNESS\n FOR A PARTICULAR PURPOSE. You are welcome to change and distribute\n copies under certain conditions. See the source for more information.\n".as_ptr(),
         );
         I_PrintDivider();
     }
@@ -194,7 +193,7 @@ pub extern "C" fn I_Error(msg: *const c_char) {
             entry = (*entry).next;
         }
 
-        let exit_gui_popup = M_ParmExists(b"-nogui\0".as_ptr() as *mut c_char) == 0;
+        let exit_gui_popup = M_ParmExists(c"-nogui".as_ptr().cast_mut()) == 0;
         if exit_gui_popup && I_ConsoleStdout() == 0 {
             ZenityErrorBox(msg);
         }
@@ -237,14 +236,14 @@ pub extern "C" fn I_GetMemoryValue(offset: c_uint, value: *mut c_void, size: c_i
         if firsttime {
             firsttime = false;
 
-            let p = M_CheckParmWithArgs(b"-setmem\0".as_ptr() as *mut c_char, 1);
+            let p = M_CheckParmWithArgs(c"-setmem".as_ptr().cast_mut(), 1);
             if p > 0 {
                 let arg = *myargv.offset((p + 1) as isize);
-                if libc::strcasecmp(arg, b"dos622\0".as_ptr() as *const c_char) == 0 {
+                if libc::strcasecmp(arg, c"dos622".as_ptr()) == 0 {
                     dos_mem_dump = DosMemDump::Dos622;
-                } else if libc::strcasecmp(arg, b"dos71\0".as_ptr() as *const c_char) == 0 {
+                } else if libc::strcasecmp(arg, c"dos71".as_ptr()) == 0 {
                     dos_mem_dump = DosMemDump::Win98;
-                } else if libc::strcasecmp(arg, b"dosbox\0".as_ptr() as *const c_char) == 0 {
+                } else if libc::strcasecmp(arg, c"dosbox".as_ptr()) == 0 {
                     dos_mem_dump = DosMemDump::Dosbox;
                 } else {
                     let mut idx: usize = 0;
@@ -268,7 +267,7 @@ pub extern "C" fn I_GetMemoryValue(offset: c_uint, value: *mut c_void, size: c_i
             DosMemDump::Dos622 => MEM_DUMP_DOS622.as_ptr(),
             DosMemDump::Win98 => MEM_DUMP_WIN98.as_ptr(),
             DosMemDump::Dosbox => MEM_DUMP_DOSBOX.as_ptr(),
-            DosMemDump::Custom => MEM_DUMP_CUSTOM.as_ptr(),
+            DosMemDump::Custom => std::ptr::addr_of!(MEM_DUMP_CUSTOM[0]),
         };
 
         let offset = offset as usize;

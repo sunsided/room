@@ -323,8 +323,7 @@ pub extern "C" fn HU_Start() {
             HU_Stop();
         }
 
-        plr = crate::doom::d_player::players
-            .as_mut_ptr()
+        plr = std::ptr::addr_of_mut!(crate::doom::d_player::players[0])
             .offset(consoleplayer as isize);
         message_on = 0;
         message_dontfuckwithme = 0;
@@ -333,13 +332,13 @@ pub extern "C" fn HU_Start() {
 
         // create the message widget
         HUlib_initSText(
-            &mut w_message,
+            &raw mut w_message,
             HU_MSGX,
             HU_MSGY,
             HU_MSGHEIGHT,
-            hu_font.as_mut_ptr(),
+            std::ptr::addr_of_mut!(hu_font[0]),
             HU_FONTSTART as c_int,
-            &mut message_on,
+            &raw mut message_on,
         );
 
         // compute font height for title/input placement
@@ -352,10 +351,10 @@ pub extern "C" fn HU_Start() {
 
         // create the map title widget
         HUlib_initTextLine(
-            &mut w_title,
+            &raw mut w_title,
             0,
             title_y,
-            hu_font.as_mut_ptr(),
+            std::ptr::addr_of_mut!(hu_font[0]),
             HU_FONTSTART as c_int,
         );
 
@@ -373,19 +372,19 @@ pub extern "C" fn HU_Start() {
 
         // dehacked substitution is identity in this build
         while *s != 0 {
-            HUlib_addCharToTextLine(&mut w_title, *s);
+            HUlib_addCharToTextLine(&raw mut w_title, *s);
             s = s.add(1);
         }
 
         // create the chat widget
         let input_y = HU_MSGY + HU_MSGHEIGHT * (font_h + 1);
         HUlib_initIText(
-            &mut w_chat,
+            &raw mut w_chat,
             HU_MSGX,
             input_y,
-            hu_font.as_mut_ptr(),
+            std::ptr::addr_of_mut!(hu_font[0]),
             HU_FONTSTART as c_int,
-            &mut chat_on,
+            &raw mut chat_on,
         );
 
         // create the inputbuffer widgets
@@ -396,7 +395,7 @@ pub extern "C" fn HU_Start() {
                 0,
                 ptr::null_mut(),
                 0,
-                &mut always_off,
+                &raw mut always_off,
             );
         }
 
@@ -407,21 +406,19 @@ pub extern "C" fn HU_Start() {
 #[no_mangle]
 pub extern "C" fn HU_Drawer() {
     unsafe {
-        HUlib_drawSText(&mut w_message);
-        HUlib_drawIText(&mut w_chat);
+        HUlib_drawSText(&raw mut w_message);
+        HUlib_drawIText(&raw mut w_chat);
         if automapactive != 0 {
-            HUlib_drawTextLine(&mut w_title, 0);
+            HUlib_drawTextLine(&raw mut w_title, 0);
         }
     }
 }
 
 #[no_mangle]
 pub extern "C" fn HU_Erase() {
-    unsafe {
-        HUlib_eraseSText(&mut w_message);
-        HUlib_eraseIText(&mut w_chat);
-        HUlib_eraseTextLine(&mut w_title);
-    }
+    HUlib_eraseSText(&raw mut w_message);
+    HUlib_eraseIText(&raw mut w_chat);
+    HUlib_eraseTextLine(&raw mut w_title);
 }
 
 #[no_mangle]
@@ -441,7 +438,7 @@ pub extern "C" fn HU_Ticker() {
             if (!(*plr).message.is_null() && message_nottobefuckedwith == 0)
                 || (!(*plr).message.is_null() && message_dontfuckwithme != 0)
             {
-                HUlib_addMessageToSText(&mut w_message, ptr::null_mut(), (*plr).message);
+                HUlib_addMessageToSText(&raw mut w_message, ptr::null_mut(), (*plr).message);
                 (*plr).message = ptr::null_mut();
                 message_on = 1;
                 message_counter = HU_MSGTIMEOUT;
@@ -469,7 +466,7 @@ pub extern "C" fn HU_Ticker() {
                                         || chat_dest[i] == HU_BROADCAST as c_char)
                                 {
                                     HUlib_addMessageToSText(
-                                        &mut w_message,
+                                        &raw mut w_message,
                                         player_names[i],
                                         w_inputbuffer[i].l.l.as_mut_ptr(),
                                     );
@@ -556,7 +553,7 @@ pub extern "C" fn HU_Responder(ev: *mut event_t) -> c_int {
             } else if netgame != 0 && ev.data2 == key_multi_msg {
                 eatkey = true;
                 chat_on = 1;
-                HUlib_resetIText(&mut w_chat);
+                HUlib_resetIText(&raw mut w_chat);
                 HU_queueChatChar(HU_BROADCAST as c_char);
             } else if netgame != 0 && numplayers > 2 {
                 for i in 0..MAXPLAYERS {
@@ -564,7 +561,7 @@ pub extern "C" fn HU_Responder(ev: *mut event_t) -> c_int {
                         if playeringame[i] != 0 && i != consoleplayer as usize {
                             eatkey = true;
                             chat_on = 1;
-                            HUlib_resetIText(&mut w_chat);
+                            HUlib_resetIText(&raw mut w_chat);
                             HU_queueChatChar((i + 1) as c_char);
                             break;
                         } else if i == consoleplayer as usize {
@@ -596,12 +593,12 @@ pub extern "C" fn HU_Responder(ev: *mut event_t) -> c_int {
                 }
                 HU_queueChatChar(KEY_ENTER as c_char);
                 chat_on = 0;
-                M_StringCopy(lastmessage.as_mut_ptr(), macromessage, lastmessage.len());
-                (*plr).message = lastmessage.as_mut_ptr();
+                M_StringCopy(std::ptr::addr_of_mut!(lastmessage[0]), macromessage, 81);
+                (*plr).message = std::ptr::addr_of_mut!(lastmessage[0]);
                 eatkey = true;
             } else {
                 let c = ev.data2 as u8;
-                eatkey = HUlib_keyInIText(&mut w_chat, c) != 0;
+                eatkey = HUlib_keyInIText(&raw mut w_chat, c) != 0;
                 if eatkey {
                     HU_queueChatChar(c as c_char);
                 }
@@ -609,11 +606,11 @@ pub extern "C" fn HU_Responder(ev: *mut event_t) -> c_int {
                     chat_on = 0;
                     if w_chat.l.len != 0 {
                         M_StringCopy(
-                            lastmessage.as_mut_ptr(),
-                            w_chat.l.l.as_mut_ptr(),
-                            lastmessage.len(),
+                            std::ptr::addr_of_mut!(lastmessage[0]),
+                            std::ptr::addr_of_mut!(w_chat.l.l[0]),
+                            81,
                         );
-                        (*plr).message = lastmessage.as_mut_ptr();
+                        (*plr).message = std::ptr::addr_of_mut!(lastmessage[0]);
                     }
                 } else if c == KEY_ESCAPE {
                     chat_on = 0;

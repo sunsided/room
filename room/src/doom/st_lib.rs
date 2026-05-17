@@ -4,8 +4,6 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::c_char;
-use std::ffi::c_void;
 use std::os::raw::c_int;
 
 use crate::doom::v_video::patch_t;
@@ -76,8 +74,7 @@ use crate::doom::w_wad::W_CacheLumpName;
 pub extern "C" fn STlib_init() {
     unsafe {
         // DEH_String("STTMINUS") is identity — just pass the string.
-        sttminus =
-            W_CacheLumpName(b"STTMINUS\0".as_ptr() as *const c_char, PU_STATIC) as *mut patch_t;
+        sttminus = W_CacheLumpName(c"STTMINUS".as_ptr(), PU_STATIC) as *mut patch_t;
     }
 }
 
@@ -110,8 +107,6 @@ pub extern "C" fn STlib_drawNum(n: *mut st_number_t, _refresh: c_int) {
 
         let w = short_swap((**(*n).p).width) as c_int;
         let h = short_swap((**(*n).p).height) as c_int;
-        let mut x = (*n).x;
-
         (*n).oldnum = num;
 
         let neg = num < 0;
@@ -127,7 +122,7 @@ pub extern "C" fn STlib_drawNum(n: *mut st_number_t, _refresh: c_int) {
         }
 
         // clear the area
-        x = (*n).x - numdigits * w;
+        let mut x = (*n).x - numdigits * w;
 
         if (*n).y - ST_Y < 0 {
             i_error!("drawNum: n->y - ST_Y < 0");

@@ -9,9 +9,8 @@ use std::ffi::{c_int, c_uint, c_void};
 use std::ptr;
 
 use crate::doom::c_ffi::{
-    divline_t, intercept_t, intercept_t_d, line_t, mobj_t, sector_t, subsector_t, vertex_t,
-    MAPBLOCKSHIFT, MAPBLOCKSIZE, MAPBMASK, MAPBTOFRAC, ST_HORIZONTAL, ST_NEGATIVE, ST_POSITIVE,
-    ST_VERTICAL,
+    divline_t, intercept_t, intercept_t_d, line_t, mobj_t, sector_t, subsector_t, MAPBLOCKSHIFT,
+    MAPBLOCKSIZE, MAPBTOFRAC,
 };
 use crate::doom::info::*;
 use crate::doom::m_fixed::{fixed_t, FixedDiv, FixedMul};
@@ -187,8 +186,8 @@ pub extern "C" fn P_BoxOnLineSide(tmbox: *mut c_int, ld: *mut line_t) -> c_int {
     unsafe {
         let tmbox = std::slice::from_raw_parts_mut(tmbox, 4);
         let ld = &*ld;
-        let mut p1 = 0;
-        let mut p2 = 0;
+        let mut p1: c_int;
+        let mut p2: c_int;
         match ld.slopetype {
             0 => {
                 // ST_HORIZONTAL
@@ -419,7 +418,8 @@ pub extern "C" fn P_BlockThingsIterator(
 // Intercept routines
 // ---------------------------------------------------------------------------
 
-unsafe fn InterceptsMemoryOverrun(location: c_int, value: c_int) {
+#[allow(unused_assignments)]
+unsafe fn InterceptsMemoryOverrun(location: c_int, _value: c_int) {
     let mut offset: usize = 0;
     let loc = location as usize;
 
@@ -431,51 +431,18 @@ unsafe fn InterceptsMemoryOverrun(location: c_int, value: c_int) {
             offset += $len;
         };
     }
-    macro_rules! write_i32 {
-        ($len:expr, $ptr:expr) => {
-            if offset + $len > loc {
-                let index = (loc - offset) / 4;
-                ($ptr as *mut c_int).add(index).write(value);
-                return;
-            }
-            offset += $len;
-        };
-    }
-    macro_rules! write_i16_arr {
-        ($len:expr, $ptr:expr) => {
-            if offset + $len > loc {
-                let index = (loc - offset) / 2;
-                let p = ($ptr as *mut _ as *mut u8) as *mut i16;
-                p.add(index).write((value & 0xffff) as i16);
-                p.add(index + 1).write(((value >> 16) & 0xffff) as i16);
-                return;
-            }
-            offset += $len;
-        };
-    }
-
     skip!(4); // 0
     skip!(4); // 1 earlyout
     skip!(4); // 2 intercept_p
-    write_i32!(4, unsafe { &mut lowfloor }); // 3 lowfloor
-    write_i32!(4, unsafe { &mut openbottom }); // 4 openbottom
-    write_i32!(4, unsafe { &mut opentop }); // 5 opentop
-    write_i32!(4, unsafe { &mut openrange }); // 6 openrange
     skip!(4); // 7
     skip!(120); // 8 activeplats
     skip!(8); // 9
-    write_i32!(4, unsafe { &mut crate::doom::p_pspr::bulletslope }); // 10 bulletslope
     skip!(4); // 11 swingx
     skip!(4); // 12 swingy
     skip!(4); // 13
-    write_i16_arr!(40, unsafe { &mut crate::doom::p_setup::playerstarts }); // 14 playerstarts
     skip!(4); // 15 blocklinks
-    write_i32!(4, unsafe { &mut crate::doom::p_setup::bmapwidth }); // 16 bmapwidth
     skip!(4); // 17 blockmap
-    write_i32!(4, unsafe { &mut crate::doom::p_setup::bmaporgx }); // 18 bmaporgx
-    write_i32!(4, unsafe { &mut crate::doom::p_setup::bmaporgy }); // 19 bmaporgy
     skip!(4); // 20 blockmaplump
-    write_i32!(4, unsafe { &mut crate::doom::p_setup::bmapheight }); // 21 bmapheight
 }
 
 unsafe fn InterceptsOverrun(num_intercepts: c_int, intercept: *mut intercept_t) {
@@ -502,8 +469,16 @@ pub extern "C" fn PIT_AddLineIntercepts(ld: *mut line_t) -> c_uint {
             || trace.dy < -FRACUNIT * 16
         {
             (
-                P_PointOnDivlineSide((*ld.v1).x, (*ld.v1).y, &trace as *const _ as *mut _),
-                P_PointOnDivlineSide((*ld.v2).x, (*ld.v2).y, &trace as *const _ as *mut _),
+                P_PointOnDivlineSide(
+                    (*ld.v1).x,
+                    (*ld.v1).y,
+                    &raw const trace as *const _ as *mut _,
+                ),
+                P_PointOnDivlineSide(
+                    (*ld.v2).x,
+                    (*ld.v2).y,
+                    &raw const trace as *const _ as *mut _,
+                ),
             )
         } else {
             (
@@ -525,7 +500,7 @@ pub extern "C" fn PIT_AddLineIntercepts(ld: *mut line_t) -> c_uint {
             dy: 0,
         };
         P_MakeDivline(ld as *const _ as *mut _, &mut dl);
-        let frac = P_InterceptVector(&trace as *const _ as *mut _, &mut dl);
+        let frac = P_InterceptVector(&raw const trace as *const _ as *mut _, &mut dl);
         if frac < 0 {
             return 1;
         }
@@ -536,7 +511,7 @@ pub extern "C" fn PIT_AddLineIntercepts(ld: *mut line_t) -> c_uint {
         (*intercept_p).isaline = 1;
         (*intercept_p).d.line = ld as *const line_t as *mut line_t;
         InterceptsOverrun(
-            intercept_p.offset_from(intercepts.as_mut_ptr()) as c_int,
+            intercept_p.offset_from(std::ptr::addr_of_mut!(intercepts[0])) as c_int,
             intercept_p,
         );
         intercept_p = intercept_p.offset(1);
@@ -569,8 +544,8 @@ pub extern "C" fn PIT_AddThingIntercepts(thing: *mut mobj_t) -> c_uint {
                 thing.y + thing.radius,
             )
         };
-        let s1 = P_PointOnDivlineSide(x1, y1, &trace as *const _ as *mut _);
-        let s2 = P_PointOnDivlineSide(x2, y2, &trace as *const _ as *mut _);
+        let s1 = P_PointOnDivlineSide(x1, y1, &raw const trace as *const _ as *mut _);
+        let s2 = P_PointOnDivlineSide(x2, y2, &raw const trace as *const _ as *mut _);
         if s1 == s2 {
             return 1;
         }
@@ -580,7 +555,7 @@ pub extern "C" fn PIT_AddThingIntercepts(thing: *mut mobj_t) -> c_uint {
             dx: x2 - x1,
             dy: y2 - y1,
         };
-        let frac = P_InterceptVector(&trace as *const _ as *mut _, &mut dl);
+        let frac = P_InterceptVector(&raw const trace as *const _ as *mut _, &mut dl);
         if frac < 0 {
             return 1;
         }
@@ -588,7 +563,7 @@ pub extern "C" fn PIT_AddThingIntercepts(thing: *mut mobj_t) -> c_uint {
         (*intercept_p).isaline = 0;
         (*intercept_p).d.thing = thing as *const _ as *mut c_void;
         InterceptsOverrun(
-            intercept_p.offset_from(intercepts.as_mut_ptr()) as c_int,
+            intercept_p.offset_from(std::ptr::addr_of_mut!(intercepts[0])) as c_int,
             intercept_p,
         );
         intercept_p = intercept_p.offset(1);
@@ -609,12 +584,12 @@ pub extern "C" fn P_TraverseIntercepts(
         let count = if intercept_p.is_null() {
             0
         } else {
-            intercept_p.offset_from(intercepts.as_mut_ptr()) as c_int
+            intercept_p.offset_from(std::ptr::addr_of_mut!(intercepts[0])) as c_int
         };
         for _ in 0..count {
             let mut dist = c_int::MAX;
             let mut in_ptr: *mut intercept_t = ptr::null_mut();
-            let mut scan = intercepts.as_mut_ptr();
+            let mut scan = std::ptr::addr_of_mut!(intercepts[0]);
             while scan < intercept_p {
                 if (*scan).frac < dist {
                     dist = (*scan).frac;
@@ -650,7 +625,7 @@ pub extern "C" fn P_PathTraverse(
     unsafe {
         earlyout = flags & PT_EARLYOUT;
         crate::doom::r_main::validcount = crate::doom::r_main::validcount.wrapping_add(1);
-        intercept_p = intercepts.as_mut_ptr();
+        intercept_p = std::ptr::addr_of_mut!(intercepts[0]);
         let mut x1 = x1;
         let mut y1 = y1;
         if ((x1 - crate::doom::p_setup::bmaporgx) & (MAPBLOCKSIZE - 1)) == 0 {
@@ -706,25 +681,23 @@ pub extern "C" fn P_PathTraverse(
         let mut mapx = xt1;
         let mut mapy = yt1;
         for _ in 0..64 {
-            if flags & PT_ADDLINES != 0 {
-                if P_BlockLinesIterator(
+            if flags & PT_ADDLINES != 0
+                && P_BlockLinesIterator(
                     mapx,
                     mapy,
                     Some(PIT_AddLineIntercepts as unsafe extern "C" fn(*mut line_t) -> c_uint),
                 ) == 0
-                {
-                    return 0;
-                }
+            {
+                return 0;
             }
-            if flags & PT_ADDTHINGS != 0 {
-                if P_BlockThingsIterator(
+            if flags & PT_ADDTHINGS != 0
+                && P_BlockThingsIterator(
                     mapx,
                     mapy,
                     Some(PIT_AddThingIntercepts as unsafe extern "C" fn(*mut mobj_t) -> c_uint),
                 ) == 0
-                {
-                    return 0;
-                }
+            {
+                return 0;
             }
             if mapx == xt2 && mapy == yt2 {
                 break;

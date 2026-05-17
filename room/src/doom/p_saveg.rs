@@ -84,11 +84,11 @@ extern "C" {
 // Low-level I/O — uses the C FILE * managed by g_game.c.
 // ---------------------------------------------------------------------------
 
-use std::os::raw::{c_long, c_uchar};
+use std::os::raw::c_long;
 
 unsafe fn saveg_read8() -> u8 {
     let mut result: u8 = 0;
-    let n = libc::fread(&mut result as *mut u8 as *mut c_void, 1, 1, save_stream);
+    let n = libc::fread(&raw mut result as *mut c_void, 1, 1, save_stream);
     if n < 1 && savegame_error == 0 {
         savegame_error = 1;
     }
@@ -177,7 +177,7 @@ unsafe fn saveg_write_state_ptr(state: *const State) -> u32 {
     if state.is_null() {
         0
     } else {
-        state.offset_from(states.as_ptr()) as u32
+        state.offset_from(std::ptr::addr_of!(states[0])) as u32
     }
 }
 
@@ -186,7 +186,7 @@ unsafe fn saveg_read_state_ptr(index: u32) -> *mut State {
     if index == 0 {
         std::ptr::null_mut()
     } else {
-        states.as_mut_ptr().add(index as usize)
+        std::ptr::addr_of_mut!(states[0]).add(index as usize)
     }
 }
 
@@ -195,7 +195,7 @@ unsafe fn saveg_write_player_ptr(player: *const PlayerT) -> u32 {
     if player.is_null() {
         0
     } else {
-        (player.offset_from(players.as_ptr()) as u32) + 1
+        (player.offset_from(std::ptr::addr_of!(players[0])) as u32) + 1
     }
 }
 
@@ -204,7 +204,7 @@ unsafe fn saveg_read_player_ptr(value: u32) -> *mut PlayerT {
     if value == 0 {
         std::ptr::null_mut()
     } else {
-        players.as_mut_ptr().add((value - 1) as usize)
+        std::ptr::addr_of_mut!(players[0]).add((value - 1) as usize)
     }
 }
 
@@ -447,9 +447,7 @@ unsafe fn saveg_read_mobj_t(mobj: *mut c_void) {
     (*mo).lastlook = saveg_read32() as c_int;
 
     // spawnpoint
-    saveg_read_mapthing_t(
-        std::ptr::addr_of_mut!((*mo).spawnpoint) as *mut crate::doom::c_ffi::mapthing_t
-    );
+    saveg_read_mapthing_t(std::ptr::addr_of_mut!((*mo).spawnpoint));
 
     // tracer (raw pointer)
     (*mo).tracer = saveg_read32() as *mut c_void;
@@ -553,9 +551,7 @@ unsafe fn saveg_write_mobj_t(mobj: *const c_void) {
     saveg_write32((*mo).lastlook as u32);
 
     // spawnpoint
-    saveg_write_mapthing_t(
-        std::ptr::addr_of!((*mo).spawnpoint) as *const crate::doom::c_ffi::mapthing_t
-    );
+    saveg_write_mapthing_t(std::ptr::addr_of!((*mo).spawnpoint));
 
     // tracer
     saveg_write32((*mo).tracer as u32);
@@ -1275,14 +1271,14 @@ const tc_mobj: u8 = 1;
 
 #[no_mangle]
 pub unsafe extern "C" fn P_ArchiveThinkers() {
-    let cap = &mut thinkercap as *mut thinker_t;
+    let cap = &raw mut thinkercap;
     let mut th = (*cap).next;
 
     while th != cap {
         // Check if function is P_MobjThinker by comparing pointers
         let func = (*th).function.acp1;
         if let Some(fn_ptr) = func {
-            if fn_ptr as usize == P_MobjThinker as usize {
+            if fn_ptr as usize == P_MobjThinker as *const () as usize {
                 saveg_write8(tc_mobj);
                 saveg_write_pad();
                 saveg_write_mobj_t(th as *const c_void);
@@ -1299,7 +1295,7 @@ pub unsafe extern "C" fn P_ArchiveThinkers() {
 
 #[no_mangle]
 pub unsafe extern "C" fn P_UnArchiveThinkers() {
-    let cap = &mut thinkercap as *mut thinker_t;
+    let cap = &raw mut thinkercap;
     let mut currentthinker = (*cap).next;
 
     // remove all current thinkers
@@ -1308,7 +1304,7 @@ pub unsafe extern "C" fn P_UnArchiveThinkers() {
 
         let func = (*currentthinker).function.acp1;
         if let Some(fn_ptr) = func {
-            if fn_ptr as usize == P_MobjThinker as usize {
+            if fn_ptr as usize == P_MobjThinker as *const () as usize {
                 P_RemoveMobj(currentthinker as *mut c_void);
             } else {
                 Z_Free(currentthinker as *mut c_void);
@@ -1333,7 +1329,7 @@ pub unsafe extern "C" fn P_UnArchiveThinkers() {
                     std::mem::size_of::<crate::doom::c_ffi::mobj_t>() as c_int,
                     PU_LEVEL,
                     std::ptr::null_mut(),
-                ) as *mut c_void;
+                );
                 saveg_read_mobj_t(mobj);
 
                 let mo = mobj as *mut crate::doom::c_ffi::mobj_t;
@@ -1361,10 +1357,7 @@ pub unsafe extern "C" fn P_UnArchiveThinkers() {
                 // set thinker function
                 let thinker_ptr = std::ptr::addr_of_mut!((*mo).thinker_prev) as *mut thinker_t;
                 (*thinker_ptr).function = actionf_t {
-                    acp1: Some(core::mem::transmute::<
-                        unsafe extern "C" fn(*mut c_void),
-                        unsafe extern "C" fn(*mut c_void),
-                    >(P_MobjThinker)),
+                    acp1: Some(P_MobjThinker),
                 };
 
                 P_AddThinker(&mut (*thinker_ptr));
@@ -1395,7 +1388,7 @@ const tc_endspecials: u8 = 7;
 
 #[no_mangle]
 pub unsafe extern "C" fn P_ArchiveSpecials() {
-    let cap = &mut thinkercap as *mut thinker_t;
+    let cap = &raw mut thinkercap;
     let mut th = (*cap).next;
 
     while th != cap {
@@ -1405,7 +1398,7 @@ pub unsafe extern "C" fn P_ArchiveSpecials() {
         if func.acv.is_none() {
             // Check if it's in activeceilings
             let maxceilings: usize = 30;
-            let activeceilings_ptr = crate::doom::p_ceilng::activeceilings.as_ptr();
+            let activeceilings_ptr = std::ptr::addr_of!(crate::doom::p_ceilng::activeceilings[0]);
             let mut found = false;
             for i in 0..maxceilings {
                 if *activeceilings_ptr.add(i) == th as *mut ceiling_t {
@@ -1422,7 +1415,7 @@ pub unsafe extern "C" fn P_ArchiveSpecials() {
             }
         }
 
-        if func.acp1.map(|f| f as usize) == Some(T_MoveCeiling as usize) {
+        if func.acp1.map(|f| f as usize) == Some(T_MoveCeiling as *const () as usize) {
             saveg_write8(tc_ceiling);
             saveg_write_pad();
             saveg_write_ceiling_t(th as *const ceiling_t);
@@ -1430,7 +1423,7 @@ pub unsafe extern "C" fn P_ArchiveSpecials() {
             continue;
         }
 
-        if func.acp1.map(|f| f as usize) == Some(T_VerticalDoor as usize) {
+        if func.acp1.map(|f| f as usize) == Some(T_VerticalDoor as *const () as usize) {
             saveg_write8(tc_door);
             saveg_write_pad();
             saveg_write_vldoor_t(th as *const vldoor_t);
@@ -1438,7 +1431,7 @@ pub unsafe extern "C" fn P_ArchiveSpecials() {
             continue;
         }
 
-        if func.acp1.map(|f| f as usize) == Some(T_MoveFloor as usize) {
+        if func.acp1.map(|f| f as usize) == Some(T_MoveFloor as *const () as usize) {
             saveg_write8(tc_floor);
             saveg_write_pad();
             saveg_write_floormove_t(th as *const floormove_t);
@@ -1446,7 +1439,7 @@ pub unsafe extern "C" fn P_ArchiveSpecials() {
             continue;
         }
 
-        if func.acp1.map(|f| f as usize) == Some(T_PlatRaise as usize) {
+        if func.acp1.map(|f| f as usize) == Some(T_PlatRaise as *const () as usize) {
             saveg_write8(tc_plat);
             saveg_write_pad();
             saveg_write_plat_t(th as *const plat_t);
@@ -1454,7 +1447,7 @@ pub unsafe extern "C" fn P_ArchiveSpecials() {
             continue;
         }
 
-        if func.acp1.map(|f| f as usize) == Some(T_LightFlash as usize) {
+        if func.acp1.map(|f| f as usize) == Some(T_LightFlash as *const () as usize) {
             saveg_write8(tc_flash);
             saveg_write_pad();
             saveg_write_lightflash_t(th as *const lightflash_t);
@@ -1462,7 +1455,7 @@ pub unsafe extern "C" fn P_ArchiveSpecials() {
             continue;
         }
 
-        if func.acp1.map(|f| f as usize) == Some(T_StrobeFlash as usize) {
+        if func.acp1.map(|f| f as usize) == Some(T_StrobeFlash as *const () as usize) {
             saveg_write8(tc_strobe);
             saveg_write_pad();
             saveg_write_strobe_t(th as *const strobe_t);
@@ -1470,7 +1463,7 @@ pub unsafe extern "C" fn P_ArchiveSpecials() {
             continue;
         }
 
-        if func.acp1.map(|f| f as usize) == Some(T_Glow as usize) {
+        if func.acp1.map(|f| f as usize) == Some(T_Glow as *const () as usize) {
             saveg_write8(tc_glow);
             saveg_write_pad();
             saveg_write_glow_t(th as *const glow_t);
@@ -1500,7 +1493,7 @@ pub unsafe extern "C" fn P_UnArchiveSpecials() {
                 saveg_read_ceiling_t(ceiling);
                 (*ceiling).sector.as_mut().unwrap().specialdata = ceiling as *mut c_void;
 
-                if !ceiling.as_ref().unwrap().thinker.function.acp1.is_none() {
+                if ceiling.as_ref().unwrap().thinker.function.acp1.is_some() {
                     ceiling.as_mut().unwrap().thinker.function = actionf_p1_move_ceiling();
                 }
 
@@ -1541,7 +1534,7 @@ pub unsafe extern "C" fn P_UnArchiveSpecials() {
                 saveg_read_plat_t(plat);
                 (*plat).sector.as_mut().unwrap().specialdata = plat as *mut c_void;
 
-                if !plat.as_ref().unwrap().thinker.function.acp1.is_none() {
+                if plat.as_ref().unwrap().thinker.function.acp1.is_some() {
                     plat.as_mut().unwrap().thinker.function = actionf_p1_plat_raise();
                 }
 
@@ -1702,7 +1695,7 @@ mod tests {
         save_stream = libc::fmemopen(
             data.as_mut_ptr() as *mut libc::c_void,
             data.len(),
-            b"r\0".as_ptr() as *const libc::c_char,
+            c"r".as_ptr() as *const libc::c_char,
         );
         savegame_error = 0;
         savegamelength = 0;
@@ -1725,7 +1718,7 @@ mod tests {
                 function: actionf_t { acp1: None },
             };
             with_mem_stream(&mut data, || {
-                saveg_read_thinker_t(&mut th as *mut thinker_t);
+                saveg_read_thinker_t(&raw mut th as *mut thinker_t);
             });
             assert!(
                 th.function.acp1.is_none(),
@@ -1745,7 +1738,7 @@ mod tests {
         unsafe {
             let mut mo = std::mem::MaybeUninit::<mobj_t>::zeroed().assume_init();
             with_mem_stream(&mut data, || {
-                saveg_read_mobj_t(&mut mo as *mut mobj_t as *mut libc::c_void);
+                saveg_read_mobj_t(&raw mut mo as *mut mobj_t as *mut libc::c_void);
             });
             let thinker_ptr = std::ptr::addr_of!(mo.thinker_prev) as *const thinker_t;
             assert!(

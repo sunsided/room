@@ -29,7 +29,7 @@ use crate::doom::m_misc::{M_FileLength, FILE as MiscFILE};
 use crate::doom::z_zone::{Z_Free, Z_Malloc, PU_STATIC};
 
 unsafe extern "C" fn W_StdC_OpenFile(path: *mut c_char) -> *mut wad_file_t {
-    let fstream = fopen(path as *const c_char, b"rb\0".as_ptr() as *const c_char);
+    let fstream = fopen(path as *const c_char, c"rb".as_ptr());
     if fstream.is_null() {
         return ptr::null_mut();
     }
@@ -45,7 +45,7 @@ unsafe extern "C" fn W_StdC_OpenFile(path: *mut c_char) -> *mut wad_file_t {
         return ptr::null_mut();
     }
 
-    (*result).wad.file_class = ptr::addr_of_mut!(stdc_wad_file);
+    (*result).wad.file_class = std::ptr::addr_of_mut!(stdc_wad_file);
     (*result).wad.mapped = ptr::null_mut();
     (*result).wad.length = M_FileLength(fstream as *mut MiscFILE) as c_uint;
     (*result).fstream = fstream;

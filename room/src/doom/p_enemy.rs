@@ -7,7 +7,6 @@
 use std::ffi::c_void;
 use std::os::raw::{c_int, c_uint};
 
-use crate::doom::p_tick::actionf_t;
 use crate::types::Boolean;
 type size_t = usize;
 type angle_t = c_uint;
@@ -25,17 +24,16 @@ fn abs(x: c_int) -> c_int {
     }
 }
 
-use crate::doom::c_ffi::{line_t, sector_t, side_t, vertex_t, MAPBLOCKSHIFT};
+use crate::doom::c_ffi::{line_t, sector_t, vertex_t, MAPBLOCKSHIFT};
 use crate::doom::d_loop::gametic;
 use crate::doom::d_player::{players, PlayerT, PspdefT, MAXPLAYERS};
 use crate::doom::doomstat::{gamemode, gameversion};
 use crate::doom::info::{
     mobjinfo, MobjInfo, State, MF_AMBUSH, MF_CORPSE, MF_FLOAT, MF_INFLOAT, MF_JUSTATTACKED,
-    MF_JUSTHIT, MF_SHADOW, MF_SHOOTABLE, MF_SKULLFLY, MF_SOLID, MT_ARACHPLAZ, MT_BABY, MT_BARREL,
-    MT_BOSSBRAIN, MT_BOSSSPIT, MT_BOSSTARGET, MT_BRUISER, MT_BRUISERSHOT, MT_CHAINGUY, MT_CYBORG,
-    MT_FATSHOT, MT_FATSO, MT_FIRE, MT_HEAD, MT_HEADSHOT, MT_IFOG, MT_KEEN, MT_KNIGHT, MT_PAIN,
-    MT_ROCKET, MT_SERGEANT, MT_SHADOWS, MT_SHOTGUY, MT_SKULL, MT_SMOKE, MT_SPAWNFIRE, MT_SPAWNSHOT,
-    MT_SPIDER, MT_TELEPORTMAN, MT_TRACER, MT_TROOP, MT_TROOPSHOT, MT_UNDEAD, MT_VILE, MT_WOLFSS,
+    MF_JUSTHIT, MF_SHADOW, MF_SHOOTABLE, MF_SKULLFLY, MF_SOLID, MT_ARACHPLAZ, MT_BABY,
+    MT_BOSSTARGET, MT_BRUISER, MT_BRUISERSHOT, MT_CYBORG, MT_FATSHOT, MT_FATSO, MT_FIRE, MT_HEAD,
+    MT_HEADSHOT, MT_KNIGHT, MT_PAIN, MT_ROCKET, MT_SERGEANT, MT_SHADOWS, MT_SKULL, MT_SMOKE,
+    MT_SPAWNFIRE, MT_SPAWNSHOT, MT_SPIDER, MT_TRACER, MT_TROOP, MT_TROOPSHOT, MT_UNDEAD, MT_VILE,
     S_BRAINEXPLODE1, S_NULL, S_VILE_HEAL1,
 };
 use crate::doom::m_fixed::FRACUNIT;
@@ -47,17 +45,17 @@ use crate::doom::p_map::{
     P_RadiusAttack, P_TeleportMove, P_TryMove,
 };
 use crate::doom::p_maputl::{
-    openbottom, openrange, opentop, P_AproxDistance, P_BlockThingsIterator, P_LineOpening,
-    P_SetThingPosition, P_UnsetThingPosition,
+    openrange, P_AproxDistance, P_BlockThingsIterator, P_LineOpening, P_SetThingPosition,
+    P_UnsetThingPosition,
 };
 use crate::doom::p_mobj::{
     P_MobjThinker, P_RemoveMobj, P_SetMobjState, P_SpawnMissile, P_SpawnMobj, P_SpawnPuff,
     P_SubstNullMobj,
 };
-use crate::doom::p_setup::{bmaporgx, bmaporgy, numsectors, sectors, sides};
+use crate::doom::p_setup::{bmaporgx, bmaporgy, sides};
 use crate::doom::p_sight::P_CheckSight;
 use crate::doom::p_switch::P_UseSpecialLine;
-use crate::doom::p_telept::{mobj_t, subsector_t};
+use crate::doom::p_telept::mobj_t;
 use crate::doom::tables::{ANG180, ANG270, ANG90, ANGLETOFINESHIFT};
 use crate::i_error;
 type CffiMobj = crate::doom::c_ffi::mobj_t;
@@ -170,10 +168,13 @@ pub static mut diags: [dirtype_t; 4] = [DI_NORTHWEST, DI_NORTHEAST, DI_SOUTHWEST
 #[no_mangle]
 pub static mut soundtarget: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
 #[no_mangle]
-pub unsafe extern "C" fn P_RecursiveSound(mut sec: *mut sector_t, mut soundblocks: c_int) {
-    let mut i: c_int = 0;
-    let mut check: *mut line_t = std::ptr::null_mut::<line_t>();
-    let mut other: *mut sector_t = std::ptr::null_mut::<sector_t>();
+pub unsafe extern "C" fn P_RecursiveSound(sec: *mut sector_t, soundblocks: c_int) {
+    let mut i: c_int;
+
+    let mut check: *mut line_t;
+
+    let mut other: *mut sector_t;
+
     if (*sec).validcount == validcount && (*sec).soundtraversed <= soundblocks + 1 as c_int {
         return;
     }
@@ -183,18 +184,16 @@ pub unsafe extern "C" fn P_RecursiveSound(mut sec: *mut sector_t, mut soundblock
     i = 0 as c_int;
     while i < (*sec).linecount {
         check = *(*sec).lines.offset(i as isize) as *mut line_t;
-        if !((*check).flags as c_int & ML_TWOSIDED == 0) {
+        if (*check).flags as c_int & ML_TWOSIDED != 0 {
             P_LineOpening(check);
-            if !(openrange <= 0 as c_int) {
-                if (*sides.offset((*check).sidenum[0 as c_int as usize] as isize)).sector
-                    as *mut sector_t
-                    == sec
-                {
-                    other = (*sides.offset((*check).sidenum[1 as c_int as usize] as isize)).sector
-                        as *mut sector_t;
+            if openrange > 0 as c_int {
+                if std::ptr::eq(
+                    (*sides.offset((*check).sidenum[0 as c_int as usize] as isize)).sector,
+                    sec,
+                ) {
+                    other = (*sides.offset((*check).sidenum[1 as c_int as usize] as isize)).sector;
                 } else {
-                    other = (*sides.offset((*check).sidenum[0 as c_int as usize] as isize)).sector
-                        as *mut sector_t;
+                    other = (*sides.offset((*check).sidenum[0 as c_int as usize] as isize)).sector;
                 }
                 if (*check).flags as c_int & ML_SOUNDBLOCK != 0 {
                     if soundblocks == 0 {
@@ -209,31 +208,30 @@ pub unsafe extern "C" fn P_RecursiveSound(mut sec: *mut sector_t, mut soundblock
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn P_NoiseAlert(mut target: *mut mobj_t, mut emmiter: *mut mobj_t) {
+pub unsafe extern "C" fn P_NoiseAlert(target: *mut mobj_t, emmiter: *mut mobj_t) {
     soundtarget = target;
     validcount += 1;
     P_RecursiveSound((*(*emmiter).subsector).sector as *mut sector_t, 0 as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn P_CheckMeleeRange(mut actor: *mut mobj_t) -> Boolean {
-    let mut pl: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut dist: fixed_t = 0;
+pub unsafe extern "C" fn P_CheckMeleeRange(actor: *mut mobj_t) -> Boolean {
     if (*actor).target.is_null() {
         return Boolean::FALSE;
     }
-    pl = (*actor).target;
-    dist = P_AproxDistance((*pl).x - (*actor).x, (*pl).y - (*actor).y);
+    let pl: *mut mobj_t = (*actor).target;
+    let dist: fixed_t = P_AproxDistance((*pl).x - (*actor).x, (*pl).y - (*actor).y);
     if dist >= MELEERANGE - 20 as c_int * FRACUNIT + (*((*pl).info as *mut MobjInfo)).radius {
         return Boolean::FALSE;
     }
     if P_CheckSight(actor, (*actor).target) == 0 {
         return Boolean::FALSE;
     }
-    return Boolean::TRUE;
+    Boolean::TRUE
 }
 #[no_mangle]
-pub unsafe extern "C" fn P_CheckMissileRange(mut actor: *mut mobj_t) -> Boolean {
-    let mut dist: fixed_t = 0;
+pub unsafe extern "C" fn P_CheckMissileRange(actor: *mut mobj_t) -> Boolean {
+    let mut dist: fixed_t;
+
     if P_CheckSight(actor, (*actor).target) == 0 {
         return Boolean::FALSE;
     }
@@ -253,10 +251,9 @@ pub unsafe extern "C" fn P_CheckMissileRange(mut actor: *mut mobj_t) -> Boolean 
         dist -= 128 as c_int * FRACUNIT;
     }
     dist >>= 16 as c_int;
-    if (*actor).mobjtype as c_uint == MT_VILE as c_int as c_uint {
-        if dist > 14 as c_int * 64 as c_int {
-            return Boolean::FALSE;
-        }
+    if (*actor).mobjtype as c_uint == MT_VILE as c_int as c_uint && dist > 14 as c_int * 64 as c_int
+    {
+        return Boolean::FALSE;
     }
     if (*actor).mobjtype as c_uint == MT_UNDEAD as c_int as c_uint {
         if dist < 196 as c_int {
@@ -279,7 +276,7 @@ pub unsafe extern "C" fn P_CheckMissileRange(mut actor: *mut mobj_t) -> Boolean 
     if P_Random() < dist {
         return Boolean::FALSE;
     }
-    return Boolean::TRUE;
+    Boolean::TRUE
 }
 #[no_mangle]
 pub static mut xspeed: [fixed_t; 8] = [
@@ -304,23 +301,22 @@ pub static mut yspeed: [fixed_t; 8] = [
     -47000 as c_int,
 ];
 #[no_mangle]
-pub unsafe extern "C" fn P_Move(mut actor: *mut mobj_t) -> Boolean {
-    let mut tryx: fixed_t = 0;
-    let mut tryy: fixed_t = 0;
-    let mut ld: *mut line_t = std::ptr::null_mut::<line_t>();
-    let mut try_ok: Boolean = Boolean::FALSE;
-    let mut good: Boolean = Boolean::FALSE;
+pub unsafe extern "C" fn P_Move(actor: *mut mobj_t) -> Boolean {
+    let mut ld: *mut line_t;
+
+    let mut good: Boolean;
+
     if (*actor).movedir == DI_NODIR as c_int {
         return Boolean::FALSE;
     }
     if (*actor).movedir as c_uint >= 8 as c_uint {
         i_error!("Weird actor->movedir!");
     }
-    tryx = (*actor).x
+    let tryx: fixed_t = (*actor).x
         + (*((*actor).info as *mut MobjInfo)).speed as fixed_t * xspeed[(*actor).movedir as usize];
-    tryy = (*actor).y
+    let tryy: fixed_t = (*actor).y
         + (*((*actor).info as *mut MobjInfo)).speed as fixed_t * yspeed[(*actor).movedir as usize];
-    try_ok = Boolean::from_raw(P_TryMove(actor as *mut CffiMobj, tryx, tryy));
+    let try_ok: Boolean = Boolean::from_raw(P_TryMove(actor as *mut CffiMobj, tryx, tryy));
     if try_ok.is_false() {
         if (*actor).flags & MF_FLOAT as c_int != 0 && floatok != 0 {
             if (*actor).z < tmfloorz {
@@ -338,8 +334,8 @@ pub unsafe extern "C" fn P_Move(mut actor: *mut mobj_t) -> Boolean {
         good = Boolean::FALSE;
         loop {
             let c2rust_fresh0 = numspechit;
-            numspechit = numspechit - 1;
-            if !(c2rust_fresh0 != 0) {
+            numspechit -= 1;
+            if c2rust_fresh0 == 0 {
                 break;
             }
             ld = spechit[numspechit as usize];
@@ -359,31 +355,28 @@ pub unsafe extern "C" fn P_Move(mut actor: *mut mobj_t) -> Boolean {
     if (*actor).flags & MF_FLOAT as c_int == 0 {
         (*actor).z = (*actor).floorz;
     }
-    return Boolean::TRUE;
+    Boolean::TRUE
 }
 #[no_mangle]
-pub unsafe extern "C" fn P_TryWalk(mut actor: *mut mobj_t) -> Boolean {
+pub unsafe extern "C" fn P_TryWalk(actor: *mut mobj_t) -> Boolean {
     if P_Move(actor).is_false() {
         return Boolean::FALSE;
     }
     (*actor).movecount = P_Random() & 15 as c_int;
-    return Boolean::TRUE;
+    Boolean::TRUE
 }
 #[no_mangle]
-pub unsafe extern "C" fn P_NewChaseDir(mut actor: *mut mobj_t) {
-    let mut deltax: fixed_t = 0;
-    let mut deltay: fixed_t = 0;
+pub unsafe extern "C" fn P_NewChaseDir(actor: *mut mobj_t) {
     let mut d: [dirtype_t; 3] = [DI_EAST; 3];
-    let mut tdir: c_int = 0;
-    let mut olddir: dirtype_t = DI_EAST;
-    let mut turnaround: dirtype_t = DI_EAST;
+    let mut tdir: c_int;
+
     if (*actor).target.is_null() {
         i_error!("P_NewChaseDir: called with no target");
     }
-    olddir = (*actor).movedir as dirtype_t;
-    turnaround = opposite[olddir as usize];
-    deltax = (*(*actor).target).x - (*actor).x;
-    deltay = (*(*actor).target).y - (*actor).y;
+    let olddir: dirtype_t = (*actor).movedir as dirtype_t;
+    let turnaround: dirtype_t = opposite[olddir as usize];
+    let deltax: fixed_t = (*(*actor).target).x - (*actor).x;
+    let deltay: fixed_t = (*(*actor).target).y - (*actor).y;
     if deltax > 10 as c_int * FRACUNIT {
         d[1 as c_int as usize] = DI_EAST;
     } else if deltax < -10 as c_int * FRACUNIT {
@@ -468,30 +461,29 @@ pub unsafe extern "C" fn P_NewChaseDir(mut actor: *mut mobj_t) {
     (*actor).movedir = DI_NODIR as c_int;
 }
 #[no_mangle]
-pub unsafe extern "C" fn P_LookForPlayers(
-    mut actor: *mut mobj_t,
-    mut allaround: Boolean,
-) -> Boolean {
-    let mut c: c_int = 0;
-    let mut stop: c_int = 0;
-    let mut player: *mut PlayerT = std::ptr::null_mut::<PlayerT>();
-    let mut an: angle_t = 0;
-    let mut dist: fixed_t = 0;
+pub unsafe extern "C" fn P_LookForPlayers(actor: *mut mobj_t, allaround: Boolean) -> Boolean {
+    let mut c: c_int;
+
+    let mut player: *mut PlayerT;
+
+    let mut an: angle_t;
+
+    let mut dist: fixed_t;
+
     c = 0 as c_int;
-    stop = (*actor).lastlook - 1 as c_int & 3 as c_int;
+    let stop: c_int = ((*actor).lastlook - 1 as c_int) & 3 as c_int;
     loop {
         's_20: {
-            if !(playeringame[(*actor).lastlook as usize] == 0) {
+            if playeringame[(*actor).lastlook as usize] != 0 {
                 let c2rust_fresh1 = c;
-                c = c + 1;
+                c += 1;
                 if c2rust_fresh1 == 2 as c_int || (*actor).lastlook == stop {
                     return Boolean::FALSE;
                 }
-                player = (&raw mut players as *mut PlayerT).offset((*actor).lastlook as isize)
-                    as *mut PlayerT;
-                if !((*player).health <= 0 as c_int) {
+                player = (&raw mut players as *mut PlayerT).offset((*actor).lastlook as isize);
+                if (*player).health > 0 as c_int {
                     let sight = P_CheckSight(actor, (*player).mo as *mut mobj_t);
-                    if !(sight == 0) {
+                    if sight != 0 {
                         if allaround.is_false() {
                             an = R_PointToAngle2(
                                 (*actor).x,
@@ -516,13 +508,15 @@ pub unsafe extern "C" fn P_LookForPlayers(
                 }
             }
         }
-        (*actor).lastlook = (*actor).lastlook + 1 as c_int & 3 as c_int;
+        (*actor).lastlook = ((*actor).lastlook + 1 as c_int) & 3 as c_int;
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_KeenDie(mut mo: *mut mobj_t) {
-    let mut th: *mut thinker_t = std::ptr::null_mut::<thinker_t>();
-    let mut mo2: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+pub unsafe extern "C" fn A_KeenDie(mo: *mut mobj_t) {
+    let mut th: *mut thinker_t;
+
+    let mut mo2: *mut mobj_t;
+
     let mut junk: line_t = line_t {
         v1: std::ptr::null_mut::<vertex_t>(),
         v2: std::ptr::null_mut::<vertex_t>(),
@@ -541,14 +535,14 @@ pub unsafe extern "C" fn A_KeenDie(mut mo: *mut mobj_t) {
     };
     A_Fall(mo);
     th = thinkercap.next;
-    while th != &mut thinkercap as *mut thinker_t {
-        if !((*th).function.acp1
-            != core::mem::transmute::<
+    while !std::ptr::eq(th, &raw const thinkercap) {
+        if (*th).function.acp1
+            == core::mem::transmute::<
                 Option<unsafe extern "C" fn(*mut mobj_t) -> ()>,
                 Option<unsafe extern "C" fn(*mut c_void) -> ()>,
             >(Some(
                 P_MobjThinker as unsafe extern "C" fn(*mut mobj_t) -> (),
-            )))
+            ))
         {
             mo2 = th as *mut mobj_t;
             if mo2 != mo
@@ -564,13 +558,12 @@ pub unsafe extern "C" fn A_KeenDie(mut mo: *mut mobj_t) {
     EV_DoDoor(&mut junk as *mut line_t as *mut PLineThing, vld_open);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_Look(mut actor: *mut mobj_t) {
-    let mut targ: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+pub unsafe extern "C" fn A_Look(actor: *mut mobj_t) {
     (*actor).threshold = 0 as c_int;
-    targ = (*(*(*actor).subsector).sector).soundtarget as *mut mobj_t;
+    let targ: *mut mobj_t = (*(*(*actor).subsector).sector).soundtarget as *mut mobj_t;
     '_seeyou: {
         if !targ.is_null() && (*targ).flags & MF_SHOOTABLE as c_int != 0 {
-            (*actor).target = targ as *mut mobj_t;
+            (*actor).target = targ;
             if (*actor).flags & MF_AMBUSH as c_int != 0 {
                 if P_CheckSight(actor, (*actor).target) != 0 {
                     break '_seeyou;
@@ -584,18 +577,11 @@ pub unsafe extern "C" fn A_Look(mut actor: *mut mobj_t) {
         }
     }
     if (*((*actor).info as *mut MobjInfo)).seesound != 0 {
-        let mut sound: c_int = 0;
-        match (*((*actor).info as *mut MobjInfo)).seesound {
-            36 | 37 | 38 => {
-                sound = sfx_posit1 as c_int + P_Random() % 3 as c_int;
-            }
-            39 | 40 => {
-                sound = sfx_bgsit1 as c_int + P_Random() % 2 as c_int;
-            }
-            _ => {
-                sound = (*((*actor).info as *mut MobjInfo)).seesound;
-            }
-        }
+        let sound = match (*((*actor).info as *mut MobjInfo)).seesound {
+            36..=38 => sfx_posit1 as c_int + P_Random() % 3 as c_int,
+            39 | 40 => sfx_bgsit1 as c_int + P_Random() % 2 as c_int,
+            s => s,
+        };
         if (*actor).mobjtype as c_uint == MT_SPIDER as c_int as c_uint
             || (*actor).mobjtype as c_uint == MT_CYBORG as c_int as c_uint
         {
@@ -610,8 +596,9 @@ pub unsafe extern "C" fn A_Look(mut actor: *mut mobj_t) {
     );
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_Chase(mut actor: *mut mobj_t) {
-    let mut delta: c_int = 0;
+pub unsafe extern "C" fn A_Chase(actor: *mut mobj_t) {
+    let delta: c_int;
+
     if (*actor).reactiontime != 0 {
         (*actor).reactiontime -= 1;
     }
@@ -663,25 +650,25 @@ pub unsafe extern "C" fn A_Chase(mut actor: *mut mobj_t) {
         );
         return;
     }
-    if (*((*actor).info as *mut MobjInfo)).missilestate != 0 {
-        if !((gameskill as c_int) < sk_nightmare as c_int
+    if (*((*actor).info as *mut MobjInfo)).missilestate != 0
+        && !((gameskill as c_int) < sk_nightmare as c_int
             && fastparm == 0
             && (*actor).movecount != 0)
-        {
-            if P_CheckMissileRange(actor).is_truthy() {
-                P_SetMobjState(
-                    actor,
-                    (*((*actor).info as *mut MobjInfo)).missilestate as statenum_t,
-                );
-                (*actor).flags |= MF_JUSTATTACKED as c_int;
-                return;
-            }
-        }
+        && P_CheckMissileRange(actor).is_truthy()
+    {
+        P_SetMobjState(
+            actor,
+            (*((*actor).info as *mut MobjInfo)).missilestate as statenum_t,
+        );
+        (*actor).flags |= MF_JUSTATTACKED as c_int;
+        return;
     }
-    if netgame != 0 && (*actor).threshold == 0 && P_CheckSight(actor, (*actor).target) == 0 {
-        if P_LookForPlayers(actor, Boolean::TRUE).is_truthy() {
-            return;
-        }
+    if netgame != 0
+        && (*actor).threshold == 0
+        && P_CheckSight(actor, (*actor).target) == 0
+        && P_LookForPlayers(actor, Boolean::TRUE).is_truthy()
+    {
+        return;
     }
     (*actor).movecount -= 1;
     if (*actor).movecount < 0 as c_int || P_Move(actor).is_false() {
@@ -695,7 +682,7 @@ pub unsafe extern "C" fn A_Chase(mut actor: *mut mobj_t) {
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_FaceTarget(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_FaceTarget(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
         return;
     }
@@ -713,19 +700,19 @@ pub unsafe extern "C" fn A_FaceTarget(mut actor: *mut mobj_t) {
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_PosAttack(mut actor: *mut mobj_t) {
-    let mut angle: c_int = 0;
-    let mut damage: c_int = 0;
-    let mut slope: c_int = 0;
+pub unsafe extern "C" fn A_PosAttack(actor: *mut mobj_t) {
+    let mut angle: c_int;
+
     if (*actor).target.is_null() {
         return;
     }
     A_FaceTarget(actor);
     angle = (*actor).angle as c_int;
-    slope = P_AimLineAttack(actor as *mut CffiMobj, angle as angle_t, MISSILERANGE) as c_int;
+    let slope: c_int =
+        P_AimLineAttack(actor as *mut CffiMobj, angle as angle_t, MISSILERANGE) as c_int;
     S_StartSound(actor as *mut c_void, sfx_pistol as c_int);
     angle = angle.wrapping_add((P_Random() - P_Random()) << 20 as c_int);
-    damage = (P_Random() % 5 as c_int + 1 as c_int) * 3 as c_int;
+    let damage: c_int = (P_Random() % 5 as c_int + 1 as c_int) * 3 as c_int;
     P_LineAttack(
         actor as *mut CffiMobj,
         angle as angle_t,
@@ -735,19 +722,21 @@ pub unsafe extern "C" fn A_PosAttack(mut actor: *mut mobj_t) {
     );
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_SPosAttack(mut actor: *mut mobj_t) {
-    let mut i: c_int = 0;
-    let mut angle: c_int = 0;
-    let mut bangle: c_int = 0;
-    let mut damage: c_int = 0;
-    let mut slope: c_int = 0;
+pub unsafe extern "C" fn A_SPosAttack(actor: *mut mobj_t) {
+    let mut i: c_int;
+
+    let mut angle: c_int;
+
+    let mut damage: c_int;
+
     if (*actor).target.is_null() {
         return;
     }
     S_StartSound(actor as *mut c_void, sfx_shotgn as c_int);
     A_FaceTarget(actor);
-    bangle = (*actor).angle as c_int;
-    slope = P_AimLineAttack(actor as *mut CffiMobj, bangle as angle_t, MISSILERANGE) as c_int;
+    let bangle: c_int = (*actor).angle as c_int;
+    let slope: c_int =
+        P_AimLineAttack(actor as *mut CffiMobj, bangle as angle_t, MISSILERANGE) as c_int;
     i = 0 as c_int;
     while i < 3 as c_int {
         angle = bangle.wrapping_add((P_Random() - P_Random()) << 20 as c_int);
@@ -763,20 +752,17 @@ pub unsafe extern "C" fn A_SPosAttack(mut actor: *mut mobj_t) {
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_CPosAttack(mut actor: *mut mobj_t) {
-    let mut angle: c_int = 0;
-    let mut bangle: c_int = 0;
-    let mut damage: c_int = 0;
-    let mut slope: c_int = 0;
+pub unsafe extern "C" fn A_CPosAttack(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
         return;
     }
     S_StartSound(actor as *mut c_void, sfx_shotgn as c_int);
     A_FaceTarget(actor);
-    bangle = (*actor).angle as c_int;
-    slope = P_AimLineAttack(actor as *mut CffiMobj, bangle as angle_t, MISSILERANGE) as c_int;
-    angle = bangle.wrapping_add((P_Random() - P_Random()) << 20 as c_int);
-    damage = (P_Random() % 5 as c_int + 1 as c_int) * 3 as c_int;
+    let bangle: c_int = (*actor).angle as c_int;
+    let slope: c_int =
+        P_AimLineAttack(actor as *mut CffiMobj, bangle as angle_t, MISSILERANGE) as c_int;
+    let angle: c_int = bangle.wrapping_add((P_Random() - P_Random()) << 20 as c_int);
+    let damage: c_int = (P_Random() % 5 as c_int + 1 as c_int) * 3 as c_int;
     P_LineAttack(
         actor as *mut CffiMobj,
         angle as angle_t,
@@ -786,7 +772,7 @@ pub unsafe extern "C" fn A_CPosAttack(mut actor: *mut mobj_t) {
     );
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_CPosRefire(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_CPosRefire(actor: *mut mobj_t) {
     A_FaceTarget(actor);
     if P_Random() < 40 as c_int {
         return;
@@ -802,7 +788,7 @@ pub unsafe extern "C" fn A_CPosRefire(mut actor: *mut mobj_t) {
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_SpidRefire(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_SpidRefire(actor: *mut mobj_t) {
     A_FaceTarget(actor);
     if P_Random() < 10 as c_int {
         return;
@@ -818,7 +804,7 @@ pub unsafe extern "C" fn A_SpidRefire(mut actor: *mut mobj_t) {
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_BspiAttack(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_BspiAttack(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
         return;
     }
@@ -826,8 +812,9 @@ pub unsafe extern "C" fn A_BspiAttack(mut actor: *mut mobj_t) {
     P_SpawnMissile(actor, (*actor).target, MT_ARACHPLAZ);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_TroopAttack(mut actor: *mut mobj_t) {
-    let mut damage: c_int = 0;
+pub unsafe extern "C" fn A_TroopAttack(actor: *mut mobj_t) {
+    let damage: c_int;
+
     if (*actor).target.is_null() {
         return;
     }
@@ -841,8 +828,9 @@ pub unsafe extern "C" fn A_TroopAttack(mut actor: *mut mobj_t) {
     P_SpawnMissile(actor, (*actor).target, MT_TROOPSHOT);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_SargAttack(mut actor: *mut mobj_t) {
-    let mut damage: c_int = 0;
+pub unsafe extern "C" fn A_SargAttack(actor: *mut mobj_t) {
+    let damage: c_int;
+
     if (*actor).target.is_null() {
         return;
     }
@@ -853,8 +841,9 @@ pub unsafe extern "C" fn A_SargAttack(mut actor: *mut mobj_t) {
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_HeadAttack(mut actor: *mut mobj_t) {
-    let mut damage: c_int = 0;
+pub unsafe extern "C" fn A_HeadAttack(actor: *mut mobj_t) {
+    let damage: c_int;
+
     if (*actor).target.is_null() {
         return;
     }
@@ -867,7 +856,7 @@ pub unsafe extern "C" fn A_HeadAttack(mut actor: *mut mobj_t) {
     P_SpawnMissile(actor, (*actor).target, MT_HEADSHOT);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_CyberAttack(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_CyberAttack(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
         return;
     }
@@ -875,8 +864,9 @@ pub unsafe extern "C" fn A_CyberAttack(mut actor: *mut mobj_t) {
     P_SpawnMissile(actor, (*actor).target, MT_ROCKET);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_BruisAttack(mut actor: *mut mobj_t) {
-    let mut damage: c_int = 0;
+pub unsafe extern "C" fn A_BruisAttack(actor: *mut mobj_t) {
+    let damage: c_int;
+
     if (*actor).target.is_null() {
         return;
     }
@@ -889,14 +879,13 @@ pub unsafe extern "C" fn A_BruisAttack(mut actor: *mut mobj_t) {
     P_SpawnMissile(actor, (*actor).target, MT_BRUISERSHOT);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_SkelMissile(mut actor: *mut mobj_t) {
-    let mut mo: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+pub unsafe extern "C" fn A_SkelMissile(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
         return;
     }
     A_FaceTarget(actor);
     (*actor).z += 16 as c_int * FRACUNIT;
-    mo = P_SpawnMissile(actor, (*actor).target, MT_TRACER);
+    let mo: *mut mobj_t = P_SpawnMissile(actor, (*actor).target, MT_TRACER);
     (*actor).z -= 16 as c_int * FRACUNIT;
     (*mo).x += (*mo).momx;
     (*mo).y += (*mo).momy;
@@ -905,17 +894,16 @@ pub unsafe extern "C" fn A_SkelMissile(mut actor: *mut mobj_t) {
 #[no_mangle]
 pub static mut TRACEANGLE: c_int = 0xc000000 as c_int;
 #[no_mangle]
-pub unsafe extern "C" fn A_Tracer(mut actor: *mut mobj_t) {
-    let mut exact: angle_t = 0;
-    let mut dist: fixed_t = 0;
-    let mut slope: fixed_t = 0;
-    let mut dest: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut th: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+pub unsafe extern "C" fn A_Tracer(actor: *mut mobj_t) {
+    let mut exact: angle_t;
+
+    let mut dist: fixed_t;
+
     if gametic & 3 as c_int != 0 {
         return;
     }
     P_SpawnPuff((*actor).x, (*actor).y, (*actor).z);
-    th = P_SpawnMobj(
+    let th: *mut mobj_t = P_SpawnMobj(
         (*actor).x - (*actor).momx,
         (*actor).y - (*actor).momy,
         (*actor).z,
@@ -926,7 +914,7 @@ pub unsafe extern "C" fn A_Tracer(mut actor: *mut mobj_t) {
     if (*th).tics < 1 as c_int {
         (*th).tics = 1 as c_int;
     }
-    dest = (*actor).tracer;
+    let dest: *mut mobj_t = (*actor).tracer;
     if dest.is_null() || (*dest).health <= 0 as c_int {
         return;
     }
@@ -958,7 +946,7 @@ pub unsafe extern "C" fn A_Tracer(mut actor: *mut mobj_t) {
     if dist < 1 as c_int {
         dist = 1 as c_int as fixed_t;
     }
-    slope = ((*dest).z + 40 as fixed_t * FRACUNIT - (*actor).z) / dist;
+    let slope: fixed_t = ((*dest).z + 40 as fixed_t * FRACUNIT - (*actor).z) / dist;
     if slope < (*actor).momz {
         (*actor).momz -= FRACUNIT / 8 as c_int;
     } else {
@@ -966,7 +954,7 @@ pub unsafe extern "C" fn A_Tracer(mut actor: *mut mobj_t) {
     };
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_SkelWhoosh(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_SkelWhoosh(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
         return;
     }
@@ -974,8 +962,9 @@ pub unsafe extern "C" fn A_SkelWhoosh(mut actor: *mut mobj_t) {
     S_StartSound(actor as *mut c_void, sfx_skeswg as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_SkelFist(mut actor: *mut mobj_t) {
-    let mut damage: c_int = 0;
+pub unsafe extern "C" fn A_SkelFist(actor: *mut mobj_t) {
+    let damage: c_int;
+
     if (*actor).target.is_null() {
         return;
     }
@@ -995,9 +984,7 @@ pub static mut viletryx: fixed_t = 0;
 #[no_mangle]
 pub static mut viletryy: fixed_t = 0;
 #[no_mangle]
-pub unsafe extern "C" fn PIT_VileCheck(mut thing: *mut mobj_t) -> Boolean {
-    let mut maxdist: c_int = 0;
-    let mut check: Boolean = Boolean::FALSE;
+pub unsafe extern "C" fn PIT_VileCheck(thing: *mut mobj_t) -> Boolean {
     if (*thing).flags & MF_CORPSE as c_int == 0 {
         return Boolean::TRUE;
     }
@@ -1007,7 +994,7 @@ pub unsafe extern "C" fn PIT_VileCheck(mut thing: *mut mobj_t) -> Boolean {
     if (*((*thing).info as *mut MobjInfo)).raisestate == S_NULL as c_int {
         return Boolean::TRUE;
     }
-    maxdist =
+    let maxdist: c_int =
         (*((*thing).info as *mut MobjInfo)).radius + mobjinfo[MT_VILE as c_int as usize].radius;
     if ((*thing).x as c_int - viletryx as c_int).abs() > maxdist
         || ((*thing).y as c_int - viletryy as c_int).abs() > maxdist
@@ -1018,7 +1005,7 @@ pub unsafe extern "C" fn PIT_VileCheck(mut thing: *mut mobj_t) -> Boolean {
     (*corpsehit).momy = 0 as c_int as fixed_t;
     (*corpsehit).momx = (*corpsehit).momy;
     (*corpsehit).height <<= 2 as c_int;
-    check = Boolean::from_raw(P_CheckPosition(
+    let check: Boolean = Boolean::from_raw(P_CheckPosition(
         corpsehit as *mut CffiMobj,
         (*corpsehit).x,
         (*corpsehit).y,
@@ -1027,18 +1014,26 @@ pub unsafe extern "C" fn PIT_VileCheck(mut thing: *mut mobj_t) -> Boolean {
     if check.is_false() {
         return Boolean::TRUE;
     }
-    return Boolean::FALSE;
+    Boolean::FALSE
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_VileChase(mut actor: *mut mobj_t) {
-    let mut xl: c_int = 0;
-    let mut xh: c_int = 0;
-    let mut yl: c_int = 0;
-    let mut yh: c_int = 0;
-    let mut bx: c_int = 0;
-    let mut by: c_int = 0;
-    let mut info: *mut MobjInfo = std::ptr::null_mut::<MobjInfo>();
-    let mut temp: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+pub unsafe extern "C" fn A_VileChase(actor: *mut mobj_t) {
+    let xl: c_int;
+
+    let xh: c_int;
+
+    let yl: c_int;
+
+    let yh: c_int;
+
+    let mut bx: c_int;
+
+    let mut by: c_int;
+
+    let info: *mut MobjInfo;
+
+    let temp: *mut mobj_t;
+
     if (*actor).movedir != DI_NODIR as c_int {
         viletryx = (*actor).x
             + (*((*actor).info as *mut MobjInfo)).speed as fixed_t
@@ -1046,13 +1041,13 @@ pub unsafe extern "C" fn A_VileChase(mut actor: *mut mobj_t) {
         viletryy = (*actor).y
             + (*((*actor).info as *mut MobjInfo)).speed as fixed_t
                 * yspeed[(*actor).movedir as usize];
-        xl = viletryx as c_int - bmaporgx as c_int - 32 as c_int * FRACUNIT * 2 as c_int
+        xl = (viletryx as c_int - bmaporgx as c_int - 32 as c_int * FRACUNIT * 2 as c_int)
             >> MAPBLOCKSHIFT;
-        xh = viletryx as c_int - bmaporgx as c_int + 32 as c_int * FRACUNIT * 2 as c_int
+        xh = (viletryx as c_int - bmaporgx as c_int + 32 as c_int * FRACUNIT * 2 as c_int)
             >> MAPBLOCKSHIFT;
-        yl = viletryy as c_int - bmaporgy as c_int - 32 as c_int * FRACUNIT * 2 as c_int
+        yl = (viletryy as c_int - bmaporgy as c_int - 32 as c_int * FRACUNIT * 2 as c_int)
             >> MAPBLOCKSHIFT;
-        yh = viletryy as c_int - bmaporgy as c_int + 32 as c_int * FRACUNIT * 2 as c_int
+        yh = (viletryy as c_int - bmaporgy as c_int + 32 as c_int * FRACUNIT * 2 as c_int)
             >> MAPBLOCKSHIFT;
         vileobj = actor;
         bx = xl;
@@ -1071,7 +1066,7 @@ pub unsafe extern "C" fn A_VileChase(mut actor: *mut mobj_t) {
                     temp = (*actor).target;
                     (*actor).target = corpsehit;
                     A_FaceTarget(actor);
-                    (*actor).target = temp as *mut mobj_t;
+                    (*actor).target = temp;
                     P_SetMobjState(actor, S_VILE_HEAL1);
                     S_StartSound(corpsehit as *mut c_void, sfx_slop as c_int);
                     info = (*corpsehit).info as *mut MobjInfo;
@@ -1090,33 +1085,30 @@ pub unsafe extern "C" fn A_VileChase(mut actor: *mut mobj_t) {
     A_Chase(actor);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_VileStart(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_VileStart(actor: *mut mobj_t) {
     S_StartSound(actor as *mut c_void, sfx_vilatk as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_StartFire(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_StartFire(actor: *mut mobj_t) {
     S_StartSound(actor as *mut c_void, sfx_flamst as c_int);
     A_Fire(actor);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_FireCrackle(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_FireCrackle(actor: *mut mobj_t) {
     S_StartSound(actor as *mut c_void, sfx_flame as c_int);
     A_Fire(actor);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_Fire(mut actor: *mut mobj_t) {
-    let mut dest: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut target: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut an: c_uint = 0;
-    dest = (*actor).tracer;
+pub unsafe extern "C" fn A_Fire(actor: *mut mobj_t) {
+    let dest: *mut mobj_t = (*actor).tracer;
     if dest.is_null() {
         return;
     }
-    target = P_SubstNullMobj((*actor).target);
+    let target: *mut mobj_t = P_SubstNullMobj((*actor).target);
     if P_CheckSight(target, dest) == 0 {
         return;
     }
-    an = ((*dest).angle >> ANGLETOFINESHIFT) as c_uint;
+    let an: c_uint = ((*dest).angle >> ANGLETOFINESHIFT) as c_uint;
     P_UnsetThingPosition(actor as *mut CffiMobj);
     (*actor).x = (*dest).x + FixedMul(24 as fixed_t * FRACUNIT, *finecosine.0.add(an as usize));
     (*actor).y = (*dest).y + FixedMul(24 as fixed_t * FRACUNIT, finesine[an as usize]);
@@ -1124,27 +1116,24 @@ pub unsafe extern "C" fn A_Fire(mut actor: *mut mobj_t) {
     P_SetThingPosition(actor as *mut CffiMobj);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_VileTarget(mut actor: *mut mobj_t) {
-    let mut fog: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+pub unsafe extern "C" fn A_VileTarget(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
         return;
     }
     A_FaceTarget(actor);
-    fog = P_SpawnMobj(
+    let fog: *mut mobj_t = P_SpawnMobj(
         (*(*actor).target).x,
         (*(*actor).target).x,
         (*(*actor).target).z,
         MT_FIRE,
     );
-    (*actor).tracer = fog as *mut mobj_t;
-    (*fog).target = actor as *mut mobj_t;
+    (*actor).tracer = fog;
+    (*fog).target = actor;
     (*fog).tracer = (*actor).target;
     A_Fire(fog);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_VileAttack(mut actor: *mut mobj_t) {
-    let mut fire: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut an: c_int = 0;
+pub unsafe extern "C" fn A_VileAttack(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
         return;
     }
@@ -1156,8 +1145,8 @@ pub unsafe extern "C" fn A_VileAttack(mut actor: *mut mobj_t) {
     P_DamageMobj((*actor).target, actor, actor, 20 as c_int);
     (*(*actor).target).momz =
         (1000 as c_int * FRACUNIT / (*((*(*actor).target).info as *mut MobjInfo)).mass) as fixed_t;
-    an = ((*actor).angle >> ANGLETOFINESHIFT) as c_int;
-    fire = (*actor).tracer;
+    let an: c_int = ((*actor).angle >> ANGLETOFINESHIFT) as c_int;
+    let fire: *mut mobj_t = (*actor).tracer;
     if fire.is_null() {
         return;
     }
@@ -1167,22 +1156,19 @@ pub unsafe extern "C" fn A_VileAttack(mut actor: *mut mobj_t) {
     P_RadiusAttack(fire as *mut CffiMobj, actor as *mut CffiMobj, 70 as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_FatRaise(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_FatRaise(actor: *mut mobj_t) {
     A_FaceTarget(actor);
     S_StartSound(actor as *mut c_void, sfx_manatk as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_FatAttack1(mut actor: *mut mobj_t) {
-    let mut mo: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut target: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut an: c_int = 0;
+pub unsafe extern "C" fn A_FatAttack1(actor: *mut mobj_t) {
     A_FaceTarget(actor);
     (*actor).angle = (*actor).angle.wrapping_add(FATSPREAD as angle_t);
-    target = P_SubstNullMobj((*actor).target);
+    let target: *mut mobj_t = P_SubstNullMobj((*actor).target);
     P_SpawnMissile(actor, target, MT_FATSHOT);
-    mo = P_SpawnMissile(actor, target, MT_FATSHOT);
+    let mo: *mut mobj_t = P_SpawnMissile(actor, target, MT_FATSHOT);
     (*mo).angle = (*mo).angle.wrapping_add(FATSPREAD as angle_t);
-    an = ((*mo).angle >> ANGLETOFINESHIFT) as c_int;
+    let an: c_int = ((*mo).angle >> ANGLETOFINESHIFT) as c_int;
     (*mo).momx = FixedMul(
         (*((*mo).info as *mut MobjInfo)).speed as fixed_t,
         *finecosine.0.add(an as usize),
@@ -1193,19 +1179,16 @@ pub unsafe extern "C" fn A_FatAttack1(mut actor: *mut mobj_t) {
     );
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_FatAttack2(mut actor: *mut mobj_t) {
-    let mut mo: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut target: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut an: c_int = 0;
+pub unsafe extern "C" fn A_FatAttack2(actor: *mut mobj_t) {
     A_FaceTarget(actor);
     (*actor).angle = (*actor).angle.wrapping_sub(FATSPREAD as angle_t);
-    target = P_SubstNullMobj((*actor).target);
+    let target: *mut mobj_t = P_SubstNullMobj((*actor).target);
     P_SpawnMissile(actor, target, MT_FATSHOT);
-    mo = P_SpawnMissile(actor, target, MT_FATSHOT);
+    let mo: *mut mobj_t = P_SpawnMissile(actor, target, MT_FATSHOT);
     (*mo).angle = (*mo)
         .angle
         .wrapping_sub((FATSPREAD * 2 as c_int) as angle_t);
-    an = ((*mo).angle >> ANGLETOFINESHIFT) as c_int;
+    let an: c_int = ((*mo).angle >> ANGLETOFINESHIFT) as c_int;
     (*mo).momx = FixedMul(
         (*((*mo).info as *mut MobjInfo)).speed as fixed_t,
         *finecosine.0.add(an as usize),
@@ -1216,12 +1199,13 @@ pub unsafe extern "C" fn A_FatAttack2(mut actor: *mut mobj_t) {
     );
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_FatAttack3(mut actor: *mut mobj_t) {
-    let mut mo: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut target: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut an: c_int = 0;
+pub unsafe extern "C" fn A_FatAttack3(actor: *mut mobj_t) {
+    let mut mo: *mut mobj_t;
+
+    let mut an: c_int;
+
     A_FaceTarget(actor);
-    target = P_SubstNullMobj((*actor).target);
+    let target: *mut mobj_t = P_SubstNullMobj((*actor).target);
     mo = P_SpawnMissile(actor, target, MT_FATSHOT);
     (*mo).angle = (*mo)
         .angle
@@ -1250,25 +1234,24 @@ pub unsafe extern "C" fn A_FatAttack3(mut actor: *mut mobj_t) {
     );
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_SkullAttack(mut actor: *mut mobj_t) {
-    let mut dest: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut an: angle_t = 0;
-    let mut dist: c_int = 0;
+pub unsafe extern "C" fn A_SkullAttack(actor: *mut mobj_t) {
+    let mut dist: c_int;
+
     if (*actor).target.is_null() {
         return;
     }
-    dest = (*actor).target;
+    let dest: *mut mobj_t = (*actor).target;
     (*actor).flags |= MF_SKULLFLY as c_int;
     S_StartSound(
         actor as *mut c_void,
         (*((*actor).info as *mut MobjInfo)).attacksound,
     );
     A_FaceTarget(actor);
-    an = (*actor).angle >> ANGLETOFINESHIFT;
+    let an: angle_t = (*actor).angle >> ANGLETOFINESHIFT;
     (*actor).momx = FixedMul(SKULLSPEED, *finecosine.0.add(an as usize));
     (*actor).momy = FixedMul(SKULLSPEED, finesine[an as usize]);
     dist = P_AproxDistance((*dest).x - (*actor).x, (*dest).y - (*actor).y) as c_int;
-    dist = dist / SKULLSPEED;
+    dist /= SKULLSPEED;
     if dist < 1 as c_int {
         dist = 1 as c_int;
     }
@@ -1277,18 +1260,14 @@ pub unsafe extern "C" fn A_SkullAttack(mut actor: *mut mobj_t) {
         / dist) as fixed_t;
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_PainShootSkull(mut actor: *mut mobj_t, mut angle: angle_t) {
-    let mut x: fixed_t = 0;
-    let mut y: fixed_t = 0;
-    let mut z: fixed_t = 0;
-    let mut newmobj: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut an: angle_t = 0;
-    let mut prestep: c_int = 0;
-    let mut count: c_int = 0;
-    let mut currentthinker: *mut thinker_t = std::ptr::null_mut::<thinker_t>();
+pub unsafe extern "C" fn A_PainShootSkull(actor: *mut mobj_t, angle: angle_t) {
+    let mut count: c_int;
+
+    let mut currentthinker: *mut thinker_t;
+
     count = 0 as c_int;
     currentthinker = thinkercap.next;
-    while currentthinker != &mut thinkercap as *mut thinker_t {
+    while !std::ptr::eq(currentthinker, &raw const thinkercap) {
         if (*currentthinker).function.acp1
             == core::mem::transmute::<
                 Option<unsafe extern "C" fn(*mut mobj_t) -> ()>,
@@ -1300,21 +1279,21 @@ pub unsafe extern "C" fn A_PainShootSkull(mut actor: *mut mobj_t, mut angle: ang
         {
             count += 1;
         }
-        currentthinker = (*currentthinker).next as *mut thinker_t;
+        currentthinker = (*currentthinker).next;
     }
     if count > 20 as c_int {
         return;
     }
-    an = angle >> ANGLETOFINESHIFT;
-    prestep = 4 as c_int * FRACUNIT
+    let an: angle_t = angle >> ANGLETOFINESHIFT;
+    let prestep: c_int = 4 as c_int * FRACUNIT
         + 3 as c_int
             * ((*((*actor).info as *mut MobjInfo)).radius
                 + mobjinfo[MT_SKULL as c_int as usize].radius)
             / 2 as c_int;
-    x = (*actor).x + FixedMul(prestep as fixed_t, *finecosine.0.add(an as usize));
-    y = (*actor).y + FixedMul(prestep as fixed_t, finesine[an as usize]);
-    z = ((*actor).z as c_int + 8 as c_int * FRACUNIT) as fixed_t;
-    newmobj = P_SpawnMobj(x, y, z, MT_SKULL);
+    let x: fixed_t = (*actor).x + FixedMul(prestep as fixed_t, *finecosine.0.add(an as usize));
+    let y: fixed_t = (*actor).y + FixedMul(prestep as fixed_t, finesine[an as usize]);
+    let z: fixed_t = ((*actor).z as c_int + 8 as c_int * FRACUNIT) as fixed_t;
+    let newmobj: *mut mobj_t = P_SpawnMobj(x, y, z, MT_SKULL);
     if P_TryMove(newmobj as *mut CffiMobj, (*newmobj).x, (*newmobj).y) == 0 {
         P_DamageMobj(newmobj, actor, actor, 10000 as c_int);
         return;
@@ -1323,7 +1302,7 @@ pub unsafe extern "C" fn A_PainShootSkull(mut actor: *mut mobj_t, mut angle: ang
     A_SkullAttack(newmobj);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_PainAttack(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_PainAttack(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
         return;
     }
@@ -1331,27 +1310,20 @@ pub unsafe extern "C" fn A_PainAttack(mut actor: *mut mobj_t) {
     A_PainShootSkull(actor, (*actor).angle);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_PainDie(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_PainDie(actor: *mut mobj_t) {
     A_Fall(actor);
     A_PainShootSkull(actor, (*actor).angle.wrapping_add(ANG90 as angle_t));
     A_PainShootSkull(actor, (*actor).angle.wrapping_add(ANG180));
     A_PainShootSkull(actor, (*actor).angle.wrapping_add(ANG270));
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_Scream(mut actor: *mut mobj_t) {
-    let mut sound: c_int = 0;
-    match (*((*actor).info as *mut MobjInfo)).deathsound {
+pub unsafe extern "C" fn A_Scream(actor: *mut mobj_t) {
+    let sound = match (*((*actor).info as *mut MobjInfo)).deathsound {
         0 => return,
-        59 | 60 | 61 => {
-            sound = sfx_podth1 as c_int + P_Random() % 3 as c_int;
-        }
-        62 | 63 => {
-            sound = sfx_bgdth1 as c_int + P_Random() % 2 as c_int;
-        }
-        _ => {
-            sound = (*((*actor).info as *mut MobjInfo)).deathsound;
-        }
-    }
+        59..=61 => sfx_podth1 as c_int + P_Random() % 3 as c_int,
+        62 | 63 => sfx_bgdth1 as c_int + P_Random() % 2 as c_int,
+        s => s,
+    };
     if (*actor).mobjtype as c_uint == MT_SPIDER as c_int as c_uint
         || (*actor).mobjtype as c_uint == MT_CYBORG as c_int as c_uint
     {
@@ -1361,11 +1333,11 @@ pub unsafe extern "C" fn A_Scream(mut actor: *mut mobj_t) {
     };
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_XScream(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_XScream(actor: *mut mobj_t) {
     S_StartSound(actor as *mut c_void, sfx_slop as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_Pain(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_Pain(actor: *mut mobj_t) {
     if (*((*actor).info as *mut MobjInfo)).painsound != 0 {
         S_StartSound(
             actor as *mut c_void,
@@ -1374,18 +1346,18 @@ pub unsafe extern "C" fn A_Pain(mut actor: *mut mobj_t) {
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_Fall(mut actor: *mut mobj_t) {
+pub unsafe extern "C" fn A_Fall(actor: *mut mobj_t) {
     (*actor).flags &= !(MF_SOLID as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_Explode(mut thingy: *mut mobj_t) {
+pub unsafe extern "C" fn A_Explode(thingy: *mut mobj_t) {
     P_RadiusAttack(
         thingy as *mut CffiMobj,
         (*thingy).target as *mut CffiMobj,
         128 as c_int,
     );
 }
-unsafe extern "C" fn CheckBossEnd(mut motype: mobjtype_t) -> Boolean {
+unsafe extern "C" fn CheckBossEnd(motype: mobjtype_t) -> Boolean {
     if (gameversion as c_uint) < exe_ultimate as c_int as c_uint {
         if gamemap != 8 as c_int {
             return Boolean::FALSE;
@@ -1393,34 +1365,26 @@ unsafe extern "C" fn CheckBossEnd(mut motype: mobjtype_t) -> Boolean {
         if motype == MT_BRUISER && gameepisode != 1 as c_int {
             return Boolean::FALSE;
         }
-        return Boolean::TRUE;
+        Boolean::TRUE
     } else {
         match gameepisode {
-            1 => {
-                return Boolean::from(gamemap == 8 as c_int && motype == MT_BRUISER);
-            }
-            2 => {
-                return Boolean::from(gamemap == 8 as c_int && motype == MT_CYBORG);
-            }
-            3 => {
-                return Boolean::from(gamemap == 8 as c_int && motype == MT_SPIDER);
-            }
-            4 => {
-                return Boolean::from(
-                    gamemap == 6 as c_int && motype == MT_CYBORG
-                        || gamemap == 8 as c_int && motype == MT_SPIDER,
-                );
-            }
-            _ => {
-                return Boolean::from(gamemap == 8 as c_int);
-            }
+            1 => Boolean::from(gamemap == 8 as c_int && motype == MT_BRUISER),
+            2 => Boolean::from(gamemap == 8 as c_int && motype == MT_CYBORG),
+            3 => Boolean::from(gamemap == 8 as c_int && motype == MT_SPIDER),
+            4 => Boolean::from(
+                gamemap == 6 as c_int && motype == MT_CYBORG
+                    || gamemap == 8 as c_int && motype == MT_SPIDER,
+            ),
+            _ => Boolean::from(gamemap == 8 as c_int),
         }
-    };
+    }
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_BossDeath(mut mo: *mut mobj_t) {
-    let mut th: *mut thinker_t = std::ptr::null_mut::<thinker_t>();
-    let mut mo2: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+pub unsafe extern "C" fn A_BossDeath(mo: *mut mobj_t) {
+    let mut th: *mut thinker_t;
+
+    let mut mo2: *mut mobj_t;
+
     let mut junk: line_t = line_t {
         v1: std::ptr::null_mut::<vertex_t>(),
         v2: std::ptr::null_mut::<vertex_t>(),
@@ -1437,7 +1401,7 @@ pub unsafe extern "C" fn A_BossDeath(mut mo: *mut mobj_t) {
         validcount: 0,
         specialdata: std::ptr::null_mut::<c_void>(),
     };
-    let mut i: c_int = 0;
+    let _i: c_int = 0;
     if gamemode as c_uint == commercial as c_int as c_uint {
         if gamemap != 7 as c_int {
             return;
@@ -1461,14 +1425,14 @@ pub unsafe extern "C" fn A_BossDeath(mut mo: *mut mobj_t) {
         return;
     }
     th = thinkercap.next;
-    while th != &mut thinkercap as *mut thinker_t {
-        if !((*th).function.acp1
-            != core::mem::transmute::<
+    while !std::ptr::eq(th, &raw const thinkercap) {
+        if (*th).function.acp1
+            == core::mem::transmute::<
                 Option<unsafe extern "C" fn(*mut mobj_t) -> ()>,
                 Option<unsafe extern "C" fn(*mut c_void) -> ()>,
             >(Some(
                 P_MobjThinker as unsafe extern "C" fn(*mut mobj_t) -> (),
-            )))
+            ))
         {
             mo2 = th as *mut mobj_t;
             if mo2 != mo
@@ -1478,7 +1442,7 @@ pub unsafe extern "C" fn A_BossDeath(mut mo: *mut mobj_t) {
                 return;
             }
         }
-        th = (*th).next as *mut thinker_t;
+        th = (*th).next;
     }
     if gamemode as c_uint == commercial as c_int as c_uint {
         if gamemap == 7 as c_int {
@@ -1528,30 +1492,30 @@ pub unsafe extern "C" fn A_BossDeath(mut mo: *mut mobj_t) {
     G_ExitLevel();
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_Hoof(mut mo: *mut mobj_t) {
+pub unsafe extern "C" fn A_Hoof(mo: *mut mobj_t) {
     S_StartSound(mo as *mut c_void, sfx_hoof as c_int);
     A_Chase(mo);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_Metal(mut mo: *mut mobj_t) {
+pub unsafe extern "C" fn A_Metal(mo: *mut mobj_t) {
     S_StartSound(mo as *mut c_void, sfx_metal as c_int);
     A_Chase(mo);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_BabyMetal(mut mo: *mut mobj_t) {
+pub unsafe extern "C" fn A_BabyMetal(mo: *mut mobj_t) {
     S_StartSound(mo as *mut c_void, sfx_bspwlk as c_int);
     A_Chase(mo);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_OpenShotgun2(mut player: *mut PlayerT, mut psp: *mut PspdefT) {
+pub unsafe extern "C" fn A_OpenShotgun2(player: *mut PlayerT, _psp: *mut PspdefT) {
     S_StartSound((*player).mo as *mut c_void, sfx_dbopn as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_LoadShotgun2(mut player: *mut PlayerT, mut psp: *mut PspdefT) {
+pub unsafe extern "C" fn A_LoadShotgun2(player: *mut PlayerT, _psp: *mut PspdefT) {
     S_StartSound((*player).mo as *mut c_void, sfx_dbload as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_CloseShotgun2(mut player: *mut PlayerT, mut psp: *mut PspdefT) {
+pub unsafe extern "C" fn A_CloseShotgun2(player: *mut PlayerT, psp: *mut PspdefT) {
     S_StartSound((*player).mo as *mut c_void, sfx_dbcls as c_int);
     A_ReFire(player, psp);
 }
@@ -1562,21 +1526,22 @@ pub static mut numbraintargets: c_int = 0;
 #[no_mangle]
 pub static mut braintargeton: c_int = 0 as c_int;
 #[no_mangle]
-pub unsafe extern "C" fn A_BrainAwake(mut mo: *mut mobj_t) {
-    let mut thinker: *mut thinker_t = std::ptr::null_mut::<thinker_t>();
-    let mut m: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+pub unsafe extern "C" fn A_BrainAwake(_mo: *mut mobj_t) {
+    let mut thinker: *mut thinker_t;
+
+    let mut m: *mut mobj_t;
+
     numbraintargets = 0 as c_int;
     braintargeton = 0 as c_int;
     thinker = thinkercap.next;
-    thinker = thinkercap.next;
-    while thinker != &mut thinkercap as *mut thinker_t {
-        if !((*thinker).function.acp1
-            != core::mem::transmute::<
+    while !std::ptr::eq(thinker, &raw const thinkercap) {
+        if (*thinker).function.acp1
+            == core::mem::transmute::<
                 Option<unsafe extern "C" fn(*mut mobj_t) -> ()>,
                 Option<unsafe extern "C" fn(*mut c_void) -> ()>,
             >(Some(
                 P_MobjThinker as unsafe extern "C" fn(*mut mobj_t) -> (),
-            )))
+            ))
         {
             m = thinker as *mut mobj_t;
             if (*m).mobjtype as c_uint == MT_BOSSTARGET as c_int as c_uint {
@@ -1584,20 +1549,24 @@ pub unsafe extern "C" fn A_BrainAwake(mut mo: *mut mobj_t) {
                 numbraintargets += 1;
             }
         }
-        thinker = (*thinker).next as *mut thinker_t;
+        thinker = (*thinker).next;
     }
     S_StartSound(std::ptr::null_mut::<c_void>(), sfx_bossit as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_BrainPain(mut mo: *mut mobj_t) {
+pub unsafe extern "C" fn A_BrainPain(_mo: *mut mobj_t) {
     S_StartSound(std::ptr::null_mut::<c_void>(), sfx_bospn as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_BrainScream(mut mo: *mut mobj_t) {
-    let mut x: c_int = 0;
-    let mut y: c_int = 0;
-    let mut z: c_int = 0;
-    let mut th: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+pub unsafe extern "C" fn A_BrainScream(mo: *mut mobj_t) {
+    let mut x: c_int;
+
+    let mut y: c_int;
+
+    let mut z: c_int;
+
+    let mut th: *mut mobj_t;
+
     x = (*mo).x as c_int - 196 as c_int * FRACUNIT;
     while x < (*mo).x as c_int + 320 as c_int * FRACUNIT {
         y = (*mo).y as c_int - 320 as c_int * FRACUNIT;
@@ -1614,15 +1583,11 @@ pub unsafe extern "C" fn A_BrainScream(mut mo: *mut mobj_t) {
     S_StartSound(std::ptr::null_mut::<c_void>(), sfx_bosdth as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_BrainExplode(mut mo: *mut mobj_t) {
-    let mut x: c_int = 0;
-    let mut y: c_int = 0;
-    let mut z: c_int = 0;
-    let mut th: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    x = (*mo).x as c_int + (P_Random() - P_Random()) * 2048 as c_int;
-    y = (*mo).y as c_int;
-    z = 128 as c_int + P_Random() * 2 as c_int * FRACUNIT;
-    th = P_SpawnMobj(x as fixed_t, y as fixed_t, z as fixed_t, MT_ROCKET);
+pub unsafe extern "C" fn A_BrainExplode(mo: *mut mobj_t) {
+    let x: c_int = (*mo).x as c_int + (P_Random() - P_Random()) * 2048 as c_int;
+    let y: c_int = (*mo).y as c_int;
+    let z: c_int = 128 as c_int + P_Random() * 2 as c_int * FRACUNIT;
+    let th: *mut mobj_t = P_SpawnMobj(x as fixed_t, y as fixed_t, z as fixed_t, MT_ROCKET);
     (*th).momz = (P_Random() * 512 as c_int) as fixed_t;
     P_SetMobjState(th, S_BRAINEXPLODE1);
     (*th).tics -= P_Random() & 7 as c_int;
@@ -1631,47 +1596,42 @@ pub unsafe extern "C" fn A_BrainExplode(mut mo: *mut mobj_t) {
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_BrainDie(mut mo: *mut mobj_t) {
+pub unsafe extern "C" fn A_BrainDie(_mo: *mut mobj_t) {
     G_ExitLevel();
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_BrainSpit(mut mo: *mut mobj_t) {
-    let mut targ: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut newmobj: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+pub unsafe extern "C" fn A_BrainSpit(mo: *mut mobj_t) {
     static mut easy: c_int = 0 as c_int;
     easy ^= 1 as c_int;
     if gameskill as c_int <= sk_easy as c_int && easy == 0 {
         return;
     }
-    targ = braintargets[braintargeton as usize];
+    let targ: *mut mobj_t = braintargets[braintargeton as usize];
     braintargeton = (braintargeton + 1 as c_int) % numbraintargets;
-    newmobj = P_SpawnMissile(mo, targ, MT_SPAWNSHOT);
-    (*newmobj).target = targ as *mut mobj_t;
+    let newmobj: *mut mobj_t = P_SpawnMissile(mo, targ, MT_SPAWNSHOT);
+    (*newmobj).target = targ;
     (*newmobj).reactiontime = ((*targ).y as c_int - (*mo).y as c_int)
         / (*newmobj).momy as c_int
         / (*((*newmobj).state as *mut State)).tics;
     S_StartSound(std::ptr::null_mut::<c_void>(), sfx_bospit as c_int);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_SpawnSound(mut mo: *mut mobj_t) {
+pub unsafe extern "C" fn A_SpawnSound(mo: *mut mobj_t) {
     S_StartSound(mo as *mut c_void, sfx_boscub as c_int);
     A_SpawnFly(mo);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_SpawnFly(mut mo: *mut mobj_t) {
-    let mut newmobj: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut fog: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut targ: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
-    let mut r: c_int = 0;
-    let mut type_0: mobjtype_t = MT_PLAYER;
+pub unsafe extern "C" fn A_SpawnFly(mo: *mut mobj_t) {
+    let type_0: mobjtype_t;
+
     (*mo).reactiontime -= 1;
     if (*mo).reactiontime != 0 {
         return;
     }
-    targ = P_SubstNullMobj((*mo).target);
-    fog = P_SpawnMobj((*targ).x, (*targ).y, (*targ).z, MT_SPAWNFIRE);
+    let targ: *mut mobj_t = P_SubstNullMobj((*mo).target);
+    let fog: *mut mobj_t = P_SpawnMobj((*targ).x, (*targ).y, (*targ).z, MT_SPAWNFIRE);
     S_StartSound(fog as *mut c_void, sfx_telept as c_int);
-    r = P_Random();
+    let r: c_int = P_Random();
     if r < 50 as c_int {
         type_0 = MT_TROOP;
     } else if r < 90 as c_int {
@@ -1695,7 +1655,7 @@ pub unsafe extern "C" fn A_SpawnFly(mut mo: *mut mobj_t) {
     } else {
         type_0 = MT_BRUISER;
     }
-    newmobj = P_SpawnMobj((*targ).x, (*targ).y, (*targ).z, type_0);
+    let newmobj: *mut mobj_t = P_SpawnMobj((*targ).x, (*targ).y, (*targ).z, type_0);
     if P_LookForPlayers(newmobj, Boolean::TRUE).is_truthy() {
         P_SetMobjState(
             newmobj,
@@ -1706,7 +1666,7 @@ pub unsafe extern "C" fn A_SpawnFly(mut mo: *mut mobj_t) {
     P_RemoveMobj(mo);
 }
 #[no_mangle]
-pub unsafe extern "C" fn A_PlayerScream(mut mo: *mut mobj_t) {
+pub unsafe extern "C" fn A_PlayerScream(mo: *mut mobj_t) {
     let mut sound: c_int = sfx_pldeth as c_int;
     if gamemode as c_uint == commercial as c_int as c_uint && (*mo).health < -50 as c_int {
         sound = sfx_pdiehi as c_int;

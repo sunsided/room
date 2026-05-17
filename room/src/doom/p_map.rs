@@ -4,7 +4,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::{c_char, c_int, c_uint, c_void};
+use std::ffi::{c_int, c_uint, c_void};
 use std::ptr;
 
 use crate::doom::c_ffi::{
@@ -130,7 +130,7 @@ pub unsafe extern "C" fn PIT_StompThing(thing: *mut mobj_t) -> c_uint {
     if (thing.x - tmx).wrapping_abs() >= blockdist || (thing.y - tmy).wrapping_abs() >= blockdist {
         return 1;
     }
-    if thing as *const _ == tmthing {
+    if std::ptr::eq(thing, tmthing) {
         return 1;
     }
     if (*tmthing).player.is_null() && gamemap != 30 {
@@ -204,7 +204,7 @@ pub unsafe extern "C" fn PIT_CheckLine(ld: *mut line_t) -> c_uint {
     {
         return 1;
     }
-    if P_BoxOnLineSide(tmbbox.as_mut_ptr(), ld as *const _ as *mut _) != -1 {
+    if P_BoxOnLineSide(std::ptr::addr_of_mut!(tmbbox[0]), ld as *const _ as *mut _) != -1 {
         return 1;
     }
     if ld.backsector.is_null() {
@@ -249,7 +249,7 @@ pub unsafe extern "C" fn PIT_CheckThing(thing: *mut mobj_t) -> c_uint {
     if (thing.x - tmx).wrapping_abs() >= blockdist || (thing.y - tmy).wrapping_abs() >= blockdist {
         return 1;
     }
-    if thing as *const _ == tmthing {
+    if std::ptr::eq(thing, tmthing) {
         return 1;
     }
 
@@ -289,7 +289,7 @@ pub unsafe extern "C" fn PIT_CheckThing(thing: *mut mobj_t) -> c_uint {
                 || (target_type == MT_KNIGHT && thing_type == MT_BRUISER)
                 || (target_type == MT_BRUISER && thing_type == MT_KNIGHT)
             {
-                if thing as *const _ == target {
+                if std::ptr::eq(thing, target) {
                     return 1;
                 }
                 if thing_type != MT_PLAYER && DEH_DEFAULT_SPECIES_INFIGHTING == 0 {
@@ -422,11 +422,9 @@ pub unsafe extern "C" fn P_TryMove(thing: *mut mobj_t, x: fixed_t, y: fixed_t) -
             let ld = spechit[numspechit as usize];
             let side = P_PointOnLineSide((*thing).x, (*thing).y, ld);
             let oldside = P_PointOnLineSide(oldx, oldy, ld);
-            if side != oldside {
-                if (*ld).special != 0 {
-                    let linenum = ld.offset_from(lines) as isize;
-                    P_CrossSpecialLine(linenum as c_int, oldside, thing);
-                }
+            if side != oldside && (*ld).special != 0 {
+                let linenum = ld.offset_from(lines);
+                P_CrossSpecialLine(linenum as c_int, oldside, thing);
             }
         }
     }
@@ -512,12 +510,11 @@ pub unsafe extern "C" fn PTR_SlideTraverse(in_: *mut intercept_t) -> c_uint {
         }
     } else {
         P_LineOpening(li);
-        if openrange >= (*slidemo).height {
-            if opentop - (*slidemo).z >= (*slidemo).height {
-                if openbottom - (*slidemo).z <= 24 * FRACUNIT {
-                    return 1;
-                }
-            }
+        if openrange >= (*slidemo).height
+            && opentop - (*slidemo).z >= (*slidemo).height
+            && openbottom - (*slidemo).z <= 24 * FRACUNIT
+        {
+            return 1;
         }
     }
     if in_.frac < bestslidefrac {
@@ -1021,7 +1018,7 @@ pub unsafe extern "C" fn P_ChangeSector(sector: *mut sector_t, crunch: c_int) ->
 unsafe fn SpechitOverrun(ld: *mut line_t) {
     static mut baseaddr: c_uint = 0;
     if baseaddr == 0 {
-        let p = M_CheckParmWithArgs(b"-spechit\0".as_ptr() as *mut c_char, 1);
+        let p = M_CheckParmWithArgs(c"-spechit".as_ptr().cast_mut(), 1);
         if p > 0 {
             M_StrToInt(
                 *myargv.add((p + 1) as usize),
@@ -1033,7 +1030,7 @@ unsafe fn SpechitOverrun(ld: *mut line_t) {
     }
     let addr = baseaddr as c_int + (ld.offset_from(lines) * 0x3e) as c_int;
     match numspechit {
-        9 | 10 | 11 | 12 => {
+        9..=12 => {
             tmbbox[(numspechit - 9) as usize] = addr;
         }
         13 => {
@@ -1045,7 +1042,7 @@ unsafe fn SpechitOverrun(ld: *mut line_t) {
         _ => {
             eprintln!(
                 "SpechitOverrun: Warning: unable to emulate an overrun where numspechit={}",
-                numspechit
+                numspechit as c_int
             );
         }
     }

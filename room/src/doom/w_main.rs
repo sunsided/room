@@ -1,6 +1,6 @@
 #![allow(non_upper_case_globals, non_snake_case)]
 
-use std::ffi::{c_char, c_int};
+use std::ffi::c_char;
 
 use libc::printf;
 

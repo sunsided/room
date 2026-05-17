@@ -9,7 +9,6 @@ use std::ptr;
 
 use super::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
 use super::m_fixed::{angle_t, fixed_t};
-use super::tables;
 use super::tables::{ANG90, ANGLETOFINESHIFT};
 
 // ---------------------------------------------------------------------------
@@ -399,7 +398,7 @@ use crate::doom::r_things::R_AddSprites;
 
 #[no_mangle]
 pub unsafe extern "C" fn R_ClearDrawSegs() {
-    ds_p = drawsegs.as_mut_ptr();
+    ds_p = std::ptr::addr_of_mut!(drawsegs[0]);
 }
 
 // ---------------------------------------------------------------------------
@@ -412,18 +411,18 @@ pub unsafe extern "C" fn R_ClearClipSegs() {
     solidsegs[0].last = -1;
     solidsegs[1].first = viewwidth;
     solidsegs[1].last = 0x7fffffff;
-    newend = solidsegs.as_mut_ptr().add(2);
+    newend = std::ptr::addr_of_mut!(solidsegs[0]).add(2);
 
     // Diagnostic: frame marker. R_ClearClipSegs is called once per frame by
     // R_RenderPlayerView before descending the BSP.
     PROBE_FRAME = PROBE_FRAME.wrapping_add(1);
     log::trace!(
         "=== FRAME {} === viewx={:#x} viewy={:#x} viewangle={:#x} viewwidth={}",
-        PROBE_FRAME,
-        viewx,
-        viewy,
-        viewangle,
-        viewwidth
+        { PROBE_FRAME },
+        { viewx },
+        { viewy },
+        { viewangle },
+        { viewwidth }
     );
 }
 
@@ -440,7 +439,7 @@ pub unsafe extern "C" fn R_ClipSolidWallSegment(first: c_int, last: c_int) {
             last
         );
     }
-    let solidsegs_base = solidsegs.as_mut_ptr();
+    let solidsegs_base = std::ptr::addr_of_mut!(solidsegs[0]);
 
     let mut start = solidsegs_base;
     while (*start).last < first - 1 {
@@ -535,7 +534,7 @@ pub unsafe extern "C" fn R_ClipPassWallSegment(first: c_int, last: c_int) {
             last
         );
     }
-    let solidsegs_base = solidsegs.as_mut_ptr();
+    let solidsegs_base = std::ptr::addr_of_mut!(solidsegs[0]);
 
     let mut start = solidsegs_base;
     while (*start).last < first - 1 {
@@ -590,7 +589,7 @@ unsafe fn R_AddLine(line: *mut seg_t) {
             "R_AddLine SKIP backface: orig_a1={:#x} orig_a2={:#x} va={:#x}",
             orig_angle1,
             orig_angle2,
-            viewangle
+            { viewangle }
         );
         return;
     }
@@ -605,7 +604,7 @@ unsafe fn R_AddLine(line: *mut seg_t) {
     if tspan > clipangle_d2 {
         tspan = tspan.wrapping_sub(clipangle_d2);
         if tspan >= span {
-            log::trace!("R_AddLine SKIP off-left: orig_a1={:#x} orig_a2={:#x} va={:#x} a1={:#x} a2={:#x} span={:#x} tspan={:#x}", orig_angle1, orig_angle2, viewangle, angle1, angle2, span, tspan);
+            log::trace!("R_AddLine SKIP off-left: orig_a1={:#x} orig_a2={:#x} va={:#x} a1={:#x} a2={:#x} span={:#x} tspan={:#x}", orig_angle1, orig_angle2, { viewangle }, angle1, angle2, span, tspan);
             return;
         }
         angle1 = clipangle;
@@ -615,7 +614,7 @@ unsafe fn R_AddLine(line: *mut seg_t) {
     if tspan > clipangle_d2 {
         tspan = tspan.wrapping_sub(clipangle_d2);
         if tspan >= span {
-            log::trace!("R_AddLine SKIP off-right: orig_a1={:#x} orig_a2={:#x} va={:#x} a1={:#x} a2={:#x} span={:#x} tspan={:#x}", orig_angle1, orig_angle2, viewangle, angle1, angle2, span, tspan);
+            log::trace!("R_AddLine SKIP off-right: orig_a1={:#x} orig_a2={:#x} va={:#x} a1={:#x} a2={:#x} span={:#x} tspan={:#x}", orig_angle1, orig_angle2, { viewangle }, angle1, angle2, span, tspan);
             return;
         }
         angle2 = 0u32.wrapping_sub(clipangle);
@@ -630,13 +629,13 @@ unsafe fn R_AddLine(line: *mut seg_t) {
     if x2 >= 200 || x1 >= 200 {
         log::trace!(
             "R_AddLine wall: orig_a1={:#x} orig_a2={:#x} va={:#x} clip={:#x} a1={:#x} a2={:#x} idx1={} idx2={} x1={} x2={}",
-            orig_angle1, orig_angle2, viewangle, clipangle, angle1, angle2, idx1, idx2, x1, x2
+            orig_angle1, orig_angle2, { viewangle }, { clipangle }, angle1, angle2, idx1, idx2, x1, x2
         );
     }
     // Diagnostic: log every surviving wall (full screen) at TRACE.
     log::trace!(
         "R_AddLine projected: frame={} seg={} x1={} x2={} a1={:#x} a2={:#x}",
-        PROBE_FRAME,
+        { PROBE_FRAME },
         seg_index(line),
         x1,
         x2,
@@ -661,7 +660,7 @@ unsafe fn R_AddLine(line: *mut seg_t) {
     if backsector.is_null() {
         log::trace!(
             "R_AddLine classify: frame={} seg={} x1={} x2={} decision=SOLID(1-sided) back=null front={:p}",
-            PROBE_FRAME, seg_index(line), x1, x2, frontsector as *const _
+            { PROBE_FRAME }, seg_index(line), x1, x2, frontsector as *const _
         );
         R_ClipSolidWallSegment(x1, x2 - 1);
         return;
@@ -673,7 +672,7 @@ unsafe fn R_AddLine(line: *mut seg_t) {
     {
         log::trace!(
             "R_AddLine classify: frame={} seg={} x1={} x2={} decision=SOLID(closed-door) back={:p} f.ch={} f.fh={} b.ch={} b.fh={}",
-            PROBE_FRAME, seg_index(line), x1, x2, backsector as *const _,
+            { PROBE_FRAME }, seg_index(line), x1, x2, backsector as *const _,
             (*frontsector).ceilingheight, (*frontsector).floorheight,
             (*backsector).ceilingheight, (*backsector).floorheight
         );
@@ -687,7 +686,7 @@ unsafe fn R_AddLine(line: *mut seg_t) {
     {
         log::trace!(
             "R_AddLine classify: frame={} seg={} x1={} x2={} decision=PASS(window) back={:p} f.ch={} f.fh={} b.ch={} b.fh={}",
-            PROBE_FRAME, seg_index(line), x1, x2, backsector as *const _,
+            { PROBE_FRAME }, seg_index(line), x1, x2, backsector as *const _,
             (*frontsector).ceilingheight, (*frontsector).floorheight,
             (*backsector).ceilingheight, (*backsector).floorheight
         );
@@ -703,7 +702,7 @@ unsafe fn R_AddLine(line: *mut seg_t) {
     {
         log::trace!(
             "R_AddLine classify: frame={} seg={} x1={} x2={} decision=REJECT(empty)",
-            PROBE_FRAME,
+            { PROBE_FRAME },
             seg_index(line),
             x1,
             x2
@@ -713,7 +712,7 @@ unsafe fn R_AddLine(line: *mut seg_t) {
 
     log::trace!(
         "R_AddLine classify: frame={} seg={} x1={} x2={} decision=PASS(midtex/lighting) midtex={}",
-        PROBE_FRAME,
+        { PROBE_FRAME },
         seg_index(line),
         x1,
         x2,
@@ -800,7 +799,7 @@ pub unsafe extern "C" fn R_CheckBBox(bspcoord: *mut fixed_t) -> c_int {
     }
     let sx2 = sx2 - 1;
 
-    let solidsegs_base = solidsegs.as_ptr();
+    let solidsegs_base = std::ptr::addr_of!(solidsegs[0]);
     let mut start = solidsegs_base;
     while (*start).last < sx2 {
         start = start.add(1);
@@ -824,9 +823,9 @@ pub unsafe extern "C" fn R_Subsector(num: c_int) {
     sscount += 1;
 
     let sub = &*(subsectors.add(num_usize) as *mut subsector_t);
-    frontsector = (*sub).sector as *mut sector_t;
-    let mut count = (*sub).numlines as c_int;
-    let mut line = segs.add((*sub).firstline as usize) as *mut seg_t;
+    frontsector = sub.sector;
+    let mut count = sub.numlines as c_int;
+    let mut line = segs.add(sub.firstline as usize) as *mut seg_t;
 
     if (*frontsector).floorheight < viewz {
         floorplane = R_FindPlane(
@@ -872,7 +871,7 @@ pub unsafe extern "C" fn R_RenderBSPNode(bspnum: c_int) {
         };
         log::trace!(
             "R_RenderBSPNode: frame={} leaf subsector={} (bspnum={:#x})",
-            PROBE_FRAME,
+            { PROBE_FRAME },
             sub_num,
             bspnum as u32
         );
@@ -886,20 +885,20 @@ pub unsafe extern "C" fn R_RenderBSPNode(bspnum: c_int) {
 
     log::trace!(
         "R_RenderBSPNode: frame={} node={} side={} front_child={:#x} back_child={:#x}",
-        PROBE_FRAME,
+        { PROBE_FRAME },
         bspnum,
         side,
-        (*bsp).children[side as usize] as u32,
-        (*bsp).children[(side ^ 1) as usize] as u32,
+        bsp.children[side as usize] as u32,
+        bsp.children[(side ^ 1) as usize] as u32,
     );
 
-    R_RenderBSPNode((*bsp).children[side as usize] as c_int);
+    R_RenderBSPNode(bsp.children[side as usize] as c_int);
 
-    let back_visible = R_CheckBBox((*bsp).bbox[(side ^ 1) as usize].as_ptr() as *mut fixed_t) != 0;
-    let back_box = (*bsp).bbox[(side ^ 1) as usize];
+    let back_visible = R_CheckBBox(bsp.bbox[(side ^ 1) as usize].as_ptr() as *mut fixed_t) != 0;
+    let back_box = bsp.bbox[(side ^ 1) as usize];
     log::trace!(
         "R_RenderBSPNode: frame={} node={} back_visible={} back_bbox=[L={} R={} T={} B={}]",
-        PROBE_FRAME,
+        { PROBE_FRAME },
         bspnum,
         back_visible,
         back_box[BOXLEFT],
@@ -908,7 +907,7 @@ pub unsafe extern "C" fn R_RenderBSPNode(bspnum: c_int) {
         back_box[BOXBOTTOM],
     );
     if back_visible {
-        R_RenderBSPNode((*bsp).children[(side ^ 1) as usize] as c_int);
+        R_RenderBSPNode(bsp.children[(side ^ 1) as usize] as c_int);
     }
 }
 

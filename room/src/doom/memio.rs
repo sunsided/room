@@ -204,7 +204,6 @@ pub extern "C" fn mem_fseek(stream: *mut _MEMFILE, position: c_int, whence: mem_
         mem_rel_t::MEM_SEEK_SET => position as u32,
         mem_rel_t::MEM_SEEK_CUR => stream.position.wrapping_add(position as u32),
         mem_rel_t::MEM_SEEK_END => (stream.buflen as c_int + position) as u32,
-        _ => return -1,
     };
 
     if (newpos as usize) < stream.buflen {

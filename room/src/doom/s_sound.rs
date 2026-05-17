@@ -176,7 +176,10 @@ pub extern "C" fn S_Init(sfx_volume: c_int, music_volume: c_int) {
     unsafe {
         S_InitSfxLinks();
 
-        I_PrecacheSounds(S_sfx.as_mut_ptr() as *mut c_void, NUMSFX as c_int);
+        I_PrecacheSounds(
+            std::ptr::addr_of_mut!(S_sfx[0]) as *mut c_void,
+            NUMSFX as c_int,
+        );
 
         S_SetSfxVolume(sfx_volume);
         S_SetMusicVolume(music_volume);
@@ -194,8 +197,8 @@ pub extern "C" fn S_Init(sfx_volume: c_int, music_volume: c_int) {
         mus_paused = 0;
 
         for i in 1..NUMSFX {
-            (*S_sfx.as_mut_ptr().add(i)).lumpnum = -1;
-            (*S_sfx.as_mut_ptr().add(i)).usefulness = -1;
+            (*std::ptr::addr_of_mut!(S_sfx[0]).add(i)).lumpnum = -1;
+            (*std::ptr::addr_of_mut!(S_sfx[0]).add(i)).usefulness = -1;
         }
 
         I_AtExit(S_Shutdown, Boolean::TRUE);
@@ -204,10 +207,8 @@ pub extern "C" fn S_Init(sfx_volume: c_int, music_volume: c_int) {
 
 #[no_mangle]
 pub extern "C" fn S_Shutdown() {
-    unsafe {
-        I_ShutdownSound();
-        I_ShutdownMusic();
-    }
+    I_ShutdownSound();
+    I_ShutdownMusic();
 }
 
 unsafe fn S_StopChannel(cnum: c_int) {
@@ -373,7 +374,7 @@ pub extern "C" fn S_StartSound(origin_p: *mut c_void, sfx_id: c_int) {
             return;
         }
 
-        let sfx = &mut *S_sfx.as_mut_ptr().offset(sfx_id as isize);
+        let sfx = &mut *std::ptr::addr_of_mut!(S_sfx[0]).offset(sfx_id as isize);
 
         if !sfx.link.is_null() {
             volume += sfx.volume;
@@ -389,7 +390,8 @@ pub extern "C" fn S_StartSound(origin_p: *mut c_void, sfx_id: c_int) {
 
         let mut sep: c_int = NORM_SEP;
 
-        let player_mo = (*players.as_ptr().offset(consoleplayer as isize)).mo as *mut MobjStub;
+        let player_mo =
+            (*std::ptr::addr_of!(players[0]).offset(consoleplayer as isize)).mo as *mut MobjStub;
         if !origin.is_null() && origin != player_mo {
             let listener = player_mo;
             let rc = S_AdjustSoundParams(listener, origin, &mut volume, &mut sep);
@@ -489,13 +491,11 @@ pub extern "C" fn S_UpdateSounds(listener: *mut MobjStub) {
 
 #[no_mangle]
 pub extern "C" fn S_SetMusicVolume(volume: c_int) {
-    unsafe {
-        if !(0..=127).contains(&volume) {
-            return;
-        }
-
-        I_SetMusicVolume(volume);
+    if !(0..=127).contains(&volume) {
+        return;
     }
+
+    I_SetMusicVolume(volume);
 }
 
 #[no_mangle]
@@ -529,7 +529,7 @@ pub extern "C" fn S_ChangeMusic(musicnum: c_int, looping: c_int) {
             return;
         }
 
-        let music = &mut *S_music.as_mut_ptr().offset(musicnum as isize);
+        let music = &mut *std::ptr::addr_of_mut!(S_music[0]).offset(musicnum as isize);
 
         if mus_playing == music {
             return;
@@ -557,7 +557,7 @@ pub extern "C" fn S_ChangeMusic(musicnum: c_int, looping: c_int) {
 
 #[no_mangle]
 pub extern "C" fn S_MusicPlaying() -> c_int {
-    unsafe { I_MusicIsPlaying() }
+    I_MusicIsPlaying()
 }
 
 #[no_mangle]

@@ -224,7 +224,7 @@ unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
 
 #[no_mangle]
 pub unsafe extern "C" fn P_InitPicAnims() {
-    lastanim = anims.as_mut_ptr();
+    lastanim = std::ptr::addr_of_mut!(anims[0]);
     for &(istexture, endname, startname, speed) in ANIMDEFS {
         if istexture == -1 {
             break;
@@ -304,7 +304,7 @@ pub unsafe extern "C" fn getNextSector(line: *mut line_t, sec: *mut sector_t) ->
     if (*line).frontsector == sec as *mut c_void {
         return (*line).backsector as *mut sector_t;
     }
-    return (*line).frontsector as *mut sector_t;
+    (*line).frontsector as *mut sector_t
 }
 
 #[no_mangle]
@@ -607,11 +607,9 @@ pub unsafe extern "C" fn P_CrossSpecialLine(linenum: c_int, side: c_int, thing: 
         124 => {
             G_SecretExitLevel();
         }
-        125 => {
-            if (*thing).player.is_null() {
-                EV_Teleport(line as *mut TeleptLine, side, thing as *mut TeleptMobj);
-                (*line).special = 0;
-            }
+        125 if (*thing).player.is_null() => {
+            EV_Teleport(line as *mut TeleptLine, side, thing as *mut TeleptMobj);
+            (*line).special = 0;
         }
         130 => {
             EV_DoFloor(line as *mut LightsLine, raiseFloorTurbo);
@@ -709,10 +707,8 @@ pub unsafe extern "C" fn P_CrossSpecialLine(linenum: c_int, side: c_int, thing: 
         120 => {
             EV_DoPlat(line as *mut LightsLine, blazeDWUS, 0);
         }
-        126 => {
-            if (*thing).player.is_null() {
-                EV_Teleport(line as *mut TeleptLine, side, thing as *mut TeleptMobj);
-            }
+        126 if (*thing).player.is_null() => {
+            EV_Teleport(line as *mut TeleptLine, side, thing as *mut TeleptMobj);
         }
         128 => {
             EV_DoFloor(line as *mut LightsLine, raiseFloorToNearest);
@@ -732,9 +728,8 @@ pub unsafe extern "C" fn P_CrossSpecialLine(linenum: c_int, side: c_int, thing: 
 pub unsafe extern "C" fn P_ShootSpecialLine(thing: *mut mobj_t, line: *mut line_t) {
     if (*thing).player.is_null() {
         let mut ok = 0;
-        match (*line).special as c_int {
-            46 => ok = 1,
-            _ => {}
+        if (*line).special as c_int == 46 {
+            ok = 1
         }
         if ok == 0 {
             return;
@@ -774,39 +769,33 @@ pub unsafe extern "C" fn P_PlayerInSpecialSector(player: *mut PlayerT) {
 
     match (*sector).special as c_int {
         5 => {
-            if (*player).powers[pw_ironfeet] == 0 {
-                if leveltime & 0x1f == 0 {
-                    P_DamageMobj(
-                        (*player).mo as *mut TeleptMobj,
-                        ptr::null_mut(),
-                        ptr::null_mut(),
-                        10,
-                    );
-                }
+            if (*player).powers[pw_ironfeet] == 0 && leveltime & 0x1f == 0 {
+                P_DamageMobj(
+                    (*player).mo as *mut TeleptMobj,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    10,
+                );
             }
         }
         7 => {
-            if (*player).powers[pw_ironfeet] == 0 {
-                if leveltime & 0x1f == 0 {
-                    P_DamageMobj(
-                        (*player).mo as *mut TeleptMobj,
-                        ptr::null_mut(),
-                        ptr::null_mut(),
-                        5,
-                    );
-                }
+            if (*player).powers[pw_ironfeet] == 0 && leveltime & 0x1f == 0 {
+                P_DamageMobj(
+                    (*player).mo as *mut TeleptMobj,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    5,
+                );
             }
         }
         16 | 4 => {
-            if (*player).powers[pw_ironfeet] == 0 || P_Random() < 5 {
-                if leveltime & 0x1f == 0 {
-                    P_DamageMobj(
-                        (*player).mo as *mut TeleptMobj,
-                        ptr::null_mut(),
-                        ptr::null_mut(),
-                        20,
-                    );
-                }
+            if ((*player).powers[pw_ironfeet] == 0 || P_Random() < 5) && leveltime & 0x1f == 0 {
+                P_DamageMobj(
+                    (*player).mo as *mut TeleptMobj,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    20,
+                );
             }
         }
         9 => {
@@ -849,7 +838,7 @@ pub unsafe extern "C" fn P_UpdateSpecials() {
         }
     }
 
-    let mut anim = anims.as_mut_ptr();
+    let mut anim = std::ptr::addr_of_mut!(anims[0]);
     while anim < lastanim {
         let base = (*anim).basepic;
         let numpics = (*anim).numpics;
@@ -866,12 +855,9 @@ pub unsafe extern "C" fn P_UpdateSpecials() {
 
     for i in 0..numlinespecials as usize {
         let line = linespeciallist[i];
-        match (*line).special as c_int {
-            48 => {
-                let sidenum = (*line).sidenum[0] as isize;
-                (*sides.offset(sidenum)).textureoffset += FRACUNIT;
-            }
-            _ => {}
+        if (*line).special as c_int == 48 {
+            let sidenum = (*line).sidenum[0] as isize;
+            (*sides.offset(sidenum)).textureoffset += FRACUNIT;
         }
     }
 
@@ -923,12 +909,15 @@ unsafe fn DonutOverrun(
 
         let p = M_CheckParmWithArgs(cstr!("-donut"), 2);
         if p > 0 {
-            M_StrToInt(*myargv.offset((p + 1) as isize), &mut tmp_s3_floorheight);
-            M_StrToInt(*myargv.offset((p + 2) as isize), &mut tmp_s3_floorpic);
+            M_StrToInt(
+                *myargv.offset((p + 1) as isize),
+                &raw mut tmp_s3_floorheight,
+            );
+            M_StrToInt(*myargv.offset((p + 2) as isize), &raw mut tmp_s3_floorpic);
             if tmp_s3_floorpic >= numflats {
-                eprint!(
-                    "DonutOverrun: The second parameter for \"-donut\" switch should be greater than 0 and less than number of flats ({}). Using default value ({}) instead. \n",
-                    numflats, 0x16
+                eprintln!(
+                    "DonutOverrun: The second parameter for \"-donut\" switch should be greater than 0 and less than number of flats ({}). Using default value ({}) instead. ",
+                    numflats as c_int, 0x16
                 );
                 tmp_s3_floorpic = 0x16;
             }
@@ -962,7 +951,7 @@ pub unsafe extern "C" fn EV_DoDonut(line: *mut line_t) -> c_int {
         let s2 = getNextSector(*(*s1).lines.offset(0) as *mut line_t, s1);
 
         if s2.is_null() {
-            eprint!("EV_DoDonut: linedef had no second sidedef! Unexpected behavior may occur in Vanilla Doom. \n");
+            eprintln!("EV_DoDonut: linedef had no second sidedef! Unexpected behavior may occur in Vanilla Doom. ");
             break;
         }
 
@@ -975,7 +964,7 @@ pub unsafe extern "C" fn EV_DoDonut(line: *mut line_t) -> c_int {
             }
 
             let (s3_floorheight, s3_floorpic) = if s3.is_null() {
-                eprint!("EV_DoDonut: WARNING: emulating buffer overrun due to NULL back sector. Unexpected behavior may occur in Vanilla Doom.\n");
+                eprintln!("EV_DoDonut: WARNING: emulating buffer overrun due to NULL back sector. Unexpected behavior may occur in Vanilla Doom.");
                 let mut fh = 0;
                 let mut fp = 0i16;
                 DonutOverrun(&mut fh, &mut fp, line, s1);
@@ -1072,15 +1061,12 @@ pub unsafe extern "C" fn P_SpawnSpecials() {
 
     numlinespecials = 0;
     for i in 0..numlines {
-        match (*lines.offset(i as isize)).special as c_int {
-            48 => {
-                if numlinespecials as c_int >= MAXLINEANIMS as c_int {
-                    i_error!("Too many scrolling wall linedefs! (Vanilla limit is 64)");
-                }
-                linespeciallist[numlinespecials as usize] = lines.offset(i as isize);
-                numlinespecials += 1;
+        if (*lines.offset(i as isize)).special as c_int == 48 {
+            if numlinespecials as c_int >= MAXLINEANIMS as c_int {
+                i_error!("Too many scrolling wall linedefs! (Vanilla limit is 64)");
             }
-            _ => {}
+            linespeciallist[numlinespecials as usize] = lines.offset(i as isize);
+            numlinespecials += 1;
         }
     }
 

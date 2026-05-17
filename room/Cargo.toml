@@ -19,6 +19,7 @@ path = "src/main.rs"
 
 [features]
 dhat-heap = ["dep:dhat"]
+rangecheck = []
 
 [dependencies]
 # Cross-platform window creation and event handling.

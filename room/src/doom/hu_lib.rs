@@ -4,7 +4,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::{c_char, c_int, c_uint, c_void};
+use std::ffi::{c_char, c_int, c_uint};
 
 use crate::doom::v_video::patch_t;
 
@@ -358,7 +358,7 @@ pub extern "C" fn HUlib_addPrefixToIText(it: *mut hu_itext_t, str: *mut c_char) 
 pub extern "C" fn HUlib_keyInIText(it: *mut hu_itext_t, ch: u8) -> c_int {
     unsafe {
         let ch = ch.to_ascii_uppercase();
-        if ch >= b' ' && ch <= b'_' {
+        if (b' '..=b'_').contains(&ch) {
             HUlib_addCharToTextLine(&mut (*it).l, ch as c_char);
         } else if ch == crate::doom::doomkeys::KEY_BACKSPACE {
             HUlib_delCharFromIText(it);

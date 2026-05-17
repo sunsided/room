@@ -17,14 +17,12 @@
 )]
 
 use std::cell::UnsafeCell;
-use std::ffi::{c_char, c_int, c_void};
+use std::ffi::{c_char, c_int};
 use std::ptr;
-
-use crate::types::Boolean;
 
 use crate::doom::d_event::event_t;
 use crate::doom::d_mode;
-use crate::doom::d_player::{PlayerT, MAXPLAYERS};
+use crate::doom::d_player::MAXPLAYERS;
 use crate::doom::doomstat::gamemode;
 use crate::doom::g_game::{deathmatch, netgame, playeringame, players, G_WorldDone};
 use crate::doom::i_timer::TICRATE;
@@ -669,10 +667,7 @@ unsafe fn WI_drawOnLnode(n: c_int, c: *mut *mut patch_t) {
             *c.offset(i as isize),
         );
     } else {
-        libc::printf(
-            b"Could not place patch on level %d\0".as_ptr() as *const c_char,
-            n + 1,
-        );
+        libc::printf(c"Could not place patch on level %d".as_ptr(), n + 1);
     }
 }
 
@@ -1519,12 +1514,9 @@ unsafe fn WI_loadUnloadData(callback: LoadCallback) {
             callback(name.as_mut_ptr(), lnames.offset(i as isize));
         }
 
-        callback(DEH_String(b"WIURH0\0".as_ptr() as *mut c_char), &mut yah[0]);
-        callback(DEH_String(b"WIURH1\0".as_ptr() as *mut c_char), &mut yah[1]);
-        callback(
-            DEH_String(b"WISPLAT\0".as_ptr() as *mut c_char),
-            &mut splat[0],
-        );
+        callback(DEH_String(c"WIURH0".as_ptr().cast_mut()), &mut yah[0]);
+        callback(DEH_String(c"WIURH1".as_ptr().cast_mut()), &mut yah[1]);
+        callback(DEH_String(c"WISPLAT".as_ptr().cast_mut()), &mut splat[0]);
 
         if (*wbs).epsd < 3 {
             let epsd = (*wbs).epsd as usize;
@@ -1543,59 +1535,38 @@ unsafe fn WI_loadUnloadData(callback: LoadCallback) {
         }
     }
 
-    callback(
-        DEH_String(b"WIMINUS\0".as_ptr() as *mut c_char),
-        &mut wiminus,
-    );
+    callback(DEH_String(c"WIMINUS".as_ptr().cast_mut()), &mut wiminus);
 
     for i in 0..10i32 {
         DEH_snprintf!(name, "WINUM{}", i);
         callback(name.as_mut_ptr(), &mut num[i as usize]);
     }
 
-    callback(
-        DEH_String(b"WIPCNT\0".as_ptr() as *mut c_char),
-        &mut percent,
-    );
-    callback(DEH_String(b"WIF\0".as_ptr() as *mut c_char), &mut finished);
-    callback(
-        DEH_String(b"WIENTER\0".as_ptr() as *mut c_char),
-        &mut entering,
-    );
-    callback(DEH_String(b"WIOSTK\0".as_ptr() as *mut c_char), &mut kills);
-    callback(DEH_String(b"WIOSTS\0".as_ptr() as *mut c_char), &mut secret);
-    callback(
-        DEH_String(b"WISCRT2\0".as_ptr() as *mut c_char),
-        &mut sp_secret,
-    );
+    callback(DEH_String(c"WIPCNT".as_ptr().cast_mut()), &mut percent);
+    callback(DEH_String(c"WIF".as_ptr().cast_mut()), &mut finished);
+    callback(DEH_String(c"WIENTER".as_ptr().cast_mut()), &mut entering);
+    callback(DEH_String(c"WIOSTK".as_ptr().cast_mut()), &mut kills);
+    callback(DEH_String(c"WIOSTS".as_ptr().cast_mut()), &mut secret);
+    callback(DEH_String(c"WISCRT2".as_ptr().cast_mut()), &mut sp_secret);
 
-    if W_CheckNumForName(DEH_String(b"WIOBJ\0".as_ptr() as *mut c_char)) >= 0 {
+    if W_CheckNumForName(DEH_String(c"WIOBJ".as_ptr().cast_mut())) >= 0 {
         if netgame != 0 && deathmatch == 0 {
-            callback(DEH_String(b"WIOBJ\0".as_ptr() as *mut c_char), &mut items);
+            callback(DEH_String(c"WIOBJ".as_ptr().cast_mut()), &mut items);
         } else {
-            callback(DEH_String(b"WIOSTI\0".as_ptr() as *mut c_char), &mut items);
+            callback(DEH_String(c"WIOSTI".as_ptr().cast_mut()), &mut items);
         }
     } else {
-        callback(DEH_String(b"WIOSTI\0".as_ptr() as *mut c_char), &mut items);
+        callback(DEH_String(c"WIOSTI".as_ptr().cast_mut()), &mut items);
     }
 
-    callback(DEH_String(b"WIFRGS\0".as_ptr() as *mut c_char), &mut frags);
-    callback(DEH_String(b"WICOLON\0".as_ptr() as *mut c_char), &mut colon);
-    callback(
-        DEH_String(b"WITIME\0".as_ptr() as *mut c_char),
-        &mut timepatch,
-    );
-    callback(DEH_String(b"WISUCKS\0".as_ptr() as *mut c_char), &mut sucks);
-    callback(DEH_String(b"WIPAR\0".as_ptr() as *mut c_char), &mut par);
-    callback(
-        DEH_String(b"WIKILRS\0".as_ptr() as *mut c_char),
-        &mut killers,
-    );
-    callback(
-        DEH_String(b"WIVCTMS\0".as_ptr() as *mut c_char),
-        &mut victims,
-    );
-    callback(DEH_String(b"WIMSTT\0".as_ptr() as *mut c_char), &mut total);
+    callback(DEH_String(c"WIFRGS".as_ptr().cast_mut()), &mut frags);
+    callback(DEH_String(c"WICOLON".as_ptr().cast_mut()), &mut colon);
+    callback(DEH_String(c"WITIME".as_ptr().cast_mut()), &mut timepatch);
+    callback(DEH_String(c"WISUCKS".as_ptr().cast_mut()), &mut sucks);
+    callback(DEH_String(c"WIPAR".as_ptr().cast_mut()), &mut par);
+    callback(DEH_String(c"WIKILRS".as_ptr().cast_mut()), &mut killers);
+    callback(DEH_String(c"WIVCTMS".as_ptr().cast_mut()), &mut victims);
+    callback(DEH_String(c"WIMSTT".as_ptr().cast_mut()), &mut total);
 
     for i in 0..MAXPLAYERS {
         DEH_snprintf!(name, "STPB{}", i);
@@ -1604,16 +1575,10 @@ unsafe fn WI_loadUnloadData(callback: LoadCallback) {
         callback(name.as_mut_ptr(), &mut bp[i]);
     }
 
-    if gamemode == d_mode::commercial {
+    if gamemode == d_mode::commercial || (gamemode == d_mode::retail && (*wbs).epsd == 3) {
         M_StringCopy(
             name.as_mut_ptr(),
-            DEH_String(b"INTERPIC\0".as_ptr() as *mut c_char),
-            name.len(),
-        );
-    } else if gamemode == d_mode::retail && (*wbs).epsd == 3 {
-        M_StringCopy(
-            name.as_mut_ptr(),
-            DEH_String(b"INTERPIC\0".as_ptr() as *mut c_char),
+            DEH_String(c"INTERPIC".as_ptr().cast_mut()),
             name.len(),
         );
     } else {
@@ -1646,10 +1611,8 @@ pub unsafe extern "C" fn WI_loadData() {
 
     WI_loadUnloadData(WI_loadCallback);
 
-    star = W_CacheLumpName(DEH_String(b"STFST01\0".as_ptr() as *mut c_char), PU_STATIC)
-        as *mut patch_t;
-    bstar = W_CacheLumpName(DEH_String(b"STFDEAD0\0".as_ptr() as *mut c_char), PU_STATIC)
-        as *mut patch_t;
+    star = W_CacheLumpName(DEH_String(c"STFST01".as_ptr().cast_mut()), PU_STATIC) as *mut patch_t;
+    bstar = W_CacheLumpName(DEH_String(c"STFDEAD0".as_ptr().cast_mut()), PU_STATIC) as *mut patch_t;
 }
 
 unsafe extern "C" fn WI_unloadCallback(name: *mut c_char, variable: *mut *mut patch_t) {

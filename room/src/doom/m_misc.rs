@@ -61,7 +61,7 @@ pub extern "C" fn M_MakeDirectory(path: *mut c_char) {
 #[no_mangle]
 pub extern "C" fn M_FileExists(filename: *mut c_char) -> c_int {
     unsafe {
-        let fstream = fopen(filename as *const c_char, b"r\0".as_ptr() as *const c_char);
+        let fstream = fopen(filename as *const c_char, c"r".as_ptr());
         if !fstream.is_null() {
             fclose(fstream);
             return 1;
@@ -84,7 +84,7 @@ pub extern "C" fn M_FileLength(handle: *mut FILE) -> c_long {
 #[no_mangle]
 pub extern "C" fn M_WriteFile(name: *mut c_char, source: *mut c_void, length: c_int) -> c_int {
     unsafe {
-        let handle = fopen(name as *const c_char, b"wb\0".as_ptr() as *const c_char);
+        let handle = fopen(name as *const c_char, c"wb".as_ptr());
         if handle.is_null() {
             return 0;
         }
@@ -100,7 +100,7 @@ pub extern "C" fn M_WriteFile(name: *mut c_char, source: *mut c_void, length: c_
 #[no_mangle]
 pub extern "C" fn M_ReadFile(name: *mut c_char, buffer: *mut *mut c_char) -> c_int {
     unsafe {
-        let handle = fopen(name as *const c_char, b"rb\0".as_ptr() as *const c_char);
+        let handle = fopen(name as *const c_char, c"rb".as_ptr());
         if handle.is_null() {
             i_error!(
                 "Couldn't read file {}",
@@ -124,28 +124,26 @@ pub extern "C" fn M_ReadFile(name: *mut c_char, buffer: *mut *mut c_char) -> c_i
 
 #[no_mangle]
 pub extern "C" fn M_TempFile(s: *mut c_char) -> *mut c_char {
-    unsafe {
-        let tempdir = b"/tmp\0".as_ptr() as *const c_char;
-        let sep = DIR_SEPARATOR_S.as_ptr() as *const c_char;
-        let strs: [*const c_char; 4] = [tempdir, sep, s as *const c_char, std::ptr::null()];
-        // SAFETY: null-terminated pointer array; ownership transferred to caller via return.
-        M_StringJoinA(strs.as_ptr())
-    }
+    let tempdir = c"/tmp".as_ptr();
+    let sep = DIR_SEPARATOR_S.as_ptr() as *const c_char;
+    let strs: [*const c_char; 4] = [tempdir, sep, s as *const c_char, std::ptr::null()];
+    // SAFETY: null-terminated pointer array; ownership transferred to caller via return.
+    M_StringJoinA(strs.as_ptr())
 }
 
 #[no_mangle]
 pub extern "C" fn M_StrToInt(str: *const c_char, result: *mut c_int) -> c_int {
     unsafe {
-        if sscanf(str, b" 0x%x\0".as_ptr() as *const c_char, result) == 1 {
+        if sscanf(str, c" 0x%x".as_ptr(), result) == 1 {
             return 1;
         }
-        if sscanf(str, b" 0X%x\0".as_ptr() as *const c_char, result) == 1 {
+        if sscanf(str, c" 0X%x".as_ptr(), result) == 1 {
             return 1;
         }
-        if sscanf(str, b" 0%o\0".as_ptr() as *const c_char, result) == 1 {
+        if sscanf(str, c" 0%o".as_ptr(), result) == 1 {
             return 1;
         }
-        if sscanf(str, b" %d\0".as_ptr() as *const c_char, result) == 1 {
+        if sscanf(str, c" %d".as_ptr(), result) == 1 {
             return 1;
         }
         0
@@ -384,7 +382,7 @@ pub extern "C" fn M_snprintf_clamp(buf: *mut c_char, len: usize, result: c_int) 
 
 #[no_mangle]
 pub extern "C" fn M_HomeDir() -> *const c_char {
-    unsafe { getenv(b"HOME\0".as_ptr() as *const c_char) }
+    unsafe { getenv(c"HOME".as_ptr()) }
 }
 
 // Returns a heap-allocated path (via M_StringJoinA/malloc) in the normal case, or a
@@ -395,20 +393,15 @@ pub extern "C" fn M_DefaultConfigDir() -> *const c_char {
     unsafe {
         let home = M_HomeDir();
         if home.is_null() {
-            return b".\0".as_ptr() as *const c_char;
+            return c".".as_ptr();
         }
-        let xdg = getenv(b"XDG_CONFIG_HOME\0".as_ptr() as *const c_char);
+        let xdg = getenv(c"XDG_CONFIG_HOME".as_ptr());
         if !xdg.is_null() {
-            let strs: [*const c_char; 3] =
-                [xdg, b"/doom\0".as_ptr() as *const c_char, std::ptr::null()];
+            let strs: [*const c_char; 3] = [xdg, c"/doom".as_ptr(), std::ptr::null()];
             // SAFETY: null-terminated pointer array; result intentionally leaked (see above).
             return M_StringJoinA(strs.as_ptr());
         }
-        let strs: [*const c_char; 3] = [
-            home,
-            b"/.config/doom\0".as_ptr() as *const c_char,
-            std::ptr::null(),
-        ];
+        let strs: [*const c_char; 3] = [home, c"/.config/doom".as_ptr(), std::ptr::null()];
         // SAFETY: null-terminated pointer array; result intentionally leaked (see above).
         M_StringJoinA(strs.as_ptr())
     }
@@ -426,8 +419,8 @@ pub extern "C" fn M_OEMToUTF8(_oem: *const c_char) -> *mut c_char {
 #[macro_export]
 macro_rules! c_write {
     ($buf:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {
-        $crate::doom::m_misc::write_c_buf(
-            &mut $buf,
+        $crate::doom::m_misc::write_c_buf_ptr(
+            ::std::ptr::addr_of_mut!($buf),
             &::std::format!($fmt $(, $arg)*)
         )
     };
@@ -441,8 +434,8 @@ macro_rules! c_write {
 #[macro_export]
 macro_rules! DEH_snprintf {
     ($buf:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {
-        $crate::doom::m_misc::write_c_buf(
-            &mut $buf,
+        $crate::doom::m_misc::write_c_buf_ptr(
+            ::std::ptr::addr_of_mut!($buf),
             &::std::format!($fmt $(, $arg)*)
         )
     };
@@ -464,6 +457,13 @@ macro_rules! i_error {
                 .as_ptr()
         )
     };
+}
+
+pub(crate) fn write_c_buf_ptr<const N: usize>(ptr: *mut [c_char; N], s: &str) {
+    // SAFETY: ptr is valid for N c_chars; obtained via addr_of_mut! to avoid
+    // creating a reference to a mutable static.
+    let slice = unsafe { std::slice::from_raw_parts_mut(ptr.cast::<c_char>(), N) };
+    write_c_buf(slice, s);
 }
 
 pub(crate) fn write_c_buf(buf: &mut [c_char], s: &str) {
@@ -817,8 +817,8 @@ mod tests {
             libc::snprintf(
                 buf.as_mut_ptr(),
                 buf.len(),
-                b"say %s\0".as_ptr() as *const c_char,
-                b"hello\0".as_ptr() as *const c_char,
+                c"say %s".as_ptr(),
+                c"hello".as_ptr(),
             )
         };
         let r = m_snprintf_clamp(buf.as_mut_ptr(), buf.len(), result);

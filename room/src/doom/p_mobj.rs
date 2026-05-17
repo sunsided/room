@@ -5,7 +5,7 @@
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
 use crate::i_error;
-use std::ffi::{c_char, c_void};
+use std::ffi::c_void;
 use std::os::raw::c_int;
 use std::ptr;
 
@@ -14,7 +14,7 @@ use crate::doom::d_player::{PlayerT, CF_NOMOMENTUM, MAXPLAYERS};
 use crate::doom::hu_stuff::HU_Start;
 use crate::doom::i_timer::TICRATE;
 use crate::doom::info::{self, *};
-use crate::doom::m_fixed::{fixed_t, FixedMul, FRACBITS, FRACUNIT};
+use crate::doom::m_fixed::{FixedMul, FRACBITS, FRACUNIT};
 use crate::doom::m_random::P_Random;
 use crate::doom::p_maputl::{P_AproxDistance, P_SetThingPosition, P_UnsetThingPosition};
 use crate::doom::p_pspr::P_SetupPsprites;
@@ -161,16 +161,8 @@ pub unsafe extern "C" fn P_XYMovement(mo: *mut mobj_t) {
         return;
     }
 
-    if mo.momx > MAXMOVE {
-        mo.momx = MAXMOVE;
-    } else if mo.momx < -MAXMOVE {
-        mo.momx = -MAXMOVE;
-    }
-    if mo.momy > MAXMOVE {
-        mo.momy = MAXMOVE;
-    } else if mo.momy < -MAXMOVE {
-        mo.momy = -MAXMOVE;
-    }
+    mo.momx = mo.momx.clamp(-MAXMOVE, MAXMOVE);
+    mo.momy = mo.momy.clamp(-MAXMOVE, MAXMOVE);
 
     xmove = mo.momx;
     ymove = mo.momy;
@@ -227,16 +219,14 @@ pub unsafe extern "C" fn P_XYMovement(mo: *mut mobj_t) {
         return;
     }
 
-    if mo.flags & MF_CORPSE != 0 {
-        if mo.momx > FRACUNIT / 4
+    if mo.flags & MF_CORPSE != 0
+        && (mo.momx > FRACUNIT / 4
             || mo.momx < -FRACUNIT / 4
             || mo.momy > FRACUNIT / 4
-            || mo.momy < -FRACUNIT / 4
-        {
-            if mo.floorz != (*(*mo.subsector).sector).floorheight {
-                return;
-            }
-        }
+            || mo.momy < -FRACUNIT / 4)
+        && mo.floorz != (*(*mo.subsector).sector).floorheight
+    {
+        return;
     }
 
     if mo.momx > -STOPSPEED
@@ -251,7 +241,7 @@ pub unsafe extern "C" fn P_XYMovement(mo: *mut mobj_t) {
             let state_idx =
                 (state_ptr as usize - states_ptr as usize) / std::mem::size_of::<State>();
             let run_offset = state_idx as c_int - S_PLAY_RUN1;
-            if run_offset >= 0 && run_offset < 4 {
+            if (0..4).contains(&run_offset) {
                 P_SetMobjState(mo as *mut mobj_t, S_PLAY);
             }
         }
@@ -277,16 +267,18 @@ pub unsafe extern "C" fn P_ZMovement(mo: *mut mobj_t) {
 
     mo.z += mo.momz;
 
-    if mo.flags & MF_FLOAT != 0 && !mo.target.is_null() {
-        if mo.flags & MF_SKULLFLY == 0 && mo.flags & MF_INFLOAT == 0 {
-            let target = mo.target;
-            dist = P_AproxDistance(mo.x - (*target).x, mo.y - (*target).y);
-            delta = ((*target).z + (mo.height >> 1)) - mo.z;
-            if delta < 0 && dist < -(delta * 3) {
-                mo.z -= FLOATSPEED;
-            } else if delta > 0 && dist < delta * 3 {
-                mo.z += FLOATSPEED;
-            }
+    if mo.flags & MF_FLOAT != 0
+        && !mo.target.is_null()
+        && mo.flags & MF_SKULLFLY == 0
+        && mo.flags & MF_INFLOAT == 0
+    {
+        let target = mo.target;
+        dist = P_AproxDistance(mo.x - (*target).x, mo.y - (*target).y);
+        delta = ((*target).z + (mo.height >> 1)) - mo.z;
+        if delta < 0 && dist < -(delta * 3) {
+            mo.z -= FLOATSPEED;
+        } else if delta > 0 && dist < delta * 3 {
+            mo.z += FLOATSPEED;
         }
     }
 
@@ -329,7 +321,6 @@ pub unsafe extern "C" fn P_ZMovement(mo: *mut mobj_t) {
         }
         if mo.flags & MF_MISSILE != 0 && mo.flags & MF_NOCLIP == 0 {
             P_ExplodeMissile(mo as *mut mobj_t);
-            return;
         }
     }
 }
@@ -339,8 +330,6 @@ pub unsafe extern "C" fn P_NightmareRespawn(mobj: *mut mobj_t) {
     let mobj = &mut *mobj;
     let x = (mobj.spawnpoint.x as c_int) << FRACBITS;
     let y = (mobj.spawnpoint.y as c_int) << FRACBITS;
-    let z: c_int;
-
     if P_CheckPosition(mobj as *mut _ as *mut CffiMobj, x, y) == 0 {
         return;
     }
@@ -351,19 +340,19 @@ pub unsafe extern "C" fn P_NightmareRespawn(mobj: *mut mobj_t) {
         (*(*mobj.subsector).sector).floorheight,
         MT_TFOG,
     );
-    S_StartSound(mo as *mut mobj_t as *mut c_void, sfx_telept);
+    S_StartSound(mo as *mut c_void, sfx_telept);
 
     let ss = R_PointInSubsector(x, y) as *mut subsector_t;
     mo = P_SpawnMobj(x, y, (*(*ss).sector).floorheight, MT_TFOG);
-    S_StartSound(mo as *mut mobj_t as *mut c_void, sfx_telept);
+    S_StartSound(mo as *mut c_void, sfx_telept);
 
     let mthing = &mobj.spawnpoint;
     let info = mobj.info as *mut MobjInfo;
-    if (*info).flags & MF_SPAWNCEILING != 0 {
-        z = ONCEILINGZ;
+    let z = if (*info).flags & MF_SPAWNCEILING != 0 {
+        ONCEILINGZ
     } else {
-        z = ONFLOORZ;
-    }
+        ONFLOORZ
+    };
 
     mo = P_SpawnMobj(x, y, z, mobj.mobjtype);
     (*mo).spawnpoint = mobj.spawnpoint;
@@ -395,9 +384,7 @@ pub unsafe extern "C" fn P_MobjThinker(mobj: *mut mobj_t) {
         mobj.tics -= 1;
         if mobj.tics == 0 {
             let state_ptr = mobj.state as *mut State;
-            if P_SetMobjState(mobj as *mut mobj_t, (*state_ptr).nextstate) == 0 {
-                return;
-            }
+            if P_SetMobjState(mobj as *mut mobj_t, (*state_ptr).nextstate) == 0 {}
         }
     } else {
         if mobj.flags & MF_COUNTKILL == 0 {
@@ -515,7 +502,7 @@ pub unsafe extern "C" fn P_RespawnSpecials() {
 
     let ss = R_PointInSubsector(x, y) as *mut subsector_t;
     let mut mo = P_SpawnMobj(x, y, (*(*ss).sector).floorheight, MT_IFOG);
-    S_StartSound(mo as *mut mobj_t as *mut c_void, sfx_itmbk);
+    S_StartSound(mo as *mut c_void, sfx_itmbk);
 
     let mut i = 0;
     while i < NUMMOBJTYPES {
@@ -525,12 +512,11 @@ pub unsafe extern "C" fn P_RespawnSpecials() {
         i += 1;
     }
 
-    let z: c_int;
-    if info::mobjinfo[i].flags & MF_SPAWNCEILING != 0 {
-        z = ONCEILINGZ;
+    let z = if info::mobjinfo[i].flags & MF_SPAWNCEILING != 0 {
+        ONCEILINGZ
     } else {
-        z = ONFLOORZ;
-    }
+        ONFLOORZ
+    };
 
     mo = P_SpawnMobj(x, y, z, i as c_int);
     (*mo).spawnpoint = *mthing;
@@ -664,12 +650,11 @@ pub unsafe extern "C" fn P_SpawnMapThing(mthing: *mut mapthing_t) {
     let x = (mthing.x as c_int) << FRACBITS;
     let y = (mthing.y as c_int) << FRACBITS;
 
-    let z: c_int;
-    if info::mobjinfo[i].flags & MF_SPAWNCEILING != 0 {
-        z = ONCEILINGZ;
+    let z = if info::mobjinfo[i].flags & MF_SPAWNCEILING != 0 {
+        ONCEILINGZ
     } else {
-        z = ONFLOORZ;
-    }
+        ONFLOORZ
+    };
 
     let mobj = P_SpawnMobj(x, y, z, i as c_int);
     (*mobj).spawnpoint = *mthing;
@@ -713,7 +698,7 @@ pub unsafe extern "C" fn P_SpawnBlood(x: c_int, y: c_int, z: c_int, damage: c_in
     if (*th).tics < 1 {
         (*th).tics = 1;
     }
-    if damage <= 12 && damage >= 9 {
+    if (9..=12).contains(&damage) {
         P_SetMobjState(th, S_BLOOD2);
     } else if damage < 9 {
         P_SetMobjState(th, S_BLOOD3);
@@ -759,7 +744,7 @@ pub unsafe extern "C" fn P_SpawnMissile(
     let th = P_SpawnMobj(source.x, source.y, source.z + 4 * 8 * FRACUNIT, type_);
     let info = (*th).info as *mut MobjInfo;
     if (*info).seesound != 0 {
-        S_StartSound(th as *mut mobj_t as *mut c_void, (*info).seesound);
+        S_StartSound(th as *mut c_void, (*info).seesound);
     }
     (*th).target = source as *const mobj_t as *mut mobj_t;
     let mut an = R_PointToAngle2(source.x, source.y, dest.x, dest.y);
@@ -772,7 +757,7 @@ pub unsafe extern "C" fn P_SpawnMissile(
     (*th).momy = FixedMul((*info).speed, finesine[an as usize]);
 
     let mut dist = P_AproxDistance(dest.x - source.x, dest.y - source.y);
-    dist = dist / (*info).speed;
+    dist /= (*info).speed;
     if dist < 1 {
         dist = 1;
     }
@@ -807,7 +792,7 @@ pub unsafe extern "C" fn P_SpawnPlayerMissile(source: *mut mobj_t, type_: c_int)
     let th = P_SpawnMobj(x, y, z, type_);
     let info = (*th).info as *mut MobjInfo;
     if (*info).seesound != 0 {
-        S_StartSound(th as *mut mobj_t as *mut c_void, (*info).seesound);
+        S_StartSound(th as *mut c_void, (*info).seesound);
     }
     (*th).target = source as *const mobj_t as *mut mobj_t;
     (*th).angle = an;

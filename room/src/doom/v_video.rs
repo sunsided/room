@@ -76,8 +76,12 @@ static mut patchclip_callback: vpatchclipfunc_t = None;
 pub extern "C" fn V_MarkRect(x: c_int, y: c_int, width: c_int, height: c_int) {
     unsafe {
         if dest_screen == I_VideoBuffer {
-            M_AddToBox(dirtybox.as_mut_ptr(), x, y);
-            M_AddToBox(dirtybox.as_mut_ptr(), x + width - 1, y + height - 1);
+            M_AddToBox(std::ptr::addr_of_mut!(dirtybox[0]), x, y);
+            M_AddToBox(
+                std::ptr::addr_of_mut!(dirtybox[0]),
+                x + width - 1,
+                y + height - 1,
+            );
         }
     }
 }
@@ -372,14 +376,14 @@ pub extern "C" fn V_DrawShadowedPatch(x: c_int, y: c_int, patch: *mut patch_t) {
 #[no_mangle]
 pub extern "C" fn V_LoadTintTable() {
     unsafe {
-        tinttable = W_CacheLumpName(b"TINTTAB\0".as_ptr() as *const c_char, PU_STATIC) as *mut u8;
+        tinttable = W_CacheLumpName(c"TINTTAB".as_ptr(), PU_STATIC) as *mut u8;
     }
 }
 
 #[no_mangle]
 pub extern "C" fn V_LoadXlaTable() {
     unsafe {
-        xlatab = W_CacheLumpName(b"XLATAB\0".as_ptr() as *const c_char, PU_STATIC) as *mut u8;
+        xlatab = W_CacheLumpName(c"XLATAB".as_ptr(), PU_STATIC) as *mut u8;
     }
 }
 
@@ -579,7 +583,7 @@ pub extern "C" fn V_ScreenShot(_format: *mut c_char) {
             I_VideoBuffer,
             SCREENWIDTH,
             SCREENHEIGHT,
-            W_CacheLumpName(b"PLAYPAL\0".as_ptr() as *const c_char, PU_CACHE) as *mut u8,
+            W_CacheLumpName(c"PLAYPAL".as_ptr(), PU_CACHE) as *mut u8,
         );
     }
 }

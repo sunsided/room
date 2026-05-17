@@ -7,7 +7,7 @@
 
 #![allow(non_snake_case, non_camel_case_types, non_upper_case_globals)]
 
-use std::ffi::{c_char, c_int, c_short, c_uint, c_ushort, c_void};
+use std::ffi::{c_int, c_short, c_uint, c_ushort, c_void};
 
 pub use super::i_timer::TICRATE;
 pub use super::i_video::{SCREENHEIGHT, SCREENWIDTH};

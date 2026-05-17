@@ -10,7 +10,7 @@ use std::os::raw::c_uint;
 use std::ptr;
 
 use crate::c_write;
-use crate::doom::c_ffi::{mobj_t, sector_t, MAPBLOCKSHIFT, MAPBLOCKSIZE, MAPBLOCKUNITS};
+use crate::doom::c_ffi::{mobj_t, sector_t, MAPBLOCKUNITS};
 use crate::doom::d_event::event_t;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS};
 use crate::doom::g_game::{
@@ -663,12 +663,12 @@ unsafe fn AM_initVariables() {
     m_h = FTOM(f_h);
 
     if playeringame[consoleplayer as usize] != 0 {
-        plr = players.as_mut_ptr().add(consoleplayer as usize);
+        plr = std::ptr::addr_of_mut!(players[0]).add(consoleplayer as usize);
     } else {
-        plr = players.as_mut_ptr();
+        plr = std::ptr::addr_of_mut!(players[0]);
         for pnum in 0..MAXPLAYERS {
             if playeringame[pnum] != 0 {
-                plr = players.as_mut_ptr().add(pnum);
+                plr = std::ptr::addr_of_mut!(players[0]).add(pnum);
                 break;
             }
         }
@@ -846,30 +846,30 @@ pub unsafe extern "C" fn AM_Responder(ev: *mut event_t) -> c_int {
             followplayer = !followplayer;
             f_oldloc.x = c_int::MAX;
             if followplayer != 0 {
-                (*plr).message = DEH_String(b"Follow Mode ON\0".as_ptr() as *mut c_char);
+                (*plr).message = DEH_String(c"Follow Mode ON".as_ptr().cast_mut());
             } else {
-                (*plr).message = DEH_String(b"Follow Mode OFF\0".as_ptr() as *mut c_char);
+                (*plr).message = DEH_String(c"Follow Mode OFF".as_ptr().cast_mut());
             }
         } else if key == key_map_grid {
             grid = !grid;
             if grid != 0 {
-                (*plr).message = DEH_String(b"Grid ON\0".as_ptr() as *mut c_char);
+                (*plr).message = DEH_String(c"Grid ON".as_ptr().cast_mut());
             } else {
-                (*plr).message = DEH_String(b"Grid OFF\0".as_ptr() as *mut c_char);
+                (*plr).message = DEH_String(c"Grid OFF".as_ptr().cast_mut());
             }
         } else if key == key_map_mark {
             static mut AM_MARK_MSG: [c_char; 20] = [0; 20];
-            c_write!(AM_MARK_MSG, "Marked Spot {}", markpointnum);
-            (*plr).message = AM_MARK_MSG.as_mut_ptr();
+            c_write!(AM_MARK_MSG, "Marked Spot {}", markpointnum as c_int);
+            (*plr).message = std::ptr::addr_of_mut!(AM_MARK_MSG[0]);
             AM_addMark();
         } else if key == key_map_clearmark {
             AM_clearMarks();
-            (*plr).message = DEH_String(b"All Marks Cleared\0".as_ptr() as *mut c_char);
+            (*plr).message = DEH_String(c"All Marks Cleared".as_ptr().cast_mut());
         } else {
             rc = 0;
         }
 
-        if deathmatch == 0 && cht_CheckCheat(&mut cheat_amap, (*ev).data2 as c_char) != 0 {
+        if deathmatch == 0 && cht_CheckCheat(&raw mut cheat_amap, (*ev).data2 as c_char) != 0 {
             rc = 0;
             cheating = (cheating + 1) % 3;
         }
@@ -878,19 +878,11 @@ pub unsafe extern "C" fn AM_Responder(ev: *mut event_t) -> c_int {
         rc = 0;
         let key = (*ev).data1;
 
-        if key == key_map_east {
+        if key == key_map_east || key == key_map_west {
             if followplayer == 0 {
                 m_paninc.x = 0;
             }
-        } else if key == key_map_west {
-            if followplayer == 0 {
-                m_paninc.x = 0;
-            }
-        } else if key == key_map_north {
-            if followplayer == 0 {
-                m_paninc.y = 0;
-            }
-        } else if key == key_map_south {
+        } else if key == key_map_north || key == key_map_south {
             if followplayer == 0 {
                 m_paninc.y = 0;
             }
@@ -1156,8 +1148,8 @@ unsafe fn AM_drawMline(ml: *mut mline_t, color: c_int) {
         a: fpoint_t { x: 0, y: 0 },
         b: fpoint_t { x: 0, y: 0 },
     };
-    if AM_clipMline(ml, &mut fl) != 0 {
-        AM_drawFline(&mut fl, color);
+    if AM_clipMline(ml, &raw mut fl) != 0 {
+        AM_drawFline(&raw mut fl, color);
     }
 }
 
@@ -1224,31 +1216,31 @@ unsafe fn AM_drawWalls() {
                 continue;
             }
             if li.backsector.is_null() {
-                AM_drawMline(&mut l, WALLCOLORS + lightlev);
+                AM_drawMline(&raw mut l, WALLCOLORS + lightlev);
             } else {
                 let back = li.backsector as *mut sector_t;
                 let front = li.frontsector as *mut sector_t;
                 if li.special == 39 {
                     // teleporters
-                    AM_drawMline(&mut l, WALLCOLORS + WALLRANGE / 2);
+                    AM_drawMline(&raw mut l, WALLCOLORS + WALLRANGE / 2);
                 } else if (flags & ML_SECRET as c_int) != 0 {
                     if cheating != 0 {
-                        AM_drawMline(&mut l, SECRETWALLCOLORS + lightlev);
+                        AM_drawMline(&raw mut l, SECRETWALLCOLORS + lightlev);
                     } else {
-                        AM_drawMline(&mut l, WALLCOLORS + lightlev);
+                        AM_drawMline(&raw mut l, WALLCOLORS + lightlev);
                     }
                 } else if (*back).floorheight != (*front).floorheight {
-                    AM_drawMline(&mut l, FDWALLCOLORS + lightlev);
+                    AM_drawMline(&raw mut l, FDWALLCOLORS + lightlev);
                 } else if (*back).ceilingheight != (*front).ceilingheight {
-                    AM_drawMline(&mut l, CDWALLCOLORS + lightlev);
+                    AM_drawMline(&raw mut l, CDWALLCOLORS + lightlev);
                 } else if cheating != 0 {
-                    AM_drawMline(&mut l, TSWALLCOLORS + lightlev);
+                    AM_drawMline(&raw mut l, TSWALLCOLORS + lightlev);
                 }
             }
         } else if (*plr).powers[4] != 0 {
             // pw_allmap
             if (flags & ML_DONTDRAW as c_int) == 0 {
-                AM_drawMline(&mut l, GRAYS + 3);
+                AM_drawMline(&raw mut l, GRAYS + 3);
             }
         }
     }
@@ -1343,7 +1335,7 @@ unsafe fn AM_drawPlayers() {
 
     for i in 0..MAXPLAYERS {
         their_color += 1;
-        let p = players.as_mut_ptr().add(i);
+        let p = std::ptr::addr_of_mut!(players[0]).add(i);
 
         if deathmatch != 0 && singledemo == 0 && p != plr {
             continue;

@@ -70,14 +70,14 @@ unsafe fn ExtendLumpInfo(newnumlumps: c_uint) {
     for i in 0..numlumps.min(newnumlumps) {
         std::ptr::copy_nonoverlapping(lumpinfo.add(i as usize), newlumpinfo.add(i as usize), 1);
 
-        if (*newlumpinfo.add(i as usize)).cache != ptr::null_mut() {
+        if !(*newlumpinfo.add(i as usize)).cache.is_null() {
             Z_ChangeUser(
                 (*newlumpinfo.add(i as usize)).cache,
                 &mut (*newlumpinfo.add(i as usize)).cache as *mut *mut c_void,
             );
         }
 
-        if (*lumpinfo.add(i as usize)).next != ptr::null_mut() {
+        if !(*lumpinfo.add(i as usize)).next.is_null() {
             let nextlumpnum = ((*lumpinfo.add(i as usize)).next as usize - lumpinfo as usize)
                 / std::mem::size_of::<lumpinfo_t>();
             (*newlumpinfo.add(i as usize)).next = newlumpinfo.add(nextlumpnum);
@@ -109,22 +109,17 @@ pub extern "C" fn W_AddFile(filename: *mut c_char) -> *mut wad_file_t {
     unsafe {
         let wad_file = W_OpenFile(filename);
         if wad_file.is_null() {
-            libc::printf(b" couldn't open %s\n\0".as_ptr() as *const c_char, filename);
+            libc::printf(c" couldn't open %s\n".as_ptr(), filename);
             return ptr::null_mut();
         }
 
         let mut newnumlumps = numlumps;
         let startlump = numlumps;
 
-        let mut fileinfo: *mut filelump_t = ptr::null_mut();
+        let fileinfo: *mut filelump_t;
 
         let fname_len = strlen(filename);
-        if fname_len < 3
-            || strcasecmp(
-                filename.add(fname_len - 3),
-                b"wad\0".as_ptr() as *const c_char,
-            ) != 0
-        {
+        if fname_len < 3 || strcasecmp(filename.add(fname_len - 3), c"wad".as_ptr()) != 0 {
             // Single lump file
             fileinfo = Z_Malloc(
                 std::mem::size_of::<filelump_t>() as c_int,
@@ -145,23 +140,13 @@ pub extern "C" fn W_AddFile(filename: *mut c_char) -> *mut wad_file_t {
                 std::mem::size_of::<wadinfo_t>(),
             );
 
-            if strncmp(
-                header.identification.as_ptr(),
-                b"IWAD\0".as_ptr() as *const c_char,
-                4,
-            ) != 0
+            if strncmp(header.identification.as_ptr(), c"IWAD".as_ptr(), 4) != 0
+                && strncmp(header.identification.as_ptr(), c"PWAD".as_ptr(), 4) != 0
             {
-                if strncmp(
-                    header.identification.as_ptr(),
-                    b"PWAD\0".as_ptr() as *const c_char,
-                    4,
-                ) != 0
-                {
-                    i_error!(
-                        "Wad file {} doesn't have IWAD or PWAD id",
-                        CStr::from_ptr(filename).to_string_lossy()
-                    );
-                }
+                i_error!(
+                    "Wad file {} doesn't have IWAD or PWAD id",
+                    CStr::from_ptr(filename).to_string_lossy()
+                );
             }
 
             let header_numlumps = i32::from_le(header.numlumps);
@@ -328,7 +313,7 @@ pub extern "C" fn W_CacheLumpNum(lumpnum: c_int, tag: c_int) -> *mut c_void {
 
 #[no_mangle]
 pub extern "C" fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void {
-    unsafe { W_CacheLumpNum(W_GetNumForName(name), tag) }
+    W_CacheLumpNum(W_GetNumForName(name), tag)
 }
 
 #[no_mangle]
@@ -347,9 +332,7 @@ pub extern "C" fn W_ReleaseLumpNum(lumpnum: c_int) {
 }
 
 #[no_mangle]
-pub extern "C" fn W_ReleaseLumpName(name: *const c_char) {
-    unsafe { W_ReleaseLumpNum(W_GetNumForName(name)) }
-}
+pub extern "C" fn W_ReleaseLumpName(_name: *const c_char) {}
 
 #[no_mangle]
 pub extern "C" fn W_GenerateHashTable() {

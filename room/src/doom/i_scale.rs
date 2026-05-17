@@ -8,7 +8,7 @@
 use crate::doom::c_ffi::screen_mode_t;
 use crate::doom::m_argv::M_CheckParm;
 use crate::doom::z_zone::{Z_Free, Z_Malloc};
-use std::ffi::{c_char, c_int, c_void};
+use std::ffi::{c_int, c_void};
 use std::ptr;
 
 extern "C" {
@@ -192,23 +192,23 @@ unsafe extern "C" fn i_init_stretch_tables(palette: *mut u8) {
     if !stretch_tables[0].is_null() {
         return;
     }
-    libc::printf(b"I_InitStretchTables: Generating lookup tables..\0".as_ptr() as *const c_char);
+    libc::printf(c"I_InitStretchTables: Generating lookup tables..".as_ptr());
     libc::fflush(stdout);
     stretch_tables[0] = generate_stretch_table(palette, 20);
-    libc::printf(b"..\0".as_ptr() as *const c_char);
+    libc::printf(c"..".as_ptr());
     libc::fflush(stdout);
     stretch_tables[1] = generate_stretch_table(palette, 40);
-    libc::puts(b"\0".as_ptr() as *const c_char);
+    libc::puts(c"".as_ptr());
 }
 
 unsafe extern "C" fn i_init_squash_table(palette: *mut u8) {
     if !half_stretch_table.is_null() {
         return;
     }
-    libc::printf(b"I_InitSquashTable: Generating lookup table..\0".as_ptr() as *const c_char);
+    libc::printf(c"I_InitSquashTable: Generating lookup table..".as_ptr());
     libc::fflush(stdout);
     half_stretch_table = generate_stretch_table(palette, 50);
-    libc::puts(b"\0".as_ptr() as *const c_char);
+    libc::puts(c"".as_ptr());
 }
 
 #[no_mangle]
@@ -216,17 +216,13 @@ pub unsafe extern "C" fn I_ResetScaleTables(palette: *mut u8) {
     if !stretch_tables[0].is_null() {
         Z_Free(stretch_tables[0] as *mut c_void);
         Z_Free(stretch_tables[1] as *mut c_void);
-        libc::printf(
-            b"I_ResetScaleTables: Regenerating lookup tables..\n\0".as_ptr() as *const c_char,
-        );
+        libc::printf(c"I_ResetScaleTables: Regenerating lookup tables..\n".as_ptr());
         stretch_tables[0] = generate_stretch_table(palette, 20);
         stretch_tables[1] = generate_stretch_table(palette, 40);
     }
     if !half_stretch_table.is_null() {
         Z_Free(half_stretch_table as *mut c_void);
-        libc::printf(
-            b"I_ResetScaleTables: Regenerating lookup table..\n\0".as_ptr() as *const c_char,
-        );
+        libc::printf(c"I_ResetScaleTables: Regenerating lookup table..\n".as_ptr());
         half_stretch_table = generate_stretch_table(palette, 50);
     }
 }
@@ -520,7 +516,7 @@ unsafe extern "C" fn i_stretch_5x(_x1: c_int, _y1: c_int, _x2: c_int, _y2: c_int
         screenp = screenp.add(dest_pitch as usize);
         bufp = bufp.add(SCREENWIDTH as usize);
     }
-    if M_CheckParm(b"-scanline\0".as_ptr() as *mut c_char) > 0 {
+    if M_CheckParm(c"-scanline".as_ptr().cast_mut()) > 0 {
         let mut screenp = dest_buffer.add((2 * dest_pitch) as usize);
         let mut y = 0;
         while y < 1198 {

@@ -5,14 +5,14 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::{c_char, c_void};
+use std::ffi::c_char;
 use std::os::raw::c_int;
 
 use crate::doom::d_items::weaponinfo;
 use crate::doom::d_player::{consoleplayer, players, PlayerT, CF_GODMODE};
 use crate::doom::doomstat::{gamemode, gameversion};
 use crate::doom::info::{self, *};
-use crate::doom::m_fixed::{fixed_t, FixedMul, FRACUNIT};
+use crate::doom::m_fixed::{FixedMul, FRACUNIT};
 use crate::doom::m_random::P_Random;
 use crate::doom::p_pspr::P_DropWeapon;
 use crate::doom::p_telept::mobj_t;
@@ -97,44 +97,45 @@ const DEH_DEFAULT_MEGASPHERE_HEALTH: c_int = 200;
 // Pick-up message strings
 // ---------------------------------------------------------------------------
 
-const GOTARMOR: *mut c_char = b"Picked up the armor.\0".as_ptr() as *mut c_char;
-const GOTMEGA: *mut c_char = b"Picked up the MegaArmor!\0".as_ptr() as *mut c_char;
-const GOTHTHBONUS: *mut c_char = b"Picked up a health bonus.\0".as_ptr() as *mut c_char;
-const GOTARMBONUS: *mut c_char = b"Picked up an armor bonus.\0".as_ptr() as *mut c_char;
-const GOTSTIM: *mut c_char = b"Picked up a stimpack.\0".as_ptr() as *mut c_char;
-const GOTMEDINEED: *mut c_char =
-    b"Picked up a medikit that you REALLY need!\0".as_ptr() as *mut c_char;
-const GOTMEDIKIT: *mut c_char = b"Picked up a medikit.\0".as_ptr() as *mut c_char;
-const GOTSUPER: *mut c_char = b"Supercharge!\0".as_ptr() as *mut c_char;
-const GOTMSPHERE: *mut c_char = b"MegaSphere!\0".as_ptr() as *mut c_char;
-const GOTBLUECARD: *mut c_char = b"Picked up a blue keycard.\0".as_ptr() as *mut c_char;
-const GOTYELWCARD: *mut c_char = b"Picked up a yellow keycard.\0".as_ptr() as *mut c_char;
-const GOTREDCARD: *mut c_char = b"Picked up a red keycard.\0".as_ptr() as *mut c_char;
-const GOTBLUESKUL: *mut c_char = b"Picked up a blue skull key.\0".as_ptr() as *mut c_char;
-const GOTYELWSKUL: *mut c_char = b"Picked up a yellow skull key.\0".as_ptr() as *mut c_char;
-const GOTREDSKULL: *mut c_char = b"Picked up a red skull key.\0".as_ptr() as *mut c_char;
-const GOTINVUL: *mut c_char = b"Invulnerability!\0".as_ptr() as *mut c_char;
-const GOTBERSERK: *mut c_char = b"Berserk!\0".as_ptr() as *mut c_char;
-const GOTINVIS: *mut c_char = b"Partial Invisibility\0".as_ptr() as *mut c_char;
-const GOTSUIT: *mut c_char = b"Radiation Shielding Suit\0".as_ptr() as *mut c_char;
-const GOTMAP: *mut c_char = b"Computer Area Map\0".as_ptr() as *mut c_char;
-const GOTVISOR: *mut c_char = b"Light Amplification Visor\0".as_ptr() as *mut c_char;
-const GOTCLIP: *mut c_char = b"Picked up a clip.\0".as_ptr() as *mut c_char;
-const GOTCLIPBOX: *mut c_char = b"Picked up a box of bullets.\0".as_ptr() as *mut c_char;
-const GOTROCKET: *mut c_char = b"Picked up a rocket.\0".as_ptr() as *mut c_char;
-const GOTROCKBOX: *mut c_char = b"Picked up a box of rockets.\0".as_ptr() as *mut c_char;
-const GOTCELL: *mut c_char = b"Picked up an energy cell.\0".as_ptr() as *mut c_char;
-const GOTCELLBOX: *mut c_char = b"Picked up an energy cell pack.\0".as_ptr() as *mut c_char;
-const GOTSHELLS: *mut c_char = b"Picked up 4 shotgun shells.\0".as_ptr() as *mut c_char;
-const GOTSHELLBOX: *mut c_char = b"Picked up a box of shotgun shells.\0".as_ptr() as *mut c_char;
-const GOTBACKPACK: *mut c_char = b"Picked up a backpack full of ammo!\0".as_ptr() as *mut c_char;
-const GOTBFG9000: *mut c_char = b"You got the BFG9000!  Oh, yes.\0".as_ptr() as *mut c_char;
-const GOTCHAINGUN: *mut c_char = b"You got the chaingun!\0".as_ptr() as *mut c_char;
-const GOTCHAINSAW: *mut c_char = b"A chainsaw!  Find some meat!\0".as_ptr() as *mut c_char;
-const GOTLAUNCHER: *mut c_char = b"You got the rocket launcher!\0".as_ptr() as *mut c_char;
-const GOTPLASMA: *mut c_char = b"You got the plasma gun!\0".as_ptr() as *mut c_char;
-const GOTSHOTGUN: *mut c_char = b"You got the shotgun!\0".as_ptr() as *mut c_char;
-const GOTSHOTGUN2: *mut c_char = b"You got the super shotgun!\0".as_ptr() as *mut c_char;
+const GOTARMOR: *mut c_char = c"Picked up the armor.".as_ptr().cast_mut();
+const GOTMEGA: *mut c_char = c"Picked up the MegaArmor!".as_ptr().cast_mut();
+const GOTHTHBONUS: *mut c_char = c"Picked up a health bonus.".as_ptr().cast_mut();
+const GOTARMBONUS: *mut c_char = c"Picked up an armor bonus.".as_ptr().cast_mut();
+const GOTSTIM: *mut c_char = c"Picked up a stimpack.".as_ptr().cast_mut();
+const GOTMEDINEED: *mut c_char = c"Picked up a medikit that you REALLY need!"
+    .as_ptr()
+    .cast_mut();
+const GOTMEDIKIT: *mut c_char = c"Picked up a medikit.".as_ptr().cast_mut();
+const GOTSUPER: *mut c_char = c"Supercharge!".as_ptr().cast_mut();
+const GOTMSPHERE: *mut c_char = c"MegaSphere!".as_ptr().cast_mut();
+const GOTBLUECARD: *mut c_char = c"Picked up a blue keycard.".as_ptr().cast_mut();
+const GOTYELWCARD: *mut c_char = c"Picked up a yellow keycard.".as_ptr().cast_mut();
+const GOTREDCARD: *mut c_char = c"Picked up a red keycard.".as_ptr().cast_mut();
+const GOTBLUESKUL: *mut c_char = c"Picked up a blue skull key.".as_ptr().cast_mut();
+const GOTYELWSKUL: *mut c_char = c"Picked up a yellow skull key.".as_ptr().cast_mut();
+const GOTREDSKULL: *mut c_char = c"Picked up a red skull key.".as_ptr().cast_mut();
+const GOTINVUL: *mut c_char = c"Invulnerability!".as_ptr().cast_mut();
+const GOTBERSERK: *mut c_char = c"Berserk!".as_ptr().cast_mut();
+const GOTINVIS: *mut c_char = c"Partial Invisibility".as_ptr().cast_mut();
+const GOTSUIT: *mut c_char = c"Radiation Shielding Suit".as_ptr().cast_mut();
+const GOTMAP: *mut c_char = c"Computer Area Map".as_ptr().cast_mut();
+const GOTVISOR: *mut c_char = c"Light Amplification Visor".as_ptr().cast_mut();
+const GOTCLIP: *mut c_char = c"Picked up a clip.".as_ptr().cast_mut();
+const GOTCLIPBOX: *mut c_char = c"Picked up a box of bullets.".as_ptr().cast_mut();
+const GOTROCKET: *mut c_char = c"Picked up a rocket.".as_ptr().cast_mut();
+const GOTROCKBOX: *mut c_char = c"Picked up a box of rockets.".as_ptr().cast_mut();
+const GOTCELL: *mut c_char = c"Picked up an energy cell.".as_ptr().cast_mut();
+const GOTCELLBOX: *mut c_char = c"Picked up an energy cell pack.".as_ptr().cast_mut();
+const GOTSHELLS: *mut c_char = c"Picked up 4 shotgun shells.".as_ptr().cast_mut();
+const GOTSHELLBOX: *mut c_char = c"Picked up a box of shotgun shells.".as_ptr().cast_mut();
+const GOTBACKPACK: *mut c_char = c"Picked up a backpack full of ammo!".as_ptr().cast_mut();
+const GOTBFG9000: *mut c_char = c"You got the BFG9000!  Oh, yes.".as_ptr().cast_mut();
+const GOTCHAINGUN: *mut c_char = c"You got the chaingun!".as_ptr().cast_mut();
+const GOTCHAINSAW: *mut c_char = c"A chainsaw!  Find some meat!".as_ptr().cast_mut();
+const GOTLAUNCHER: *mut c_char = c"You got the rocket launcher!".as_ptr().cast_mut();
+const GOTPLASMA: *mut c_char = c"You got the plasma gun!".as_ptr().cast_mut();
+const GOTSHOTGUN: *mut c_char = c"You got the shotgun!".as_ptr().cast_mut();
+const GOTSHOTGUN2: *mut c_char = c"You got the super shotgun!".as_ptr().cast_mut();
 
 // ---------------------------------------------------------------------------
 // DEH_String shim — identity when dehacked is disabled.
@@ -198,35 +199,30 @@ pub unsafe extern "C" fn P_GiveAmmo(player: *mut PlayerT, ammo: c_int, mut num: 
         return 1;
     }
     match ammo {
-        am_clip => {
-            if (*player).readyweapon == wp_fist {
-                if (*player).weaponowned[wp_chaingun as usize] != 0 {
-                    (*player).pendingweapon = wp_chaingun;
-                } else {
-                    (*player).pendingweapon = wp_pistol;
-                }
+        am_clip if (*player).readyweapon == wp_fist => {
+            if (*player).weaponowned[wp_chaingun as usize] != 0 {
+                (*player).pendingweapon = wp_chaingun;
+            } else {
+                (*player).pendingweapon = wp_pistol;
             }
         }
-        am_shell => {
-            if (*player).readyweapon == wp_fist || (*player).readyweapon == wp_pistol {
-                if (*player).weaponowned[wp_shotgun as usize] != 0 {
-                    (*player).pendingweapon = wp_shotgun;
-                }
-            }
+        am_shell
+            if ((*player).readyweapon == wp_fist || (*player).readyweapon == wp_pistol)
+                && (*player).weaponowned[wp_shotgun as usize] != 0 =>
+        {
+            (*player).pendingweapon = wp_shotgun;
         }
-        am_cell => {
-            if (*player).readyweapon == wp_fist || (*player).readyweapon == wp_pistol {
-                if (*player).weaponowned[wp_plasma as usize] != 0 {
-                    (*player).pendingweapon = wp_plasma;
-                }
-            }
+        am_cell
+            if ((*player).readyweapon == wp_fist || (*player).readyweapon == wp_pistol)
+                && (*player).weaponowned[wp_plasma as usize] != 0 =>
+        {
+            (*player).pendingweapon = wp_plasma;
         }
-        am_misl => {
-            if (*player).readyweapon == wp_fist {
-                if (*player).weaponowned[wp_missile as usize] != 0 {
-                    (*player).pendingweapon = wp_missile;
-                }
-            }
+        am_misl
+            if (*player).readyweapon == wp_fist
+                && (*player).weaponowned[wp_missile as usize] != 0 =>
+        {
+            (*player).pendingweapon = wp_missile;
         }
         _ => {}
     }
@@ -255,7 +251,10 @@ pub unsafe extern "C" fn P_GiveWeapon(
             P_GiveAmmo(player, weaponinfo[weapon as usize].ammo, 2);
         }
         (*player).pendingweapon = weapon;
-        if std::ptr::eq(player, players.as_mut_ptr().add(consoleplayer as usize)) {
+        if std::ptr::eq(
+            player,
+            std::ptr::addr_of_mut!(players[0]).add(consoleplayer as usize),
+        ) {
             S_StartSound(std::ptr::null_mut(), sfx_wpnup);
         }
         return 0;
@@ -706,7 +705,10 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
     }
     P_RemoveMobj(special);
     (*player).bonuscount += BONUSADD;
-    if std::ptr::eq(player, players.as_mut_ptr().add(consoleplayer as usize)) {
+    if std::ptr::eq(
+        player,
+        std::ptr::addr_of_mut!(players[0]).add(consoleplayer as usize),
+    ) {
         S_StartSound(std::ptr::null_mut(), sound);
     }
 }
@@ -732,7 +734,7 @@ pub unsafe extern "C" fn P_KillMobj(source: *mut mobj_t, target: *mut mobj_t) {
         }
         if !(*target).player.is_null() {
             let target_player = (*target).player as *mut PlayerT;
-            let idx = target_player.offset_from(players.as_mut_ptr()) as usize;
+            let idx = target_player.offset_from(std::ptr::addr_of_mut!(players[0])) as usize;
             (*source_player).frags[idx] += 1;
         }
     } else if netgame == 0 && (*target).flags & MF_COUNTKILL != 0 {
@@ -742,7 +744,7 @@ pub unsafe extern "C" fn P_KillMobj(source: *mut mobj_t, target: *mut mobj_t) {
     if !(*target).player.is_null() {
         let target_player = (*target).player as *mut PlayerT;
         if source.is_null() {
-            let idx = target_player.offset_from(players.as_mut_ptr()) as usize;
+            let idx = target_player.offset_from(std::ptr::addr_of_mut!(players[0])) as usize;
             (*target_player).frags[idx] += 1;
         }
         (*target).flags &= !MF_SOLID;
@@ -750,7 +752,7 @@ pub unsafe extern "C" fn P_KillMobj(source: *mut mobj_t, target: *mut mobj_t) {
         P_DropWeapon(target_player);
         if std::ptr::eq(
             target_player,
-            players.as_mut_ptr().add(consoleplayer as usize),
+            std::ptr::addr_of_mut!(players[0]).add(consoleplayer as usize),
         ) && automapactive != 0
         {
             AM_Stop();
@@ -870,7 +872,10 @@ pub unsafe extern "C" fn P_DamageMobj(
             (*player).damagecount = 100;
         }
         let temp = if damage < 100 { damage } else { 100 };
-        if std::ptr::eq(player, players.as_mut_ptr().add(consoleplayer as usize)) {
+        if std::ptr::eq(
+            player,
+            std::ptr::addr_of_mut!(players[0]).add(consoleplayer as usize),
+        ) {
             I_Tactile(40, 10, 40 + temp * 2);
         }
     }
@@ -889,16 +894,16 @@ pub unsafe extern "C" fn P_DamageMobj(
 
     (*target).reactiontime = 0;
 
-    if (((*target).threshold == 0 || (*target).mobjtype == MT_VILE)
+    if ((*target).threshold == 0 || (*target).mobjtype == MT_VILE)
         && !source.is_null()
         && source != target
-        && (*source).mobjtype != MT_VILE)
+        && (*source).mobjtype != MT_VILE
     {
         (*target).target = source;
         (*target).threshold = BASETHRESHOLD;
         let state_ptr = (*target).state as *mut State;
         let spawnstate_ptr = &info::states[(*info).spawnstate as usize] as *const State;
-        if state_ptr == spawnstate_ptr as *mut State && (*info).seestate != S_NULL {
+        if std::ptr::eq(state_ptr, spawnstate_ptr) && (*info).seestate != S_NULL {
             P_SetMobjState(target, (*info).seestate);
         }
     }
@@ -911,8 +916,8 @@ pub unsafe extern "C" fn P_DamageMobj(
 #[no_mangle]
 pub extern "C" fn P_Inter_Link_Anchor() {
     unsafe {
-        let _ = maxammo.as_mut_ptr() as usize;
-        let _ = clipammo.as_mut_ptr() as usize;
+        let _ = std::ptr::addr_of_mut!(maxammo[0]) as usize;
+        let _ = std::ptr::addr_of_mut!(clipammo[0]) as usize;
     }
     let _ = P_GiveAmmo as *const () as usize;
     let _ = P_GiveWeapon as *const () as usize;

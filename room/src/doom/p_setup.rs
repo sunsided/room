@@ -281,17 +281,17 @@ pub extern "C" fn GetSectorAtNullAddress() -> *mut sector_t {
             NULL_SECTOR = std::mem::zeroed();
             I_GetMemoryValue(
                 0,
-                &mut NULL_SECTOR.floorheight as *mut c_int as *mut c_void,
+                &raw mut NULL_SECTOR.floorheight as *mut c_int as *mut c_void,
                 4,
             );
             I_GetMemoryValue(
                 4,
-                &mut NULL_SECTOR.ceilingheight as *mut c_int as *mut c_void,
+                &raw mut NULL_SECTOR.ceilingheight as *mut c_int as *mut c_void,
                 4,
             );
             NULL_SECTOR_IS_INITIALIZED = true;
         }
-        &mut NULL_SECTOR
+        &raw mut NULL_SECTOR
     }
 }
 
@@ -514,9 +514,7 @@ pub extern "C" fn P_LoadThings(lump: c_int) {
                 r#type: SHORT((*mt).r#type),
                 options: SHORT((*mt).options),
             };
-            P_SpawnMapThing(
-                &mut spawnthing as *mut mapthing_t as *mut crate::doom::p_telept::mapthing_t,
-            );
+            P_SpawnMapThing(&raw mut spawnthing as *mut crate::doom::p_telept::mapthing_t);
             mt = mt.add(1);
         }
 
@@ -848,11 +846,8 @@ unsafe fn P_LoadReject(lumpnum: c_int) {
     if lumplen >= minlength {
         rejectmatrix = W_CacheLumpNum(lumpnum, PU_LEVEL) as *mut u8;
     } else {
-        rejectmatrix = Z_Malloc(
-            minlength,
-            PU_LEVEL,
-            &mut rejectmatrix as *mut *mut u8 as *mut c_void,
-        ) as *mut u8;
+        rejectmatrix =
+            Z_Malloc(minlength, PU_LEVEL, &raw mut rejectmatrix as *mut c_void) as *mut u8;
         W_ReadLump(lumpnum as c_uint, rejectmatrix as *mut c_void);
         PadRejectArray(
             rejectmatrix.add(lumplen as usize),
@@ -924,7 +919,7 @@ pub extern "C" fn P_SetupLevel(episode: c_int, map: c_int, _playermask: c_int, _
         P_LoadReject(lumpnum + ML_REJECT);
 
         bodyqueslot = 0;
-        deathmatch_p = deathmatchstarts.as_mut_ptr();
+        deathmatch_p = std::ptr::addr_of_mut!(deathmatchstarts[0]);
         P_LoadThings(lumpnum + ML_THINGS);
 
         if deathmatch != 0 {
@@ -956,7 +951,7 @@ pub extern "C" fn P_Init() {
     unsafe {
         P_InitSwitchList();
         P_InitPicAnims();
-        R_InitSprites(sprnames.as_mut_ptr());
+        R_InitSprites(std::ptr::addr_of_mut!(sprnames[0]));
     }
 }
 

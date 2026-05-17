@@ -95,7 +95,8 @@ extern "C" {
 
 #[no_mangle]
 pub unsafe extern "C" fn M_Menu_SetPlayerMessage(msg: *const c_char) {
-    (*players.as_mut_ptr().offset(consoleplayer as isize)).message = msg as *mut c_char;
+    (*std::ptr::addr_of_mut!(players[0]).offset(consoleplayer as isize)).message =
+        msg as *mut c_char;
 }
 
 #[cfg(test)]

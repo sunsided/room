@@ -6,12 +6,11 @@
 
 use std::ffi::{c_char, c_int, c_uint, c_void};
 
-use crate::types::Boolean;
 use std::ptr;
 
 use crate::doom::d_mode::{
     commercial, doom, exe_chex, exe_doom_1_2, exe_doom_1_666, exe_doom_1_7, exe_doom_1_8,
-    exe_doom_1_9, exe_final2, exe_ultimate, shareware,
+    exe_final2, exe_ultimate, shareware,
 };
 use crate::doom::d_player::{PlayerT, TiccmdT, MAXPLAYERS};
 use crate::doom::doomstat::{gamemission, gamemode, gameversion};
@@ -20,7 +19,7 @@ use crate::doom::p_inter::maxammo;
 use crate::doom::p_setup::{
     deathmatch_p, deathmatchstarts, mapthing_t as SetupMapThing, playerstarts,
 };
-use crate::doom::p_telept::{mapthing_t, mobj_t, sector_t, subsector_t};
+use crate::doom::p_telept::{mapthing_t, mobj_t};
 use crate::doom::tables::{finecosine, finesine, finetangent};
 use crate::doom::wi_stuff::{wbplayerstruct_t, wbstartstruct_t};
 
@@ -533,7 +532,7 @@ use crate::doom::m_controls::{
     mousebuse,
 };
 
-use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
+use crate::doom::z_zone::PU_STATIC;
 
 // ---------------------------------------------------------------------------
 // DEH_String identity (no dehacked support)
@@ -682,10 +681,7 @@ pub unsafe extern "C" fn G_BuildTiccmd(cmd: *mut TiccmdT, maketic: c_int) {
     let mut side: c_int = 0;
 
     // Two-stage accelerative turning
-    if JOYXMOVE < 0
-        || JOYXMOVE > 0
-        || GAMEKEYDOWN[key_right as usize] != 0
-        || GAMEKEYDOWN[key_left as usize] != 0
+    if JOYXMOVE != 0 || GAMEKEYDOWN[key_right as usize] != 0 || GAMEKEYDOWN[key_left as usize] != 0
     {
         TURNHELD += ticdup;
     } else {
@@ -883,7 +879,7 @@ pub unsafe extern "C" fn G_BuildTiccmd(cmd: *mut TiccmdT, maketic: c_int) {
 
     // Low-resolution turning
     if lowres_turn != 0 {
-        let desired: i16 = (cmd.angleturn as i16).wrapping_add(LOWRES_TURN_CARRY);
+        let desired: i16 = cmd.angleturn.wrapping_add(LOWRES_TURN_CARRY);
         cmd.angleturn = ((desired as i32 + 128) & 0xff00) as i16;
         LOWRES_TURN_CARRY = desired.wrapping_sub(cmd.angleturn);
     }
@@ -895,16 +891,16 @@ pub unsafe extern "C" fn G_BuildTiccmd(cmd: *mut TiccmdT, maketic: c_int) {
 
 #[no_mangle]
 pub unsafe extern "C" fn G_DoLoadLevel() {
-    skyflatnum = R_FlatNumForName(DEH_String(b"F_SKY1\0".as_ptr() as *const c_char) as *mut c_char);
+    skyflatnum = R_FlatNumForName(DEH_String(c"F_SKY1".as_ptr()) as *mut c_char);
 
     // Fix sky texture for Final Doom / Chex
     if gamemode == commercial && (gameversion == exe_final2 || gameversion == exe_chex) {
         let skytexturename: *const c_char = if gamemap < 12 {
-            b"SKY1\0".as_ptr() as *const c_char
+            c"SKY1".as_ptr()
         } else if gamemap < 21 {
-            b"SKY2\0".as_ptr() as *const c_char
+            c"SKY2".as_ptr()
         } else {
-            b"SKY3\0".as_ptr() as *const c_char
+            c"SKY3".as_ptr()
         };
         skytexture = R_TextureNumForName(DEH_String(skytexturename) as *mut c_char);
     }
@@ -944,8 +940,7 @@ pub unsafe extern "C" fn G_DoLoadLevel() {
     JOYARRAY = [0; MAX_JOY_BUTTONS + 1];
 
     if testcontrols != 0 {
-        players[consoleplayer as usize].message =
-            b"Press escape to quit.\0".as_ptr() as *mut c_char;
+        players[consoleplayer as usize].message = c"Press escape to quit.".as_ptr().cast_mut();
     }
 }
 
@@ -1035,10 +1030,8 @@ pub unsafe extern "C" fn G_Responder(ev: *mut event_t) -> boolean {
         }
     }
 
-    if gamestate == GS_FINALE {
-        if F_Responder(ev as *const event_t as *mut event_t) != 0 {
-            return 1;
-        }
+    if gamestate == GS_FINALE && F_Responder(ev as *const event_t as *mut event_t) != 0 {
+        return 1;
     }
 
     if testcontrols != 0 && ev.type_ == 2 {
@@ -1117,9 +1110,9 @@ pub unsafe extern "C" fn G_Ticker() {
             ga_victory => F_StartFinale(),
             ga_worlddone => G_DoWorldDone(),
             ga_screenshot => {
-                V_ScreenShot(b"DOOM%02i.%s\0".as_ptr() as *mut c_char);
+                V_ScreenShot(c"DOOM%02i.%s".as_ptr().cast_mut());
                 players[consoleplayer as usize].message =
-                    DEH_String(b"screen shot\0".as_ptr() as *const c_char) as *mut c_char;
+                    DEH_String(c"screen shot".as_ptr()) as *mut c_char;
                 gameaction = ga_nothing;
             }
             _ => {}
@@ -1153,23 +1146,23 @@ pub unsafe extern "C" fn G_Ticker() {
                 && turbodetected[i] != 0
             {
                 M_snprintf_clamp(
-                    TURBOMESSAGE.as_mut_ptr(),
-                    TURBOMESSAGE.len(),
+                    std::ptr::addr_of_mut!(TURBOMESSAGE[0]),
+                    80,
                     snprintf(
-                        TURBOMESSAGE.as_mut_ptr(),
-                        TURBOMESSAGE.len(),
-                        b"%s is turbo!\0".as_ptr() as *const c_char,
+                        std::ptr::addr_of_mut!(TURBOMESSAGE[0]),
+                        80,
+                        c"%s is turbo!".as_ptr(),
                         player_names[i],
                     ),
                 );
-                players[consoleplayer as usize].message = TURBOMESSAGE.as_mut_ptr();
+                players[consoleplayer as usize].message = std::ptr::addr_of_mut!(TURBOMESSAGE[0]);
                 turbodetected[i] = 0;
             }
 
             if netgame != 0 && netdemo == 0 && (gametic % ticdup) == 0 {
                 if gametic > BACKUPTICS as c_int && consistancy[i][buf] != (*cmd).consistancy {
                     I_Error(
-                        b"consistency failure (%i should be %i)\0".as_ptr() as *const c_char,
+                        c"consistency failure (%i should be %i)".as_ptr(),
                         (*cmd).consistancy as c_int,
                         consistancy[i][buf] as c_int,
                     );
@@ -1201,9 +1194,9 @@ pub unsafe extern "C" fn G_Ticker() {
                     BTS_SAVEGAME => {
                         if SAVEDESCRIPTION[0] == 0 {
                             M_StringCopy(
-                                SAVEDESCRIPTION.as_mut_ptr(),
-                                b"NET GAME\0".as_ptr() as *const c_char,
-                                SAVEDESCRIPTION.len(),
+                                std::ptr::addr_of_mut!(SAVEDESCRIPTION[0]),
+                                c"NET GAME".as_ptr(),
+                                32,
                             );
                         }
                         SAVEGAMESLOT = ((buttons & BTS_SAVEMASK) >> BTS_SAVESHIFT) as c_int;
@@ -1369,12 +1362,7 @@ pub unsafe extern "C" fn G_CheckSpot(playernum: c_int, mthing: *mut mapthing_t) 
             ya = finesine[an_raw as usize];
         }
         _ => {
-            I_Error(
-                b"G_CheckSpot: unexpected angle %d\n\0".as_ptr() as *const c_char,
-                an_raw,
-            );
-            xa = 0;
-            ya = 0;
+            I_Error(c"G_CheckSpot: unexpected angle %d\n".as_ptr(), an_raw);
         }
     }
 
@@ -1393,12 +1381,9 @@ pub unsafe extern "C" fn G_CheckSpot(playernum: c_int, mthing: *mut mapthing_t) 
 
 #[no_mangle]
 pub unsafe extern "C" fn G_DeathMatchSpawnPlayer(playernum: c_int) {
-    let selections = deathmatch_p.offset_from(deathmatchstarts.as_ptr()) as c_int;
+    let selections = deathmatch_p.offset_from(std::ptr::addr_of!(deathmatchstarts[0])) as c_int;
     if selections < 4 {
-        I_Error(
-            b"Only %i deathmatch spots, 4 required\0".as_ptr() as *const c_char,
-            selections,
-        );
+        I_Error(c"Only %i deathmatch spots, 4 required".as_ptr(), selections);
     }
 
     for _ in 0..20 {
@@ -1487,7 +1472,7 @@ pub unsafe extern "C" fn G_ExitLevel() {
 
 #[no_mangle]
 pub unsafe extern "C" fn G_SecretExitLevel() {
-    if gamemode == commercial && W_CheckNumForName(b"map31\0".as_ptr() as *const c_char) < 0 {
+    if gamemode == commercial && W_CheckNumForName(c"map31".as_ptr()) < 0 {
         secretexit = 0;
     } else {
         secretexit = 1;
@@ -1606,8 +1591,8 @@ pub unsafe extern "C" fn G_DoCompleted() {
     viewactive = 0;
     automapactive = 0;
 
-    StatCopy(&mut wminfo as *mut _ as *mut crate::doom::statdump::wbstartstruct_t);
-    WI_Start(&mut wminfo);
+    StatCopy(&raw mut wminfo as *mut _ as *mut crate::doom::statdump::wbstartstruct_t);
+    WI_Start(&raw mut wminfo);
 }
 
 // ---------------------------------------------------------------------------
@@ -1653,7 +1638,7 @@ pub unsafe extern "C" fn G_DoWorldDone() {
 
 #[no_mangle]
 pub unsafe extern "C" fn G_LoadGame(name: *mut c_char) {
-    M_StringCopy(savename.as_mut_ptr(), name, savename.len());
+    M_StringCopy(std::ptr::addr_of_mut!(savename[0]), name, 256);
     gameaction = ga_loadgame;
 }
 
@@ -1661,7 +1646,10 @@ pub unsafe extern "C" fn G_LoadGame(name: *mut c_char) {
 pub unsafe extern "C" fn G_DoLoadGame() {
     gameaction = ga_nothing;
 
-    save_stream = libc::fopen(savename.as_ptr(), b"rb\0".as_ptr() as *const libc::c_char);
+    save_stream = libc::fopen(
+        std::ptr::addr_of!(savename[0]),
+        c"rb".as_ptr() as *const libc::c_char,
+    );
     if save_stream.is_null() {
         return;
     }
@@ -1685,7 +1673,7 @@ pub unsafe extern "C" fn G_DoLoadGame() {
     P_UnArchiveSpecials();
 
     if P_ReadSaveGameEOF() == 0 {
-        I_Error(b"Bad savegame\0".as_ptr() as *const c_char);
+        I_Error(c"Bad savegame".as_ptr());
     }
 
     libc::fclose(save_stream);
@@ -1704,11 +1692,7 @@ pub unsafe extern "C" fn G_DoLoadGame() {
 #[no_mangle]
 pub unsafe extern "C" fn G_SaveGame(slot: c_int, description: *const c_char) {
     SAVEGAMESLOT = slot;
-    M_StringCopy(
-        SAVEDESCRIPTION.as_mut_ptr(),
-        description,
-        SAVEDESCRIPTION.len(),
-    );
+    M_StringCopy(std::ptr::addr_of_mut!(SAVEDESCRIPTION[0]), description, 32);
     sendsave = 1;
 }
 
@@ -1718,16 +1702,15 @@ pub unsafe extern "C" fn G_DoSaveGame() {
     let temp_savegame_file = P_TempSaveGameFile();
     let savegame_file = P_SaveGameFile(SAVEGAMESLOT);
 
-    save_stream = libc::fopen(temp_savegame_file, b"wb\0".as_ptr() as *const libc::c_char);
+    save_stream = libc::fopen(temp_savegame_file, c"wb".as_ptr() as *const libc::c_char);
 
     if save_stream.is_null() {
-        let recovery = M_TempFile(b"recovery.dsg\0".as_ptr() as *mut c_char);
+        let recovery = M_TempFile(c"recovery.dsg".as_ptr().cast_mut());
         recovery_savegame_file = recovery;
-        save_stream = libc::fopen(recovery, b"wb\0".as_ptr() as *const libc::c_char);
+        save_stream = libc::fopen(recovery, c"wb".as_ptr() as *const libc::c_char);
         if save_stream.is_null() {
             I_Error(
-                b"Failed to open either '%s' or '%s' to write savegame.\0".as_ptr()
-                    as *const c_char,
+                c"Failed to open either '%s' or '%s' to write savegame.".as_ptr() as *const c_char,
                 temp_savegame_file,
                 recovery_savegame_file,
             );
@@ -1738,23 +1721,22 @@ pub unsafe extern "C" fn G_DoSaveGame() {
 
     savegame_error = 0;
 
-    P_WriteSaveGameHeader(SAVEDESCRIPTION.as_mut_ptr());
+    P_WriteSaveGameHeader(std::ptr::addr_of_mut!(SAVEDESCRIPTION[0]));
     P_ArchivePlayers();
     P_ArchiveWorld();
     P_ArchiveThinkers();
     P_ArchiveSpecials();
     P_WriteSaveGameEOF();
 
-    if vanilla_savegame_limit != 0 && libc::ftell(save_stream as *mut libc::FILE) > SAVEGAMESIZE {
-        I_Error(b"Savegame buffer overrun\0".as_ptr() as *const c_char);
+    if vanilla_savegame_limit != 0 && libc::ftell(save_stream) > SAVEGAMESIZE {
+        I_Error(c"Savegame buffer overrun".as_ptr());
     }
 
     libc::fclose(save_stream);
 
     if !recovery_savegame_file.is_null() {
         I_Error(
-            b"Failed to open savegame file '%s' for writing.\nBut your game has been saved to '%s' for recovery.\0"
-                .as_ptr() as *const c_char,
+            c"Failed to open savegame file '%s' for writing.\nBut your game has been saved to '%s' for recovery.".as_ptr(),
             temp_savegame_file,
             recovery_savegame_file,
         );
@@ -1764,14 +1746,9 @@ pub unsafe extern "C" fn G_DoSaveGame() {
     libc::rename(temp_savegame_file, savegame_file);
 
     gameaction = ga_nothing;
-    M_StringCopy(
-        SAVEDESCRIPTION.as_mut_ptr(),
-        b"\0".as_ptr() as *const c_char,
-        SAVEDESCRIPTION.len(),
-    );
+    M_StringCopy(std::ptr::addr_of_mut!(SAVEDESCRIPTION[0]), c"".as_ptr(), 32);
 
-    players[consoleplayer as usize].message =
-        DEH_String(b"game saved.\0".as_ptr() as *const c_char) as *mut c_char;
+    players[consoleplayer as usize].message = DEH_String(c"game saved.".as_ptr()) as *mut c_char;
 
     R_FillBackScreen();
 }
@@ -1826,12 +1803,7 @@ pub unsafe extern "C" fn G_InitNew(skill: skill_t, episode: c_int, map: c_int) {
             episode = 4;
         }
     } else {
-        if episode < 1 {
-            episode = 1;
-        }
-        if episode > 3 {
-            episode = 3;
-        }
+        episode = episode.clamp(1, 3);
     }
 
     if episode > 1 && gamemode == shareware {
@@ -1879,19 +1851,19 @@ pub unsafe extern "C" fn G_InitNew(skill: skill_t, episode: c_int, map: c_int) {
     // game start, not per level — deliberately preserved for compatibility).
     let skytexturename: *const c_char = if gamemode == commercial {
         if gamemap < 12 {
-            b"SKY1\0".as_ptr() as *const c_char
+            c"SKY1".as_ptr()
         } else if gamemap < 21 {
-            b"SKY2\0".as_ptr() as *const c_char
+            c"SKY2".as_ptr()
         } else {
-            b"SKY3\0".as_ptr() as *const c_char
+            c"SKY3".as_ptr()
         }
     } else {
         match gameepisode {
-            1 => b"SKY1\0".as_ptr() as *const c_char,
-            2 => b"SKY2\0".as_ptr() as *const c_char,
-            3 => b"SKY3\0".as_ptr() as *const c_char,
-            4 => b"SKY4\0".as_ptr() as *const c_char,
-            _ => b"SKY1\0".as_ptr() as *const c_char,
+            1 => c"SKY1".as_ptr(),
+            2 => c"SKY2".as_ptr(),
+            3 => c"SKY3".as_ptr(),
+            4 => c"SKY4".as_ptr(),
+            _ => c"SKY1".as_ptr(),
         }
     };
 
@@ -1980,22 +1952,22 @@ pub unsafe extern "C" fn G_ReadDemoTiccmd(cmd: *mut TiccmdT) {
 
     if longtics != 0 {
         // Little-endian 16-bit value; each byte read as unsigned
-        let lo = *demo_p as u8;
+        let lo = *demo_p;
         demo_p = demo_p.add(1);
-        let hi = *demo_p as u8;
+        let hi = *demo_p;
         demo_p = demo_p.add(1);
         // Matches C: angleturn = lo; angleturn |= hi << 8;
         cmd.angleturn = (lo as i16) | ((hi as i16) << 8);
     } else {
         // Non-longtics: one byte read as UNSIGNED, shifted left 8
         // C: cmd->angleturn = ((unsigned char)*demo_p++) << 8
-        let byte = *demo_p as u8;
+        let byte = *demo_p;
         demo_p = demo_p.add(1);
         cmd.angleturn = ((byte as u32) << 8) as i16;
     }
 
     // buttons: unsigned byte
-    cmd.buttons = (*demo_p) as u8;
+    cmd.buttons = *demo_p;
     demo_p = demo_p.add(1);
 }
 
@@ -2074,15 +2046,10 @@ pub unsafe extern "C" fn G_RecordDemo(name: *mut c_char) {
     M_snprintf_clamp(
         demoname,
         demoname_size,
-        snprintf(
-            demoname,
-            demoname_size,
-            b"%s.lmp\0".as_ptr() as *const c_char,
-            name,
-        ),
+        snprintf(demoname, demoname_size, c"%s.lmp".as_ptr(), name),
     );
     let mut maxsize: c_int = 0x20000;
-    let i = M_CheckParmWithArgs(b"-maxdemo\0".as_ptr() as *mut c_char, 1);
+    let i = M_CheckParmWithArgs(c"-maxdemo".as_ptr().cast_mut(), 1);
     if i != 0 {
         maxsize = libc::atoi(*myargv.add(i as usize + 1) as *const libc::c_char);
         maxsize *= 1024;
@@ -2102,7 +2069,7 @@ pub unsafe extern "C" fn G_VanillaVersionCode() -> c_int {
 fn g_vanilla_version_code_for(gv: c_int) -> c_int {
     match gv {
         v if v == exe_doom_1_2 => unsafe {
-            I_Error(b"Doom 1.2 does not have a version code!\0".as_ptr() as *const c_char)
+            I_Error(c"Doom 1.2 does not have a version code!".as_ptr())
         },
         v if v == exe_doom_1_666 => 106,
         v if v == exe_doom_1_7 => 107,
@@ -2115,7 +2082,7 @@ fn g_vanilla_version_code_for(gv: c_int) -> c_int {
 pub unsafe extern "C" fn G_BeginRecording() {
     use crate::doom::c_ffi::DOOM_191_VERSION;
 
-    longtics = (M_CheckParm(b"-longtics\0".as_ptr() as *mut c_char) != 0) as boolean;
+    longtics = (M_CheckParm(c"-longtics".as_ptr().cast_mut()) != 0) as boolean;
     lowres_turn = (longtics == 0) as boolean;
 
     demo_p = demobuffer;
@@ -2162,28 +2129,28 @@ pub unsafe extern "C" fn G_DeferedPlayDemo(name: *const c_char) {
 
 unsafe fn demo_version_description(version: c_int) -> *const c_char {
     match version {
-        104 => b"v1.4\0".as_ptr() as *const c_char,
-        105 => b"v1.5\0".as_ptr() as *const c_char,
-        106 => b"v1.6/v1.666\0".as_ptr() as *const c_char,
-        107 => b"v1.7/v1.7a\0".as_ptr() as *const c_char,
-        108 => b"v1.8\0".as_ptr() as *const c_char,
-        109 => b"v1.9\0".as_ptr() as *const c_char,
+        104 => c"v1.4".as_ptr(),
+        105 => c"v1.5".as_ptr(),
+        106 => c"v1.6/v1.666".as_ptr(),
+        107 => c"v1.7/v1.7a".as_ptr(),
+        108 => c"v1.8".as_ptr(),
+        109 => c"v1.9".as_ptr(),
         _ => {
-            if version >= 0 && version <= 4 {
-                b"v1.0/v1.1/v1.2\0".as_ptr() as *const c_char
+            if (0..=4).contains(&version) {
+                c"v1.0/v1.1/v1.2".as_ptr()
             } else {
                 M_snprintf_clamp(
-                    DEMOVERSIONBUF.as_mut_ptr(),
-                    DEMOVERSIONBUF.len(),
+                    std::ptr::addr_of_mut!(DEMOVERSIONBUF[0]),
+                    16,
                     snprintf(
-                        DEMOVERSIONBUF.as_mut_ptr(),
-                        DEMOVERSIONBUF.len(),
-                        b"%i.%i (unknown)\0".as_ptr() as *const c_char,
+                        std::ptr::addr_of_mut!(DEMOVERSIONBUF[0]),
+                        16,
+                        c"%i.%i (unknown)".as_ptr(),
                         version / 100,
                         version % 100,
                     ),
                 );
-                DEMOVERSIONBUF.as_ptr()
+                std::ptr::addr_of!(DEMOVERSIONBUF[0])
             }
         }
     }
@@ -2237,7 +2204,7 @@ pub unsafe extern "C" fn G_DoPlayDemo() {
     demo_p = demo_p.add(1);
     if consoleplayer < 0 || consoleplayer >= MAXPLAYERS as c_int {
         I_Error(
-            b"G_DoPlayDemo: consoleplayer %d out of range\n\0".as_ptr() as *const c_char,
+            c"G_DoPlayDemo: consoleplayer %d out of range\n".as_ptr(),
             consoleplayer,
         );
     }
@@ -2248,8 +2215,8 @@ pub unsafe extern "C" fn G_DoPlayDemo() {
     }
 
     if playeringame[1] != 0
-        || M_CheckParm(b"-solo-net\0".as_ptr() as *mut c_char) > 0
-        || M_CheckParm(b"-netdemo\0".as_ptr() as *mut c_char) > 0
+        || M_CheckParm(c"-solo-net".as_ptr().cast_mut()) > 0
+        || M_CheckParm(c"-netdemo".as_ptr().cast_mut()) > 0
     {
         netgame = 1;
         netdemo = 1;
@@ -2270,7 +2237,7 @@ pub unsafe extern "C" fn G_DoPlayDemo() {
 
 #[no_mangle]
 pub unsafe extern "C" fn G_TimeDemo(name: *mut c_char) {
-    nodrawers = M_CheckParm(b"-nodraw\0".as_ptr() as *mut c_char);
+    nodrawers = M_CheckParm(c"-nodraw".as_ptr().cast_mut());
     timingdemo = 1;
     use crate::doom::d_loop::singletics;
     singletics = 1;
@@ -2291,7 +2258,7 @@ pub unsafe extern "C" fn G_CheckDemoStatus() -> boolean {
         timingdemo = 0;
         demoplayback = 0;
         I_Error(
-            b"timed %i gametics in %i realtics (%f fps)\0".as_ptr() as *const c_char,
+            c"timed %i gametics in %i realtics (%f fps)".as_ptr(),
             gametic,
             realtics,
             fps as f64,
@@ -2330,7 +2297,7 @@ pub unsafe extern "C" fn G_CheckDemoStatus() -> boolean {
         );
         Z_Free(demobuffer as *mut c_void);
         demorecording = 0;
-        I_Error(b"Demo %s recorded\0".as_ptr() as *const c_char, demoname);
+        I_Error(c"Demo %s recorded".as_ptr(), demoname);
     }
 
     0
@@ -2597,14 +2564,14 @@ unsafe fn read_demo_ticcmd_inner(p: &mut *mut u8, cmd: &mut TiccmdT, is_longtics
     *p = p.add(1);
 
     if is_longtics {
-        let lo = **p as u8;
+        let lo = **p;
         *p = p.add(1);
-        let hi = **p as u8;
+        let hi = **p;
         *p = p.add(1);
         // C: angleturn = lo; angleturn |= (hi << 8);  — both lo and hi unsigned
         cmd.angleturn = (lo as i16) | ((hi as i16) << 8);
     } else {
-        let byte = **p as u8;
+        let byte = **p;
         *p = p.add(1);
         // C: cmd->angleturn = ((unsigned char)*demo_p++) << 8
         cmd.angleturn = ((byte as u32) << 8) as i16;

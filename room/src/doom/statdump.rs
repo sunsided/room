@@ -42,9 +42,7 @@ static mut captured_stats: [wbstartstruct_t; MAX_CAPTURES] = {
 
 static mut num_captured_stats: c_int = 0;
 
-use crate::doom::i_timer::TICRATE;
-
-use crate::doom::m_argv::{myargv, M_CheckParmWithArgs, M_ParmExists};
+use crate::doom::m_argv::M_ParmExists;
 
 macro_rules! cstr {
     ($s:literal) => {
@@ -61,9 +59,8 @@ pub extern "C" fn StatCopy(stats: *mut wbstartstruct_t) {
     unsafe {
         if M_ParmExists(cstr!("-statdump")) != 0 && num_captured_stats < MAX_CAPTURES as c_int {
             memcpy(
-                captured_stats
-                    .as_mut_ptr()
-                    .offset(num_captured_stats as isize) as *mut c_void,
+                std::ptr::addr_of_mut!(captured_stats[0]).offset(num_captured_stats as isize)
+                    as *mut c_void,
                 stats as *const c_void,
                 std::mem::size_of::<wbstartstruct_t>(),
             );

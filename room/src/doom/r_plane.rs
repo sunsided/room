@@ -5,10 +5,10 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::{c_int, c_short, c_uchar, c_void};
+use std::ffi::{c_int, c_short, c_uchar};
 use std::ptr;
 
-use super::m_fixed::{angle_t, fixed_t, FixedDiv, FixedMul};
+use super::m_fixed::{fixed_t, FixedDiv, FixedMul};
 use super::r_sky;
 use super::tables;
 use super::tables::{ANG90, ANGLETOFINESHIFT, FINEMASK};
@@ -300,11 +300,11 @@ pub extern "C" fn R_ClearPlanes() {
             ceilingclip[i] = -1;
         }
 
-        lastvisplane = visplanes.as_mut_ptr();
-        lastopening = openings.as_mut_ptr();
+        lastvisplane = std::ptr::addr_of_mut!(visplanes[0]);
+        lastopening = std::ptr::addr_of_mut!(openings[0]);
 
         // Reset cache heights
-        for h in cachedheight.iter_mut() {
+        for h in std::slice::from_raw_parts_mut(std::ptr::addr_of_mut!(cachedheight[0]), 200) {
             *h = 0;
         }
 
@@ -339,7 +339,7 @@ pub extern "C" fn R_FindPlane(
         }
 
         // Search existing visplanes
-        let mut check = visplanes.as_mut_ptr();
+        let mut check = std::ptr::addr_of_mut!(visplanes[0]);
         let end = lastvisplane;
 
         while check < end {
@@ -350,7 +350,8 @@ pub extern "C" fn R_FindPlane(
         }
 
         // Need a new visplane
-        if (lastvisplane as usize - visplanes.as_ptr() as usize) / std::mem::size_of::<visplane_t>()
+        if (lastvisplane as usize - std::ptr::addr_of!(visplanes[0]) as usize)
+            / std::mem::size_of::<visplane_t>()
             >= MAXVISPLANES
         {
             // Would call I_Error — for now just return null
@@ -471,7 +472,7 @@ use crate::doom::z_zone::PU_STATIC;
 #[no_mangle]
 pub extern "C" fn R_DrawPlanes() {
     unsafe {
-        let mut pl = visplanes.as_mut_ptr();
+        let mut pl = std::ptr::addr_of_mut!(visplanes[0]);
         let end = lastvisplane;
 
         while pl < end {

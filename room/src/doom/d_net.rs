@@ -107,14 +107,15 @@ unsafe fn PlayerQuitGame(player_idx: usize) {
 
     core::ptr::copy_nonoverlapping(
         EXIT_MSG.as_ptr() as *const c_char,
-        EXITMSG.as_mut_ptr(),
+        std::ptr::addr_of_mut!(EXITMSG[0]),
         EXIT_MSG.len(),
     );
 
     EXITMSG[7] += player_idx as c_char;
 
     playeringame[player_idx] = 0;
-    (*players.as_mut_ptr().offset(consoleplayer as isize)).message = EXITMSG.as_mut_ptr();
+    (*std::ptr::addr_of_mut!(players[0]).offset(consoleplayer as isize)).message =
+        std::ptr::addr_of_mut!(EXITMSG[0]);
 
     if demorecording != 0 {
         G_CheckDemoStatus();
@@ -173,25 +174,24 @@ unsafe fn SaveGameSettings(settings: *mut NetGameSettingsT) {
     (*settings).fast_monsters = fastparm;
     (*settings).respawn_monsters = respawnparm;
     (*settings).timelimit = timelimit;
-    (*settings).lowres_turn = if M_CheckParm(b"-record\0".as_ptr() as *const c_char) > 0
-        && M_CheckParm(b"-longtics\0".as_ptr() as *const c_char) == 0
-    {
-        1
-    } else {
-        0
-    };
+    (*settings).lowres_turn =
+        if M_CheckParm(c"-record".as_ptr()) > 0 && M_CheckParm(c"-longtics".as_ptr()) == 0 {
+            1
+        } else {
+            0
+        };
 }
 
 unsafe fn InitConnectData(connect_data: *mut NetConnectDataT) {
     (*connect_data).max_players = MAXPLAYERS as c_int;
     (*connect_data).drone = 0;
 
-    if M_CheckParm(b"-left\0".as_ptr() as *const c_char) > 0 {
+    if M_CheckParm(c"-left".as_ptr()) > 0 {
         viewangleoffset = 0x40000000u32 as c_int;
         (*connect_data).drone = 1;
     }
 
-    if M_CheckParm(b"-right\0".as_ptr() as *const c_char) > 0 {
+    if M_CheckParm(c"-right".as_ptr()) > 0 {
         viewangleoffset = 0xC0000000u32 as c_int;
         (*connect_data).drone = 1;
     }
@@ -199,13 +199,12 @@ unsafe fn InitConnectData(connect_data: *mut NetConnectDataT) {
     (*connect_data).gamemode = gamemode;
     (*connect_data).gamemission = gamemission;
 
-    (*connect_data).lowres_turn = if M_CheckParm(b"-record\0".as_ptr() as *const c_char) > 0
-        && M_CheckParm(b"-longtics\0".as_ptr() as *const c_char) == 0
-    {
-        1
-    } else {
-        0
-    };
+    (*connect_data).lowres_turn =
+        if M_CheckParm(c"-record".as_ptr()) > 0 && M_CheckParm(c"-longtics".as_ptr()) == 0 {
+            1
+        } else {
+            0
+        };
 
     W_Checksum((*connect_data).wad_sha1sum.as_mut_ptr());
 
@@ -231,7 +230,7 @@ pub extern "C" fn D_ConnectNetGame() {
         InitConnectData(&mut connect_data);
         netgame = D_InitNetGame(&mut connect_data);
 
-        if M_CheckParm(b"-solo-net\0".as_ptr() as *const c_char) > 0 {
+        if M_CheckParm(c"-solo-net".as_ptr()) > 0 {
             netgame = 1;
         }
     }
@@ -244,7 +243,7 @@ pub extern "C" fn D_CheckNetGame() {
             autostart = 1;
         }
 
-        D_RegisterLoopCallbacks(&mut DOOM_LOOP_INTERFACE as *mut LoopInterfaceT);
+        D_RegisterLoopCallbacks(&raw mut DOOM_LOOP_INTERFACE);
 
         let mut settings: NetGameSettingsT = std::mem::zeroed();
         SaveGameSettings(&mut settings);

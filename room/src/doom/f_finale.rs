@@ -4,12 +4,11 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::{c_char, c_int, c_short, c_uint, c_void};
+use std::ffi::{c_char, c_int, c_short, c_uint};
 use std::ptr;
 
 use crate::doom::d_event::event_t;
 use crate::doom::d_mode;
-use crate::doom::d_player::PlayerT;
 use crate::doom::doomstat::{gamemission, gameversion};
 use crate::doom::hu_stuff::{hu_font, HU_FONTSIZE, HU_FONTSTART};
 use crate::doom::info::*;
@@ -180,9 +179,7 @@ extern "C" {
 }
 
 // g_game.rs
-use crate::doom::g_game::{
-    consoleplayer, gameaction, gameepisode, gamemap, gamestate, players, viewactive,
-};
+use crate::doom::g_game::{gameaction, gameepisode, gamemap, gamestate, players, viewactive};
 
 // am_map.rs
 use crate::doom::am_map::automapactive;
@@ -558,7 +555,7 @@ pub extern "C" fn F_StartFinale() {
 #[no_mangle]
 pub extern "C" fn F_Responder(event: *mut event_t) -> c_int {
     unsafe {
-        let ev = &*event;
+        let _ev = &*event;
         if let FinaleStage::Cast = FINALE_STAGE {
             return F_CastResponder(event);
         }
@@ -650,7 +647,7 @@ pub extern "C" fn F_TextWrite() {
                 continue;
             }
 
-            let mut cidx = toupper(c as c_int) - HU_FONTSTART as c_int;
+            let cidx = toupper(c as c_int) - HU_FONTSTART as c_int;
             if cidx < 0 || cidx >= HU_FONTSIZE as c_int {
                 cx += 4;
                 continue;
@@ -676,8 +673,7 @@ pub extern "C" fn F_StartCast() {
     unsafe {
         wipegamestate = -1;
         castnum = 0;
-        let st = &(*crate::doom::info::mobjinfo
-            .as_ptr()
+        let st = &(*std::ptr::addr_of!(crate::doom::info::mobjinfo[0])
             .add(CASTORDER[0].type_ as usize))
         .seestate;
         caststate = &mut crate::doom::info::states[*st as usize];
@@ -710,8 +706,7 @@ pub extern "C" fn F_CastTicker() {
             if CASTORDER[castnum as usize].name.is_null() {
                 castnum = 0;
             }
-            let info = &*crate::doom::info::mobjinfo
-                .as_ptr()
+            let info = &*std::ptr::addr_of!(crate::doom::info::mobjinfo[0])
                 .add(CASTORDER[castnum as usize].type_ as usize);
             if info.seesound != 0 {
                 S_StartSound(ptr::null_mut(), info.seesound);
@@ -758,8 +753,7 @@ pub extern "C" fn F_CastTicker() {
 
         if castframes == 12 {
             castattacking = 1;
-            let info = &*crate::doom::info::mobjinfo
-                .as_ptr()
+            let info = &*std::ptr::addr_of!(crate::doom::info::mobjinfo[0])
                 .add(CASTORDER[castnum as usize].type_ as usize);
             let st = if castonmelee != 0 {
                 info.meleestate
@@ -778,22 +772,21 @@ pub extern "C" fn F_CastTicker() {
             }
         }
 
-        if castattacking != 0 {
-            if castframes == 24
+        if castattacking != 0
+            && (castframes == 24
                 || caststate
-                    == &mut crate::doom::info::states[(*crate::doom::info::mobjinfo
-                        .as_ptr()
-                        .add(CASTORDER[castnum as usize].type_ as usize))
-                    .seestate as usize]
-            {
-                castattacking = 0;
-                castframes = 0;
-                let st = (*crate::doom::info::mobjinfo
-                    .as_ptr()
+                    == &mut crate::doom::info::states[(*std::ptr::addr_of!(
+                        crate::doom::info::mobjinfo[0]
+                    )
                     .add(CASTORDER[castnum as usize].type_ as usize))
-                .seestate;
-                caststate = &mut crate::doom::info::states[st as usize];
-            }
+                    .seestate as usize])
+        {
+            castattacking = 0;
+            castframes = 0;
+            let st = (*std::ptr::addr_of!(crate::doom::info::mobjinfo[0])
+                .add(CASTORDER[castnum as usize].type_ as usize))
+            .seestate;
+            caststate = &mut crate::doom::info::states[st as usize];
         }
 
         casttics = (*caststate).tics;
@@ -807,8 +800,7 @@ pub extern "C" fn F_CastTicker() {
 unsafe fn goto_stopattack() {
     castattacking = 0;
     castframes = 0;
-    let st = (*crate::doom::info::mobjinfo
-        .as_ptr()
+    let st = (*std::ptr::addr_of!(crate::doom::info::mobjinfo[0])
         .add(CASTORDER[castnum as usize].type_ as usize))
     .seestate;
     caststate = &mut crate::doom::info::states[st as usize];
@@ -829,8 +821,7 @@ pub extern "C" fn F_CastResponder(ev: *mut event_t) -> c_int {
             return 1;
         }
         castdeath = 1;
-        let info = &*crate::doom::info::mobjinfo
-            .as_ptr()
+        let info = &*std::ptr::addr_of!(crate::doom::info::mobjinfo[0])
             .add(CASTORDER[castnum as usize].type_ as usize);
         caststate = &mut crate::doom::info::states[info.deathstate as usize];
         casttics = (*caststate).tics;
@@ -906,11 +897,11 @@ pub extern "C" fn F_CastDrawer() {
         F_CastPrint(DEH_String(CASTORDER[castnum as usize].name));
 
         let sprdef = &*(sprites as *mut spritedef_t).add((*caststate).sprite as usize);
-        let sprframe = &*(*sprdef)
+        let sprframe = &*sprdef
             .spriteframes
             .add(((*caststate).frame & FF_FRAMEMASK) as usize);
-        let lump = (*sprframe).lump[0] as c_int;
-        let flip = (*sprframe).flip[0] as c_int;
+        let lump = sprframe.lump[0] as c_int;
+        let flip = sprframe.flip[0] as c_int;
 
         let patch = W_CacheLumpNum(lump + firstspritelump, PU_CACHE) as *mut patch_t;
         if flip != 0 {
@@ -927,7 +918,7 @@ pub extern "C" fn F_DrawPatchCol(x: c_int, patch: *mut patch_t, col: c_int) {
         let patch_ptr = patch as *mut u8;
         let ofs = ptr::read_unaligned(patch_ptr.add(8 + col as usize * 4) as *mut i32);
         let mut column = patch_ptr.add(ofs as usize) as *mut crate::doom::v_video::column_t;
-        let mut desttop = I_VideoBuffer.add(x as usize);
+        let desttop = I_VideoBuffer.add(x as usize);
 
         while (*column).topdelta != 0xff {
             let mut source = (column as *mut u8).add(3);
@@ -954,12 +945,7 @@ pub extern "C" fn F_BunnyScroll() {
         V_MarkRect(0, 0, SCREENWIDTH, SCREENHEIGHT);
 
         let mut scrolled = 320 - ((FINALE_COUNT as c_int - 230) / 2);
-        if scrolled > 320 {
-            scrolled = 320;
-        }
-        if scrolled < 0 {
-            scrolled = 0;
-        }
+        scrolled = scrolled.clamp(0, 320);
 
         for x in 0..SCREENWIDTH {
             if x + scrolled < 320 {

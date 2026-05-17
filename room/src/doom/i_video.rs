@@ -179,7 +179,7 @@ pub unsafe extern "C" fn I_InitGraphics() {
     s_Fb.transp.offset = 24;
 
     // Check for -gfxmode arg
-    let gfxmodeparm = M_CheckParmWithArgs(b"-gfxmode\0".as_ptr() as *mut c_char, 1);
+    let gfxmodeparm = M_CheckParmWithArgs(c"-gfxmode".as_ptr().cast_mut(), 1);
     if gfxmodeparm != 0 {
         let mode = *myargv.add((gfxmodeparm + 1) as usize);
         if !mode.is_null() {
@@ -214,7 +214,7 @@ pub unsafe extern "C" fn I_InitGraphics() {
     }
 
     // Auto-scaling factor
-    let scale_parm = M_CheckParmWithArgs(b"-scaling\0".as_ptr() as *mut c_char, 1);
+    let scale_parm = M_CheckParmWithArgs(c"-scaling".as_ptr().cast_mut(), 1);
     if scale_parm != 0 {
         let val = *myargv.add((scale_parm + 1) as usize);
         if !val.is_null() {

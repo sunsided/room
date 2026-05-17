@@ -159,7 +159,7 @@ pub extern "C" fn EV_Teleport(line: *mut line_t, side: c_int, thing: *mut mobj_t
             }
 
             let mut thinker = thinkercap.next;
-            while !std::ptr::eq(thinker, &mut thinkercap) {
+            while !std::ptr::eq(thinker, &raw const thinkercap) {
                 // Not a mobj
                 if (*thinker).function.acp1
                     != Some(core::mem::transmute::<

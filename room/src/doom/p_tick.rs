@@ -7,7 +7,7 @@
 use std::ffi::c_void;
 use std::os::raw::c_int;
 
-use crate::doom::d_player::{consoleplayer, players, PlayerT, MAXPLAYERS};
+use crate::doom::d_player::{consoleplayer, players, MAXPLAYERS};
 use crate::doom::g_game::{demoplayback, netgame, paused, playeringame};
 use crate::doom::m_menu::menuactive;
 use crate::doom::p_mobj::P_RespawnSpecials;
@@ -56,15 +56,15 @@ pub static mut thinkercap: thinker_t = thinker_t {
 #[no_mangle]
 pub extern "C" fn P_InitThinkers() {
     unsafe {
-        thinkercap.prev = &mut thinkercap as *mut thinker_t;
-        thinkercap.next = &mut thinkercap as *mut thinker_t;
+        thinkercap.prev = &raw mut thinkercap;
+        thinkercap.next = &raw mut thinkercap;
     }
 }
 
 #[no_mangle]
 pub extern "C" fn P_AddThinker(thinker: *mut thinker_t) {
     unsafe {
-        let cap = &mut thinkercap as *mut thinker_t;
+        let cap = &raw mut thinkercap;
         (*(*cap).prev).next = thinker;
         (*thinker).next = cap;
         (*thinker).prev = (*cap).prev;
@@ -85,7 +85,7 @@ pub extern "C" fn P_AllocateThinker(_thinker: *mut thinker_t) {}
 #[no_mangle]
 pub extern "C" fn P_RunThinkers() {
     unsafe {
-        let cap = &mut thinkercap as *mut thinker_t;
+        let cap = &raw mut thinkercap;
         let mut current = (*cap).next;
 
         while current != cap {
@@ -116,7 +116,7 @@ pub extern "C" fn P_Ticker() {
         if netgame == 0
             && menuactive != 0
             && demoplayback == 0
-            && (*players.as_ptr().offset(consoleplayer as isize)).viewz != 1
+            && (*std::ptr::addr_of!(players[0]).offset(consoleplayer as isize)).viewz != 1
         {
             return;
         }
@@ -177,8 +177,8 @@ mod tests {
             thinkercap.prev = 0 as *mut thinker_t;
             thinkercap.next = 0 as *mut thinker_t;
             P_InitThinkers();
-            assert_eq!(thinkercap.prev, &mut thinkercap as *mut thinker_t);
-            assert_eq!(thinkercap.next, &mut thinkercap as *mut thinker_t);
+            assert_eq!(thinkercap.prev, &raw mut thinkercap as *mut thinker_t);
+            assert_eq!(thinkercap.next, &raw mut thinkercap as *mut thinker_t);
         }
     }
 }

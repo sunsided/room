@@ -5,7 +5,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::{c_char, c_int, c_void};
+use std::ffi::{c_char, c_int};
 use std::ptr;
 
 use crate::c_write;
@@ -141,19 +141,20 @@ const RADIATIONPAL: c_int = 13;
 // String literals (from d_englsh.h)
 // ---------------------------------------------------------------------------
 
-const STSTR_DQDON: *mut c_char = b"Degreelessness Mode On\0".as_ptr() as *mut c_char;
-const STSTR_DQDOFF: *mut c_char = b"Degreelessness Mode Off\0".as_ptr() as *mut c_char;
-const STSTR_FAADDED: *mut c_char = b"Ammo (no keys) Added\0".as_ptr() as *mut c_char;
-const STSTR_KFAADDED: *mut c_char = b"Very Happy Ammo Added\0".as_ptr() as *mut c_char;
-const STSTR_MUS: *mut c_char = b"Music Change\0".as_ptr() as *mut c_char;
-const STSTR_NOMUS: *mut c_char = b"IMPOSSIBLE SELECTION\0".as_ptr() as *mut c_char;
-const STSTR_NCON: *mut c_char = b"No Clipping Mode ON\0".as_ptr() as *mut c_char;
-const STSTR_NCOFF: *mut c_char = b"No Clipping Mode OFF\0".as_ptr() as *mut c_char;
-const STSTR_BEHOLD: *mut c_char =
-    b"inVuln, Str, Inviso, Rad, Allmap, or Lite-amp\0".as_ptr() as *mut c_char;
-const STSTR_BEHOLDX: *mut c_char = b"Power-up Toggled\0".as_ptr() as *mut c_char;
-const STSTR_CHOPPERS: *mut c_char = b"... doesn't suck - GM\0".as_ptr() as *mut c_char;
-const STSTR_CLEV: *mut c_char = b"Changing Level...\0".as_ptr() as *mut c_char;
+const STSTR_DQDON: *mut c_char = c"Degreelessness Mode On".as_ptr().cast_mut();
+const STSTR_DQDOFF: *mut c_char = c"Degreelessness Mode Off".as_ptr().cast_mut();
+const STSTR_FAADDED: *mut c_char = c"Ammo (no keys) Added".as_ptr().cast_mut();
+const STSTR_KFAADDED: *mut c_char = c"Very Happy Ammo Added".as_ptr().cast_mut();
+const STSTR_MUS: *mut c_char = c"Music Change".as_ptr().cast_mut();
+const STSTR_NOMUS: *mut c_char = c"IMPOSSIBLE SELECTION".as_ptr().cast_mut();
+const STSTR_NCON: *mut c_char = c"No Clipping Mode ON".as_ptr().cast_mut();
+const STSTR_NCOFF: *mut c_char = c"No Clipping Mode OFF".as_ptr().cast_mut();
+const STSTR_BEHOLD: *mut c_char = c"inVuln, Str, Inviso, Rad, Allmap, or Lite-amp"
+    .as_ptr()
+    .cast_mut();
+const STSTR_BEHOLDX: *mut c_char = c"Power-up Toggled".as_ptr().cast_mut();
+const STSTR_CHOPPERS: *mut c_char = c"... doesn't suck - GM".as_ptr().cast_mut();
+const STSTR_CLEV: *mut c_char = c"Changing Level...".as_ptr().cast_mut();
 
 // ---------------------------------------------------------------------------
 // DEH_String shim — identity when dehacked is disabled.
@@ -331,7 +332,7 @@ pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
         // ev_keydown
         if netgame == 0 && gameskill != 4 {
             // sk_nightmare = 4
-            if cht_CheckCheat(&mut cheat_god, ev.data2 as c_char) != 0 {
+            if cht_CheckCheat(&raw mut cheat_god, ev.data2 as c_char) != 0 {
                 (*plyr).cheats ^= 2; // CF_GODMODE
                 if (*plyr).cheats & 2 != 0 {
                     if !(*plyr).mo.is_null() {
@@ -342,7 +343,7 @@ pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
                 } else {
                     (*plyr).message = DEH_String(STSTR_DQDOFF);
                 }
-            } else if cht_CheckCheat(&mut cheat_ammonokey, ev.data2 as c_char) != 0 {
+            } else if cht_CheckCheat(&raw mut cheat_ammonokey, ev.data2 as c_char) != 0 {
                 (*plyr).armorpoints = 200; // deh_idfa_armor
                 (*plyr).armortype = 2; // deh_idfa_armor_class
                 for i in 0..NUMWEAPONS {
@@ -352,7 +353,7 @@ pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
                     (*plyr).ammo[i] = (*plyr).maxammo[i];
                 }
                 (*plyr).message = DEH_String(STSTR_FAADDED);
-            } else if cht_CheckCheat(&mut cheat_ammo, ev.data2 as c_char) != 0 {
+            } else if cht_CheckCheat(&raw mut cheat_ammo, ev.data2 as c_char) != 0 {
                 (*plyr).armorpoints = 200; // deh_idkfa_armor
                 (*plyr).armortype = 2; // deh_idkfa_armor_class
                 for i in 0..NUMWEAPONS {
@@ -365,11 +366,11 @@ pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
                     (*plyr).cards[i] = 1;
                 }
                 (*plyr).message = DEH_String(STSTR_KFAADDED);
-            } else if cht_CheckCheat(&mut cheat_mus, ev.data2 as c_char) != 0 {
+            } else if cht_CheckCheat(&raw mut cheat_mus, ev.data2 as c_char) != 0 {
                 let mut buf = [0i8; 3];
-                let mut musnum: c_int;
+                let musnum: c_int;
                 (*plyr).message = DEH_String(STSTR_MUS);
-                cht_GetParam(&mut cheat_mus, buf.as_mut_ptr());
+                cht_GetParam(&raw mut cheat_mus, buf.as_mut_ptr());
 
                 if gamemode == d_mode::commercial || gameversion < d_mode::exe_ultimate {
                     musnum = 33
@@ -395,9 +396,9 @@ pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
                     }
                 }
             } else if (logical_gamemission() == d_mode::doom
-                && cht_CheckCheat(&mut cheat_noclip, ev.data2 as c_char) != 0)
+                && cht_CheckCheat(&raw mut cheat_noclip, ev.data2 as c_char) != 0)
                 || (logical_gamemission() != d_mode::doom
-                    && cht_CheckCheat(&mut cheat_commercial_noclip, ev.data2 as c_char) != 0)
+                    && cht_CheckCheat(&raw mut cheat_commercial_noclip, ev.data2 as c_char) != 0)
             {
                 (*plyr).cheats ^= 1; // CF_NOCLIP
                 if (*plyr).cheats & 1 != 0 {
@@ -423,11 +424,11 @@ pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
 
             if cht_CheckCheat(&mut cheat_powerup[6], ev.data2 as c_char) != 0 {
                 (*plyr).message = DEH_String(STSTR_BEHOLD);
-            } else if cht_CheckCheat(&mut cheat_choppers, ev.data2 as c_char) != 0 {
+            } else if cht_CheckCheat(&raw mut cheat_choppers, ev.data2 as c_char) != 0 {
                 (*plyr).weaponowned[7] = 1; // wp_chainsaw
                 (*plyr).powers[0] = 1; // pw_invulnerability
                 (*plyr).message = DEH_String(STSTR_CHOPPERS);
-            } else if cht_CheckCheat(&mut cheat_mypos, ev.data2 as c_char) != 0 {
+            } else if cht_CheckCheat(&raw mut cheat_mypos, ev.data2 as c_char) != 0 {
                 static mut BUF: [c_char; 52] = [0; 52];
                 let mo = players[consoleplayer as usize].mo as *mut mobj_t;
                 c_write!(
@@ -437,15 +438,15 @@ pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
                     (*mo).x,
                     (*mo).y
                 );
-                (*plyr).message = BUF.as_mut_ptr();
+                (*plyr).message = std::ptr::addr_of_mut!(BUF[0]);
             }
         }
 
-        if netgame == 0 && cht_CheckCheat(&mut cheat_clev, ev.data2 as c_char) != 0 {
+        if netgame == 0 && cht_CheckCheat(&raw mut cheat_clev, ev.data2 as c_char) != 0 {
             let mut buf = [0i8; 3];
             let mut epsd: c_int;
-            let mut map: c_int;
-            cht_GetParam(&mut cheat_clev, buf.as_mut_ptr());
+            let map: c_int;
+            cht_GetParam(&raw mut cheat_clev, buf.as_mut_ptr());
 
             if gamemode == d_mode::commercial {
                 epsd = 1;
@@ -512,81 +513,76 @@ pub unsafe extern "C" fn ST_calcPainOffset() -> c_int {
 pub unsafe extern "C" fn ST_updateFaceWidget() {
     static mut lastattackdown: c_int = -1;
     static mut priority: c_int = 0;
-    let mut diffang: u32;
-    let mut i: c_int;
+    let diffang: u32;
+    let i: c_int;
 
-    if priority < 10 {
-        if (*plyr).health == 0 {
-            priority = 9;
-            st_faceindex = ST_DEADFACE;
-            st_facecount = 1;
+    if priority < 10 && (*plyr).health == 0 {
+        priority = 9;
+        st_faceindex = ST_DEADFACE;
+        st_facecount = 1;
+    }
+
+    if priority < 9 && (*plyr).bonuscount != 0 {
+        let mut doevilgrin = 0;
+        for i in 0..NUMWEAPONS {
+            if oldweaponsowned[i] != (*plyr).weaponowned[i] {
+                doevilgrin = 1;
+                oldweaponsowned[i] = (*plyr).weaponowned[i];
+            }
+        }
+        if doevilgrin != 0 {
+            priority = 8;
+            st_facecount = ST_EVILGRINCOUNT;
+            st_faceindex = ST_calcPainOffset() + ST_EVILGRINOFFSET;
         }
     }
 
-    if priority < 9 {
-        if (*plyr).bonuscount != 0 {
-            let mut doevilgrin = 0;
-            for i in 0..NUMWEAPONS {
-                if oldweaponsowned[i] != (*plyr).weaponowned[i] {
-                    doevilgrin = 1;
-                    oldweaponsowned[i] = (*plyr).weaponowned[i];
-                }
+    if priority < 8
+        && (*plyr).damagecount != 0
+        && !(*plyr).attacker.is_null()
+        && (*plyr).attacker != (*plyr).mo
+    {
+        priority = 7;
+        if (*plyr).health - st_oldhealth > ST_MUCHPAIN {
+            st_facecount = ST_TURNCOUNT;
+            st_faceindex = ST_calcPainOffset() + ST_OUCHOFFSET;
+        } else {
+            let badguyangle = R_PointToAngle2(
+                (*((*plyr).mo as *mut mobj_t)).x,
+                (*((*plyr).mo as *mut mobj_t)).y,
+                (*((*plyr).attacker as *mut mobj_t)).x,
+                (*((*plyr).attacker as *mut mobj_t)).y,
+            );
+            if badguyangle > (*((*plyr).mo as *mut mobj_t)).angle {
+                diffang = badguyangle - (*((*plyr).mo as *mut mobj_t)).angle;
+                i = if diffang > ANG180 { 1 } else { 0 };
+            } else {
+                diffang = (*((*plyr).mo as *mut mobj_t)).angle - badguyangle;
+                i = if diffang <= ANG180 { 1 } else { 0 };
             }
-            if doevilgrin != 0 {
-                priority = 8;
-                st_facecount = ST_EVILGRINCOUNT;
-                st_faceindex = ST_calcPainOffset() + ST_EVILGRINOFFSET;
+
+            st_facecount = ST_TURNCOUNT;
+            st_faceindex = ST_calcPainOffset();
+
+            if diffang < ANG45 {
+                st_faceindex += ST_RAMPAGEOFFSET;
+            } else if i != 0 {
+                st_faceindex += ST_TURNOFFSET;
+            } else {
+                st_faceindex += ST_TURNOFFSET + 1;
             }
         }
     }
 
-    if priority < 8 {
-        if (*plyr).damagecount != 0 && !(*plyr).attacker.is_null() && (*plyr).attacker != (*plyr).mo
-        {
+    if priority < 7 && (*plyr).damagecount != 0 {
+        if (*plyr).health - st_oldhealth > ST_MUCHPAIN {
             priority = 7;
-            if (*plyr).health - st_oldhealth > ST_MUCHPAIN {
-                st_facecount = ST_TURNCOUNT;
-                st_faceindex = ST_calcPainOffset() + ST_OUCHOFFSET;
-            } else {
-                let badguyangle = R_PointToAngle2(
-                    (*((*plyr).mo as *mut mobj_t)).x,
-                    (*((*plyr).mo as *mut mobj_t)).y,
-                    (*((*plyr).attacker as *mut mobj_t)).x,
-                    (*((*plyr).attacker as *mut mobj_t)).y,
-                );
-                if badguyangle > (*((*plyr).mo as *mut mobj_t)).angle {
-                    diffang = badguyangle - (*((*plyr).mo as *mut mobj_t)).angle;
-                    i = if diffang > ANG180 { 1 } else { 0 };
-                } else {
-                    diffang = (*((*plyr).mo as *mut mobj_t)).angle - badguyangle;
-                    i = if diffang <= ANG180 { 1 } else { 0 };
-                }
-
-                st_facecount = ST_TURNCOUNT;
-                st_faceindex = ST_calcPainOffset();
-
-                if diffang < ANG45 {
-                    st_faceindex += ST_RAMPAGEOFFSET;
-                } else if i != 0 {
-                    st_faceindex += ST_TURNOFFSET;
-                } else {
-                    st_faceindex += ST_TURNOFFSET + 1;
-                }
-            }
-        }
-    }
-
-    if priority < 7 {
-        if (*plyr).damagecount != 0 {
-            if (*plyr).health - st_oldhealth > ST_MUCHPAIN {
-                priority = 7;
-                st_facecount = ST_TURNCOUNT;
-                st_faceindex = ST_calcPainOffset() + ST_OUCHOFFSET;
-            } else {
-                priority = 6;
-                st_facecount = ST_TURNCOUNT;
-                st_faceindex = ST_calcPainOffset() + ST_RAMPAGEOFFSET;
-            }
+            st_facecount = ST_TURNCOUNT;
+            st_faceindex = ST_calcPainOffset() + ST_OUCHOFFSET;
+        } else {
+            priority = 6;
+            st_facecount = ST_TURNCOUNT;
+            st_faceindex = ST_calcPainOffset() + ST_RAMPAGEOFFSET;
         }
     }
 
@@ -608,13 +604,11 @@ pub unsafe extern "C" fn ST_updateFaceWidget() {
         }
     }
 
-    if priority < 5 {
-        if ((*plyr).cheats & 2) != 0 || (*plyr).powers[0] != 0 {
-            // CF_GODMODE || pw_invulnerability
-            priority = 4;
-            st_faceindex = ST_GODFACE;
-            st_facecount = 1;
-        }
+    if priority < 5 && (((*plyr).cheats & 2) != 0 || (*plyr).powers[0] != 0) {
+        // CF_GODMODE || pw_invulnerability
+        priority = 4;
+        st_faceindex = ST_GODFACE;
+        st_facecount = 1;
     }
 
     if st_facecount == 0 {
@@ -636,7 +630,7 @@ pub unsafe extern "C" fn ST_updateWidgets() {
 
     if weaponinfo[(*plyr).readyweapon as usize].ammo == 5 {
         // am_noammo
-        w_ready.num = &mut largeammo as *mut c_int;
+        w_ready.num = &raw mut largeammo as *mut c_int;
     } else {
         w_ready.num = (*plyr)
             .ammo
@@ -734,8 +728,7 @@ pub unsafe extern "C" fn ST_doPaletteStuff() {
     }
 
     if gameversion == d_mode::exe_chex
-        && palette >= STARTREDPALS
-        && palette < STARTREDPALS + NUMREDPALS
+        && (STARTREDPALS..STARTREDPALS + NUMREDPALS).contains(&palette)
     {
         palette = RADIATIONPAL;
     }
@@ -764,28 +757,28 @@ pub unsafe extern "C" fn ST_drawWidgets(refresh: c_int) {
         0
     };
 
-    STlib_updateNum(&mut w_ready, refresh);
+    STlib_updateNum(&raw mut w_ready, refresh);
 
     for i in 0..NUMAMMO {
-        STlib_updateNum(w_ammo.as_mut_ptr().add(i), refresh);
-        STlib_updateNum(w_maxammo.as_mut_ptr().add(i), refresh);
+        STlib_updateNum(std::ptr::addr_of_mut!(w_ammo[0]).add(i), refresh);
+        STlib_updateNum(std::ptr::addr_of_mut!(w_maxammo[0]).add(i), refresh);
     }
 
-    STlib_updatePercent(&mut w_health, refresh);
-    STlib_updatePercent(&mut w_armor, refresh);
-    STlib_updateBinIcon(&mut w_armsbg, refresh);
+    STlib_updatePercent(&raw mut w_health, refresh);
+    STlib_updatePercent(&raw mut w_armor, refresh);
+    STlib_updateBinIcon(&raw mut w_armsbg, refresh);
 
     for i in 0..6 {
-        STlib_updateMultIcon(w_arms.as_mut_ptr().add(i), refresh);
+        STlib_updateMultIcon(std::ptr::addr_of_mut!(w_arms[0]).add(i), refresh);
     }
 
-    STlib_updateMultIcon(&mut w_faces, refresh);
+    STlib_updateMultIcon(&raw mut w_faces, refresh);
 
     for i in 0..3 {
-        STlib_updateMultIcon(w_keyboxes.as_mut_ptr().add(i), refresh);
+        STlib_updateMultIcon(std::ptr::addr_of_mut!(w_keyboxes[0]).add(i), refresh);
     }
 
-    STlib_updateNum(&mut w_frags, refresh);
+    STlib_updateNum(&raw mut w_frags, refresh);
 }
 
 #[no_mangle]
@@ -836,14 +829,14 @@ unsafe fn ST_loadUnloadGraphics(callback: LoadCallback) {
         callback(namebuf.as_mut_ptr(), &mut shortnum[i as usize]);
     }
 
-    callback(b"STTPRCNT\0".as_ptr() as *mut c_char, &mut tallpercent);
+    callback(c"STTPRCNT".as_ptr().cast_mut(), &raw mut tallpercent);
 
     for i in 0..NUMCARDS as c_int {
         c_write!(namebuf, "STKEYS{}", i);
         callback(namebuf.as_mut_ptr(), &mut keys[i as usize]);
     }
 
-    callback(b"STARMS\0".as_ptr() as *mut c_char, &mut armsbg);
+    callback(c"STARMS".as_ptr().cast_mut(), &raw mut armsbg);
 
     for i in 0..6i32 {
         c_write!(namebuf, "STGNUM{}", i + 2);
@@ -851,10 +844,10 @@ unsafe fn ST_loadUnloadGraphics(callback: LoadCallback) {
         arms[i as usize][1] = shortnum[(i + 2) as usize];
     }
 
-    c_write!(namebuf, "STFB{}", consoleplayer);
-    callback(namebuf.as_mut_ptr(), &mut faceback);
+    c_write!(namebuf, "STFB{}", consoleplayer as c_int);
+    callback(namebuf.as_mut_ptr(), &raw mut faceback);
 
-    callback(b"STBAR\0".as_ptr() as *mut c_char, &mut sbar);
+    callback(c"STBAR".as_ptr().cast_mut(), &raw mut sbar);
 
     let mut facenum: c_int = 0;
     for i in 0..ST_NUMPAINFACES {
@@ -880,13 +873,10 @@ unsafe fn ST_loadUnloadGraphics(callback: LoadCallback) {
         facenum += 1;
     }
 
-    callback(
-        b"STFGOD0\0".as_ptr() as *mut c_char,
-        &mut faces[facenum as usize],
-    );
+    callback(c"STFGOD0".as_ptr().cast_mut(), &mut faces[facenum as usize]);
     facenum += 1;
     callback(
-        b"STFDEAD0\0".as_ptr() as *mut c_char,
+        c"STFDEAD0".as_ptr().cast_mut(),
         &mut faces[facenum as usize],
     );
 }
@@ -902,7 +892,7 @@ pub unsafe extern "C" fn ST_loadGraphics() {
 
 #[no_mangle]
 pub unsafe extern "C" fn ST_loadData() {
-    lu_palette = W_GetNumForName(b"PLAYPAL\0".as_ptr() as *const c_char);
+    lu_palette = W_GetNumForName(c"PLAYPAL".as_ptr());
     ST_loadGraphics();
 }
 
@@ -928,7 +918,7 @@ pub unsafe extern "C" fn ST_unloadData() {
 #[no_mangle]
 pub unsafe extern "C" fn ST_initData() {
     st_firsttime = 1;
-    plyr = players.as_mut_ptr().add(consoleplayer as usize);
+    plyr = std::ptr::addr_of_mut!(players[0]).add(consoleplayer as usize);
     st_clock = 0;
     st_chatstate = 0; // StartChatState
     st_gamestate = 1; // FirstPersonState
@@ -953,107 +943,107 @@ pub unsafe extern "C" fn ST_initData() {
 #[no_mangle]
 pub unsafe extern "C" fn ST_createWidgets() {
     STlib_initNum(
-        &mut w_ready,
+        &raw mut w_ready,
         ST_AMMOX,
         ST_AMMOY,
-        tallnum.as_mut_ptr(),
+        std::ptr::addr_of_mut!(tallnum[0]),
         (*plyr)
             .ammo
             .as_mut_ptr()
             .add(weaponinfo[(*plyr).readyweapon as usize].ammo as usize),
-        &mut st_statusbaron,
+        &raw mut st_statusbaron,
         ST_AMMOWIDTH,
     );
     w_ready.data = (*plyr).readyweapon;
 
     STlib_initPercent(
-        &mut w_health,
+        &raw mut w_health,
         ST_HEALTHX,
         ST_HEALTHY,
-        tallnum.as_mut_ptr(),
+        std::ptr::addr_of_mut!(tallnum[0]),
         &mut (*plyr).health,
-        &mut st_statusbaron,
+        &raw mut st_statusbaron,
         tallpercent,
     );
 
     STlib_initBinIcon(
-        &mut w_armsbg,
+        &raw mut w_armsbg,
         ST_ARMSBGX,
         ST_ARMSBGY,
         armsbg,
-        &mut st_notdeathmatch,
-        &mut st_statusbaron,
+        &raw mut st_notdeathmatch,
+        &raw mut st_statusbaron,
     );
 
     for i in 0..6 {
         let i_i = i as c_int;
         STlib_initMultIcon(
-            w_arms.as_mut_ptr().add(i),
+            std::ptr::addr_of_mut!(w_arms[0]).add(i),
             ST_ARMSX + (i_i % 3) * ST_ARMSXSPACE,
             ST_ARMSY + (i_i / 3) * ST_ARMSYSPACE,
             arms[i].as_mut_ptr(),
             (*plyr).weaponowned.as_mut_ptr().add(i + 1),
-            &mut st_armson,
+            &raw mut st_armson,
         );
     }
 
     STlib_initNum(
-        &mut w_frags,
+        &raw mut w_frags,
         ST_FRAGSX,
         ST_FRAGSY,
-        tallnum.as_mut_ptr(),
-        &mut st_fragscount,
-        &mut st_fragson,
+        std::ptr::addr_of_mut!(tallnum[0]),
+        &raw mut st_fragscount,
+        &raw mut st_fragson,
         ST_FRAGSWIDTH,
     );
 
     STlib_initMultIcon(
-        &mut w_faces,
+        &raw mut w_faces,
         ST_FACESX,
         ST_FACESY,
-        faces.as_mut_ptr(),
-        &mut st_faceindex,
-        &mut st_statusbaron,
+        std::ptr::addr_of_mut!(faces[0]),
+        &raw mut st_faceindex,
+        &raw mut st_statusbaron,
     );
 
     STlib_initPercent(
-        &mut w_armor,
+        &raw mut w_armor,
         ST_ARMORX,
         ST_ARMORY,
-        tallnum.as_mut_ptr(),
+        std::ptr::addr_of_mut!(tallnum[0]),
         &mut (*plyr).armorpoints,
-        &mut st_statusbaron,
+        &raw mut st_statusbaron,
         tallpercent,
     );
 
     STlib_initMultIcon(
-        w_keyboxes.as_mut_ptr().add(0),
+        std::ptr::addr_of_mut!(w_keyboxes[0]).add(0),
         ST_KEY0X,
         ST_KEY0Y,
-        keys.as_mut_ptr(),
+        std::ptr::addr_of_mut!(keys[0]),
         &mut keyboxes[0],
-        &mut st_statusbaron,
+        &raw mut st_statusbaron,
     );
     STlib_initMultIcon(
-        w_keyboxes.as_mut_ptr().add(1),
+        std::ptr::addr_of_mut!(w_keyboxes[0]).add(1),
         ST_KEY1X,
         ST_KEY1Y,
-        keys.as_mut_ptr(),
+        std::ptr::addr_of_mut!(keys[0]),
         &mut keyboxes[1],
-        &mut st_statusbaron,
+        &raw mut st_statusbaron,
     );
     STlib_initMultIcon(
-        w_keyboxes.as_mut_ptr().add(2),
+        std::ptr::addr_of_mut!(w_keyboxes[0]).add(2),
         ST_KEY2X,
         ST_KEY2Y,
-        keys.as_mut_ptr(),
+        std::ptr::addr_of_mut!(keys[0]),
         &mut keyboxes[2],
-        &mut st_statusbaron,
+        &raw mut st_statusbaron,
     );
 
     for i in 0..NUMAMMO {
         STlib_initNum(
-            w_ammo.as_mut_ptr().add(i),
+            std::ptr::addr_of_mut!(w_ammo[0]).add(i),
             match i {
                 0 => ST_AMMO0X,
                 1 => ST_AMMO1X,
@@ -1068,16 +1058,16 @@ pub unsafe extern "C" fn ST_createWidgets() {
                 3 => ST_AMMO3Y,
                 _ => unreachable!(),
             },
-            shortnum.as_mut_ptr(),
+            std::ptr::addr_of_mut!(shortnum[0]),
             (*plyr).ammo.as_mut_ptr().add(i),
-            &mut st_statusbaron,
+            &raw mut st_statusbaron,
             ST_AMMO0WIDTH,
         );
     }
 
     for i in 0..NUMAMMO {
         STlib_initNum(
-            w_maxammo.as_mut_ptr().add(i),
+            std::ptr::addr_of_mut!(w_maxammo[0]).add(i),
             match i {
                 0 => ST_MAXAMMO0X,
                 1 => ST_MAXAMMO1X,
@@ -1092,9 +1082,9 @@ pub unsafe extern "C" fn ST_createWidgets() {
                 3 => ST_MAXAMMO3Y,
                 _ => unreachable!(),
             },
-            shortnum.as_mut_ptr(),
+            std::ptr::addr_of_mut!(shortnum[0]),
             (*plyr).maxammo.as_mut_ptr().add(i),
-            &mut st_statusbaron,
+            &raw mut st_statusbaron,
             ST_MAXAMMO0WIDTH,
         );
     }

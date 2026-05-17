@@ -5,11 +5,10 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::c_void;
 use std::os::raw::c_int;
 
 use crate::doom::d_event::event_t;
-use crate::doom::doomkeys::{KEY_BACKSPACE, KEY_ENTER, KEY_RSHIFT};
+use crate::doom::doomkeys::KEY_RSHIFT;
 
 #[no_mangle]
 pub static mut vanilla_keyboard_mapping: c_int = 1;

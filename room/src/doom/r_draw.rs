@@ -184,9 +184,9 @@ pub extern "C" fn R_DrawColumn() {
         debug_assert!(
             (dc_x as u32) < (SCREENWIDTH as u32) && dc_yl >= 0 && dc_yh < SCREENHEIGHT,
             "R_DrawColumn: {} to {} at {}",
-            dc_yl,
-            dc_yh,
-            dc_x
+            dc_yl as c_int,
+            dc_yh as c_int,
+            dc_x as c_int
         );
 
         // Framebuffer destination address.
@@ -230,9 +230,9 @@ pub extern "C" fn R_DrawColumnLow() {
         debug_assert!(
             (dc_x as u32) < (SCREENWIDTH as u32) && dc_yl >= 0 && dc_yh < SCREENHEIGHT,
             "R_DrawColumnLow: {} to {} at {}",
-            dc_yl,
-            dc_yh,
-            dc_x
+            dc_yl as c_int,
+            dc_yh as c_int,
+            dc_x as c_int
         );
 
         let mut dest = ylookup[dc_yl as usize].add(columnofs[x as usize] as usize);
@@ -285,15 +285,12 @@ pub extern "C" fn R_DrawFuzzColumn() {
         debug_assert!(
             (dc_x as u32) < (SCREENWIDTH as u32) && dc_yl >= 0 && dc_yh < SCREENHEIGHT,
             "R_DrawFuzzColumn: {} to {} at {}",
-            dc_yl,
-            dc_yh,
-            dc_x
+            dc_yl as c_int,
+            dc_yh as c_int,
+            dc_x as c_int
         );
 
         let mut dest = ylookup[dc_yl as usize].add(columnofs[dc_x as usize] as usize);
-
-        let fracstep = dc_iscale;
-        let mut frac = dc_texturemid + (dc_yl - centery) * fracstep;
 
         let mut count = count;
         loop {
@@ -311,7 +308,6 @@ pub extern "C" fn R_DrawFuzzColumn() {
             }
 
             dest = dest.add(SCREENWIDTH as usize);
-            frac += fracstep;
             if count == 0 {
                 break;
             }
@@ -350,16 +346,13 @@ pub extern "C" fn R_DrawFuzzColumnLow() {
         debug_assert!(
             (x as u32) < (SCREENWIDTH as u32) && dc_yl >= 0 && dc_yh < SCREENHEIGHT,
             "R_DrawFuzzColumnLow: {} to {} at {}",
-            dc_yl,
-            dc_yh,
-            dc_x
+            dc_yl as c_int,
+            dc_yh as c_int,
+            dc_x as c_int
         );
 
         let mut dest = ylookup[dc_yl as usize].add(columnofs[x as usize] as usize);
         let mut dest2 = ylookup[dc_yl as usize].add(columnofs[(x + 1) as usize] as usize);
-
-        let fracstep = dc_iscale;
-        let mut frac = dc_texturemid + (dc_yl - centery) * fracstep;
 
         let mut count = count;
         loop {
@@ -377,7 +370,6 @@ pub extern "C" fn R_DrawFuzzColumnLow() {
 
             dest = dest.offset(SCREENWIDTH as isize);
             dest2 = dest2.offset(SCREENWIDTH as isize);
-            frac += fracstep;
             if count == 0 {
                 break;
             }
@@ -401,9 +393,9 @@ pub extern "C" fn R_DrawTranslatedColumn() {
         debug_assert!(
             (dc_x as u32) < (SCREENWIDTH as u32) && dc_yl >= 0 && dc_yh < SCREENHEIGHT,
             "R_DrawTranslatedColumn: {} to {} at {}",
-            dc_yl,
-            dc_yh,
-            dc_x
+            dc_yl as c_int,
+            dc_yh as c_int,
+            dc_x as c_int
         );
 
         let mut dest = ylookup[dc_yl as usize].add(columnofs[dc_x as usize] as usize);
@@ -444,8 +436,8 @@ pub extern "C" fn R_DrawTranslatedColumnLow() {
         debug_assert!(
             (x as u32) < (SCREENWIDTH as u32) && dc_yl >= 0 && dc_yh < SCREENHEIGHT,
             "R_DrawTranslatedColumnLow: {} to {} at {}",
-            dc_yl,
-            dc_yh,
+            dc_yl as c_int,
+            dc_yh as c_int,
             x
         );
 
@@ -484,7 +476,7 @@ pub extern "C" fn R_InitTranslationTables() {
 
         let tt = translationtables;
         for i in 0..256 {
-            if i >= 0x70 && i <= 0x7f {
+            if (0x70..=0x7f).contains(&i) {
                 // map green ramp to gray, brown, red
                 *tt.add(i) = (0x60 + (i & 0xf)) as u8;
                 *tt.add(i + 256) = (0x40 + (i & 0xf)) as u8;
@@ -507,14 +499,14 @@ pub extern "C" fn R_InitTranslationTables() {
 pub extern "C" fn R_DrawSpan() {
     unsafe {
         let mut position: u32;
-        let step: u32;
 
         // Pack position and step variables into a single 32-bit integer,
         // with x in the top 16 bits and y in the bottom 16 bits.  For
         // each 16-bit part, the top 6 bits are the integer part and the
         // bottom 10 bits are the fractional part of the pixel position.
         position = ((ds_xfrac << 10) as u32 & 0xffff0000) | ((ds_yfrac >> 6) as u32 & 0x0000ffff);
-        step = ((ds_xstep << 10) as u32 & 0xffff0000) | ((ds_ystep >> 6) as u32 & 0x0000ffff);
+        let step: u32 =
+            ((ds_xstep << 10) as u32 & 0xffff0000) | ((ds_ystep >> 6) as u32 & 0x0000ffff);
 
         let mut dest = ylookup[ds_y as usize].add(columnofs[ds_x1 as usize] as usize);
 
@@ -527,9 +519,9 @@ pub extern "C" fn R_DrawSpan() {
                 && ds_x2 < SCREENWIDTH
                 && (ds_y as u32) <= (SCREENHEIGHT as u32),
             "R_DrawSpan: {} to {} at {}",
-            ds_x1,
-            ds_x2,
-            ds_y
+            ds_x1 as c_int,
+            ds_x2 as c_int,
+            ds_y as c_int
         );
 
         loop {
@@ -559,10 +551,10 @@ pub extern "C" fn R_DrawSpan() {
 pub extern "C" fn R_DrawSpanLow() {
     unsafe {
         let mut position: u32;
-        let step: u32;
 
         position = ((ds_xfrac << 10) as u32 & 0xffff0000) | ((ds_yfrac >> 6) as u32 & 0x0000ffff);
-        step = ((ds_xstep << 10) as u32 & 0xffff0000) | ((ds_ystep >> 6) as u32 & 0x0000ffff);
+        let step: u32 =
+            ((ds_xstep << 10) as u32 & 0xffff0000) | ((ds_ystep >> 6) as u32 & 0x0000ffff);
 
         let mut count = ds_x2 - ds_x1;
 
@@ -575,9 +567,9 @@ pub extern "C" fn R_DrawSpanLow() {
                 && ds_x2 < SCREENWIDTH
                 && (ds_y as u32) <= (SCREENHEIGHT as u32),
             "R_DrawSpanLow: {} to {} at {}",
-            ds_x1,
-            ds_x2,
-            ds_y
+            ds_x1 as c_int,
+            ds_x2 as c_int,
+            ds_y as c_int
         );
 
         let mut dest = ylookup[ds_y as usize].add(columnofs[ds_x1_low as usize] as usize);

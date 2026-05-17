@@ -5,7 +5,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::{c_char, c_int, c_short, c_uint};
+use std::ffi::{c_int, c_short, c_uint};
 use std::ptr;
 
 use crate::doom::d_player::PlayerT;
@@ -300,21 +300,20 @@ pub unsafe extern "C" fn R_PointToAngle(x: fixed_t, y: fixed_t) -> angle_t {
             // y >= 0
             if x > y {
                 // octant 0
-                return tables::tantoangle[SlopeDiv(y as c_uint, x as c_uint) as usize];
+                tables::tantoangle[SlopeDiv(y as c_uint, x as c_uint) as usize]
             } else {
                 // octant 1
-                return ANG90 - 1 - tables::tantoangle[SlopeDiv(x as c_uint, y as c_uint) as usize];
+                ANG90 - 1 - tables::tantoangle[SlopeDiv(x as c_uint, y as c_uint) as usize]
             }
         } else {
             // y < 0
             y = -y;
             if x > y {
                 // octant 8
-                return 0u32
-                    .wrapping_sub(tables::tantoangle[SlopeDiv(y as c_uint, x as c_uint) as usize]);
+                0u32.wrapping_sub(tables::tantoangle[SlopeDiv(y as c_uint, x as c_uint) as usize])
             } else {
                 // octant 7
-                return ANG270 + tables::tantoangle[SlopeDiv(x as c_uint, y as c_uint) as usize];
+                ANG270 + tables::tantoangle[SlopeDiv(x as c_uint, y as c_uint) as usize]
             }
         }
     } else {
@@ -324,24 +323,20 @@ pub unsafe extern "C" fn R_PointToAngle(x: fixed_t, y: fixed_t) -> angle_t {
             // y >= 0
             if x > y {
                 // octant 3
-                return ANG180
-                    - 1
-                    - tables::tantoangle[SlopeDiv(y as c_uint, x as c_uint) as usize];
+                ANG180 - 1 - tables::tantoangle[SlopeDiv(y as c_uint, x as c_uint) as usize]
             } else {
                 // octant 2
-                return ANG90 + tables::tantoangle[SlopeDiv(x as c_uint, y as c_uint) as usize];
+                ANG90 + tables::tantoangle[SlopeDiv(x as c_uint, y as c_uint) as usize]
             }
         } else {
             // y < 0
             y = -y;
             if x > y {
                 // octant 4
-                return ANG180 + tables::tantoangle[SlopeDiv(y as c_uint, x as c_uint) as usize];
+                ANG180 + tables::tantoangle[SlopeDiv(y as c_uint, x as c_uint) as usize]
             } else {
                 // octant 5
-                return ANG270
-                    - 1
-                    - tables::tantoangle[SlopeDiv(x as c_uint, y as c_uint) as usize];
+                ANG270 - 1 - tables::tantoangle[SlopeDiv(x as c_uint, y as c_uint) as usize]
             }
         }
     }
@@ -373,9 +368,7 @@ pub unsafe extern "C" fn R_PointToDist(x: fixed_t, y: fixed_t) -> fixed_t {
     let mut dy = (y - viewy).wrapping_abs();
 
     if dy > dx {
-        let temp = dx;
-        dx = dy;
-        dy = temp;
+        std::mem::swap(&mut dx, &mut dy);
     }
 
     let frac = if dx != 0 { FixedDiv(dy, dx) } else { 0 };
@@ -410,11 +403,7 @@ pub unsafe extern "C" fn R_ScaleFromGlobalAngle(visangle: angle_t) -> fixed_t {
 
     if den > num >> 16 {
         let mut scale = FixedDiv(num, den);
-        if scale > 64 * FRACUNIT {
-            scale = 64 * FRACUNIT;
-        } else if scale < 256 {
-            scale = 256;
-        }
+        scale = scale.clamp(256, 64 * FRACUNIT);
         scale
     } else {
         64 * FRACUNIT
@@ -442,7 +431,7 @@ pub unsafe extern "C" fn R_InitTextureMapping() {
     // Calc focallength so FIELDOFVIEW angles covers SCREENWIDTH.
     let focallength = FixedDiv(
         centerxfrac,
-        tables::finetangent[(tables::FINEANGLES / 4 + FIELDOFVIEW as usize / 2) as usize],
+        tables::finetangent[tables::FINEANGLES / 4 + FIELDOFVIEW as usize / 2],
     );
 
     for i in 0..tables::FINEANGLES / 2 {
@@ -623,19 +612,19 @@ pub unsafe extern "C" fn R_ExecuteSetViewSize() {
 #[no_mangle]
 pub unsafe extern "C" fn R_Init() {
     R_InitData();
-    libc::printf(b".\0".as_ptr() as *const c_char);
+    libc::printf(c".".as_ptr());
     R_InitPointToAngle();
-    libc::printf(b".\0".as_ptr() as *const c_char);
+    libc::printf(c".".as_ptr());
     R_InitTables();
-    libc::printf(b".\0".as_ptr() as *const c_char);
+    libc::printf(c".".as_ptr());
     R_SetViewSize(screenblocks, detailLevel);
     R_InitPlanes();
-    libc::printf(b".\0".as_ptr() as *const c_char);
+    libc::printf(c".".as_ptr());
     R_InitLightTables();
-    libc::printf(b".\0".as_ptr() as *const c_char);
+    libc::printf(c".".as_ptr());
     crate::doom::r_sky::R_InitSkyMap();
     R_InitTranslationTables();
-    libc::printf(b".\0".as_ptr() as *const c_char);
+    libc::printf(c".".as_ptr());
 
     framecount = 0;
 }
@@ -693,7 +682,7 @@ pub unsafe extern "C" fn R_SetupFrame(player: *mut PlayerT) {
         for i in 0..MAXLIGHTSCALE {
             scalelightfixed[i] = fixedcolormap;
         }
-        walllights = ptr::addr_of_mut!(scalelightfixed[0]);
+        walllights = std::ptr::addr_of_mut!(scalelightfixed[0]);
     } else {
         fixedcolormap = ptr::null_mut();
     }

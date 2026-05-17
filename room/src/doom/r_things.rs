@@ -10,14 +10,12 @@ use std::ffi::{c_char, c_int, c_short, c_void, CStr};
 use std::ptr;
 
 use crate::doom::c_ffi::{spriteframe_t, vissprite_t, BASEYCENTER, MINZ};
-use crate::doom::d_player::{PlayerT, PspdefT, NUMPSPRITES};
+use crate::doom::d_player::{PspdefT, NUMPSPRITES};
 use crate::doom::info::*;
 use crate::doom::m_fixed::{fixed_t, FixedDiv, FixedMul};
 use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
-use crate::doom::r_bsp::{drawseg_t, sector_t, seg_t};
-use crate::doom::tables::{ANG45, ANGLETOFINESHIFT};
-use crate::doom::w_wad::lumpinfo_t;
-use crate::types::Boolean;
+use crate::doom::r_bsp::sector_t;
+use crate::doom::tables::ANG45;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -85,8 +83,8 @@ use crate::doom::r_draw::{
 };
 use crate::doom::r_main::{
     basecolfunc, centerxfrac, centeryfrac, colfunc, detailshift, extralight, fixedcolormap,
-    fuzzcolfunc, projection, scalelight, transcolfunc, validcount, viewangle, viewangleoffset,
-    viewcos, viewplayer, viewsin, viewx, viewy, viewz, R_PointOnSegSide, R_PointToAngle,
+    fuzzcolfunc, projection, scalelight, transcolfunc, validcount, viewangleoffset, viewcos,
+    viewplayer, viewsin, viewx, viewy, viewz, R_PointOnSegSide, R_PointToAngle,
 };
 use crate::doom::r_segs::R_RenderMaskedSegRange;
 use crate::doom::w_wad::{lumpinfo, W_CacheLumpNum, W_GetNumForName};
@@ -263,7 +261,7 @@ unsafe fn R_InitSpriteDefs(namelist: *mut *mut c_char) {
 
     for i in 0..numsprites {
         spritename = *namelist.add(i as usize);
-        ptr::write_bytes(sprtemp.as_mut_ptr(), 0xFF, sprtemp.len());
+        ptr::write_bytes(std::ptr::addr_of_mut!(sprtemp[0]), 0xFF, 29);
 
         maxframe = -1;
 
@@ -339,7 +337,11 @@ unsafe fn R_InitSpriteDefs(namelist: *mut *mut c_char) {
             1, // PU_STATIC
             ptr::null_mut(),
         ) as *mut spriteframe_t;
-        ptr::copy_nonoverlapping(sprtemp.as_ptr(), spr.spriteframes, maxframe as usize);
+        ptr::copy_nonoverlapping(
+            std::ptr::addr_of!(sprtemp[0]),
+            spr.spriteframes,
+            maxframe as usize,
+        );
     }
 }
 
@@ -361,7 +363,7 @@ pub unsafe extern "C" fn R_InitSprites(namelist: *mut *mut c_char) {
 
 #[no_mangle]
 pub unsafe extern "C" fn R_ClearSprites() {
-    vissprite_p = vissprites.as_mut_ptr();
+    vissprite_p = std::ptr::addr_of_mut!(vissprites[0]);
 }
 
 // ---------------------------------------------------------------------------
@@ -370,8 +372,8 @@ pub unsafe extern "C" fn R_ClearSprites() {
 
 #[no_mangle]
 pub unsafe extern "C" fn R_NewVisSprite() -> *mut vissprite_t {
-    if vissprite_p == vissprites.as_mut_ptr().add(MAXVISSPRITES) {
-        return &mut overflowsprite;
+    if vissprite_p == std::ptr::addr_of_mut!(vissprites[0]).add(MAXVISSPRITES) {
+        return &raw mut overflowsprite;
     }
     vissprite_p = vissprite_p.add(1);
     vissprite_p.sub(1)
@@ -420,7 +422,7 @@ pub unsafe extern "C" fn R_DrawMaskedColumn(column: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 #[no_mangle]
-pub unsafe extern "C" fn R_DrawVisSprite(vis: *mut vissprite_t, x1: c_int, x2: c_int) {
+pub unsafe extern "C" fn R_DrawVisSprite(vis: *mut vissprite_t, _x1: c_int, _x2: c_int) {
     let patch = W_CacheLumpNum((*vis).patch + firstspritelump, 8) as *mut patch_t; // PU_CACHE = 8
 
     dc_colormap = (*vis).colormap;
@@ -620,7 +622,7 @@ pub unsafe extern "C" fn R_AddSprites(sec: *mut sector_t) {
     // Well, now it will be done.
     (*(sec as *const sector_t as *mut sector_t)).validcount = validcount;
 
-    let mut lightnum = (sec.lightlevel >> LIGHTSEGSHIFT as i16) as c_int + extralight;
+    let lightnum = (sec.lightlevel >> LIGHTSEGSHIFT as i16) as c_int + extralight;
 
     if lightnum < 0 {
         spritelights = scalelight[0].as_mut_ptr();
@@ -759,8 +761,8 @@ pub unsafe extern "C" fn R_DrawPlayerSprites() {
     }
 
     // Clip to screen bounds.
-    mfloorclip = screenheightarray.as_mut_ptr();
-    mceilingclip = negonearray.as_mut_ptr();
+    mfloorclip = std::ptr::addr_of_mut!(screenheightarray[0]);
+    mceilingclip = std::ptr::addr_of_mut!(negonearray[0]);
 
     // Add all active psprites.
     let psp = (*viewplayer).psprites.as_ptr() as *mut PspdefT;
@@ -778,7 +780,7 @@ pub unsafe extern "C" fn R_DrawPlayerSprites() {
 
 #[no_mangle]
 pub unsafe extern "C" fn R_SortVisSprites() {
-    let count = vissprite_p.offset_from(vissprites.as_mut_ptr()) as isize;
+    let count = vissprite_p.offset_from(std::ptr::addr_of_mut!(vissprites[0]));
 
     let mut unsorted: vissprite_t = unsafe { std::mem::zeroed() };
     unsorted.next = &mut unsorted;
@@ -789,19 +791,19 @@ pub unsafe extern "C" fn R_SortVisSprites() {
     }
 
     for i in 0..count {
-        let ds = vissprites.as_mut_ptr().add(i as usize);
+        let ds = std::ptr::addr_of_mut!(vissprites[0]).add(i as usize);
         (*ds).next = ds.add(1);
         (*ds).prev = ds.sub(1);
     }
 
     vissprites[0].prev = &mut unsorted;
-    unsorted.next = vissprites.as_mut_ptr();
+    unsorted.next = std::ptr::addr_of_mut!(vissprites[0]);
     (*vissprite_p.sub(1)).next = &mut unsorted;
     unsorted.prev = vissprite_p.sub(1);
 
     // Pull the vissprites out by scale.
-    vsprsortedhead.next = &mut vsprsortedhead;
-    vsprsortedhead.prev = &mut vsprsortedhead;
+    vsprsortedhead.next = &raw mut vsprsortedhead;
+    vsprsortedhead.prev = &raw mut vsprsortedhead;
 
     for _ in 0..count {
         let mut bestscale = c_int::MAX;
@@ -818,7 +820,7 @@ pub unsafe extern "C" fn R_SortVisSprites() {
 
         (*(*best).next).prev = (*best).prev;
         (*(*best).prev).next = (*best).next;
-        (*best).next = &mut vsprsortedhead;
+        (*best).next = &raw mut vsprsortedhead;
         (*best).prev = vsprsortedhead.prev;
         (*vsprsortedhead.prev).next = best;
         vsprsortedhead.prev = best;
@@ -843,7 +845,7 @@ pub unsafe extern "C" fn R_DrawSprite(spr: *mut vissprite_t) {
 
     // Scan drawsegs from end to start for obscuring segs.
     let mut ds = ds_p.sub(1);
-    let drawsegs_base = drawsegs.as_mut_ptr();
+    let drawsegs_base = std::ptr::addr_of_mut!(drawsegs[0]);
     while ds >= drawsegs_base {
         // Determine if the drawseg obscures the sprite.
         if (*ds).x1 > spr.x2
@@ -926,8 +928,8 @@ pub unsafe extern "C" fn R_DrawSprite(spr: *mut vissprite_t) {
         }
     }
 
-    mfloorclip = CLIPBOT.as_mut_ptr();
-    mceilingclip = CLIPTOP.as_mut_ptr();
+    mfloorclip = std::ptr::addr_of_mut!(CLIPBOT[0]);
+    mceilingclip = std::ptr::addr_of_mut!(CLIPTOP[0]);
     R_DrawVisSprite(
         spr as *const vissprite_t as *mut vissprite_t,
         spr.x1,
@@ -943,10 +945,10 @@ pub unsafe extern "C" fn R_DrawSprite(spr: *mut vissprite_t) {
 pub unsafe extern "C" fn R_DrawMasked() {
     R_SortVisSprites();
 
-    if vissprite_p > vissprites.as_mut_ptr() {
+    if vissprite_p > std::ptr::addr_of_mut!(vissprites[0]) {
         // Draw all vissprites back to front.
         let mut spr = vsprsortedhead.next;
-        while spr != &mut vsprsortedhead {
+        while spr != &raw mut vsprsortedhead {
             R_DrawSprite(spr);
             spr = (*spr).next;
         }
@@ -954,7 +956,7 @@ pub unsafe extern "C" fn R_DrawMasked() {
 
     // Render any remaining masked mid textures.
     let mut ds = ds_p.sub(1);
-    let drawsegs_base = drawsegs.as_mut_ptr();
+    let drawsegs_base = std::ptr::addr_of_mut!(drawsegs[0]);
     while ds >= drawsegs_base {
         if !(*ds).maskedtexturecol.is_null() {
             R_RenderMaskedSegRange(ds, (*ds).x1, (*ds).x2);

@@ -6,7 +6,6 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
-use std::ffi::c_char;
 use std::os::raw::c_int;
 
 use crate::i_error;
@@ -215,10 +214,8 @@ pub extern "C" fn D_QuitNetGame() {
 
 unsafe fn get_low_tic() -> c_int {
     let mut lowtic = MAKETIC;
-    if net_client_connected != 0 {
-        if drone != 0 || RECVTIC < lowtic {
-            lowtic = RECVTIC;
-        }
+    if net_client_connected != 0 && (drone != 0 || RECVTIC < lowtic) {
+        lowtic = RECVTIC;
     }
     lowtic
 }

@@ -126,11 +126,11 @@ extern "C" {
 
 use crate::doom::am_map::automapactive;
 use crate::doom::d_loop::gametic;
-use crate::doom::d_main::{devparm, D_StartTitle};
+use crate::doom::d_main::devparm;
 use crate::doom::dstrings::{doom1_endmsg, doom2_endmsg};
 use crate::doom::g_game::{
-    consoleplayer, demoplayback, gamestate, netgame, players, testcontrols, usergame,
-    G_DeferedInitNew, G_LoadGame, G_SaveGame, G_ScreenShot,
+    demoplayback, gamestate, netgame, testcontrols, usergame, G_DeferedInitNew, G_LoadGame,
+    G_SaveGame, G_ScreenShot,
 };
 use crate::doom::hu_stuff::{chat_on, hu_font, message_dontfuckwithme};
 use crate::doom::i_input::vanilla_keyboard_mapping;
@@ -210,10 +210,7 @@ static mut itemOn: i16 = 0;
 static mut skullAnimCounter: i16 = 0;
 static mut whichSkull: i16 = 0;
 
-static mut skullName: [*const c_char; 2] = [
-    b"M_SKULL1\0".as_ptr() as *const c_char,
-    b"M_SKULL2\0".as_ptr() as *const c_char,
-];
+static mut skullName: [*const c_char; 2] = [c"M_SKULL1".as_ptr(), c"M_SKULL2".as_ptr()];
 
 #[no_mangle]
 pub static mut currentMenu: *mut menu_t = ptr::null_mut();
@@ -417,14 +414,11 @@ fn M_ReadSaveStrings() {
             let mut name: [c_char; 256] = [0; 256];
             M_StringCopy(name.as_mut_ptr(), name_ptr, name.len());
 
-            let handle = fopen(
-                name.as_ptr() as *const c_char,
-                b"rb\0".as_ptr() as *const c_char,
-            );
+            let handle = fopen(name.as_ptr() as *const c_char, c"rb".as_ptr());
             if handle.is_null() {
                 M_StringCopy(
                     savegamestrings[i].as_mut_ptr(),
-                    b"empty slot\0".as_ptr() as *const c_char,
+                    c"empty slot".as_ptr(),
                     SAVESTRINGSIZE,
                 );
                 LoadMenu[i].status = 0;
@@ -447,7 +441,7 @@ extern "C" fn M_DrawLoad() {
         V_DrawPatchDirect(
             72,
             28,
-            W_CacheLumpName(b"M_LOADG\0".as_ptr() as *const c_char, 0) as *mut patch_t,
+            W_CacheLumpName(c"M_LOADG".as_ptr(), 0) as *mut patch_t,
         );
 
         for i in 0..load_end {
@@ -465,29 +459,27 @@ extern "C" fn M_DrawLoad() {
 }
 
 fn M_DrawSaveLoadBorder(x: c_int, y: c_int) {
-    unsafe {
-        V_DrawPatchDirect(
-            x - 8,
-            y + 7,
-            W_CacheLumpName(b"M_LSLEFT\0".as_ptr() as *const c_char, 0) as *mut patch_t,
-        );
+    V_DrawPatchDirect(
+        x - 8,
+        y + 7,
+        W_CacheLumpName(c"M_LSLEFT".as_ptr(), 0) as *mut patch_t,
+    );
 
-        let mut xi = x;
-        for _ in 0..24 {
-            V_DrawPatchDirect(
-                xi,
-                y + 7,
-                W_CacheLumpName(b"M_LSCNTR\0".as_ptr() as *const c_char, 0) as *mut patch_t,
-            );
-            xi += 8;
-        }
-
+    let mut xi = x;
+    for _ in 0..24 {
         V_DrawPatchDirect(
             xi,
             y + 7,
-            W_CacheLumpName(b"M_LSRGHT\0".as_ptr() as *const c_char, 0) as *mut patch_t,
+            W_CacheLumpName(c"M_LSCNTR".as_ptr(), 0) as *mut patch_t,
         );
+        xi += 8;
     }
+
+    V_DrawPatchDirect(
+        xi,
+        y + 7,
+        W_CacheLumpName(c"M_LSRGHT".as_ptr(), 0) as *mut patch_t,
+    );
 }
 
 extern "C" fn M_LoadSelect(choice: c_int) {
@@ -503,13 +495,15 @@ extern "C" fn M_LoadGame(_choice: c_int) {
     unsafe {
         if netgame != 0 {
             M_StartMessage(
-                b"you can't do load while in a net game!\n\npress a key.\0".as_ptr() as *mut c_char,
+                c"you can't do load while in a net game!\n\npress a key."
+                    .as_ptr()
+                    .cast_mut(),
                 None,
                 0,
             );
             return;
         }
-        M_SetupNextMenu(&mut LoadDef);
+        M_SetupNextMenu(&raw mut LoadDef);
     }
     M_ReadSaveStrings();
 }
@@ -519,7 +513,7 @@ extern "C" fn M_DrawSave() {
         V_DrawPatchDirect(
             72,
             28,
-            W_CacheLumpName(b"M_SAVEG\0".as_ptr() as *const c_char, 0) as *mut patch_t,
+            W_CacheLumpName(c"M_SAVEG".as_ptr(), 0) as *mut patch_t,
         );
         for i in 0..load_end {
             M_DrawSaveLoadBorder(
@@ -538,7 +532,7 @@ extern "C" fn M_DrawSave() {
             M_WriteText(
                 LoadDef.x as c_int + w,
                 LoadDef.y as c_int + LINEHEIGHT * saveSlot as c_int,
-                b"_\0".as_ptr() as *mut c_char,
+                c"_".as_ptr().cast_mut(),
             );
         }
     }
@@ -559,13 +553,13 @@ extern "C" fn M_SaveSelect(choice: c_int) {
         saveStringEnter = 1;
         saveSlot = choice;
         M_StringCopy(
-            saveOldString.as_mut_ptr(),
+            std::ptr::addr_of_mut!(saveOldString[0]),
             savegamestrings[choice as usize].as_ptr(),
             SAVESTRINGSIZE,
         );
         if strcmp(
             savegamestrings[choice as usize].as_ptr(),
-            b"empty slot\0".as_ptr() as *const c_char,
+            c"empty slot".as_ptr(),
         ) == 0
         {
             savegamestrings[choice as usize][0] = 0;
@@ -579,7 +573,9 @@ extern "C" fn M_SaveGame(_choice: c_int) {
     unsafe {
         if usergame == 0 {
             M_StartMessage(
-                b"you can't save if you aren't playing!\n\npress a key.\0".as_ptr() as *mut c_char,
+                c"you can't save if you aren't playing!\n\npress a key."
+                    .as_ptr()
+                    .cast_mut(),
                 None,
                 0,
             );
@@ -588,7 +584,7 @@ extern "C" fn M_SaveGame(_choice: c_int) {
         if gamestate != GS_LEVEL {
             return;
         }
-        M_SetupNextMenu(&mut SaveDef);
+        M_SetupNextMenu(&raw mut SaveDef);
     }
     M_ReadSaveStrings();
 }
@@ -606,7 +602,7 @@ fn M_QuickSave() {
         if quickSaveSlot < 0 {
             M_StartControlPanel();
             M_ReadSaveStrings();
-            M_SetupNextMenu(&mut SaveDef);
+            M_SetupNextMenu(&raw mut SaveDef);
             quickSaveSlot = -2;
             return;
         }
@@ -618,7 +614,11 @@ fn M_QuickSave() {
             "quicksave over your game named\n\n'{}'?\n\npress y or n.",
             slot_str
         );
-        M_StartMessage(QUICK_SAVE_MSG.as_mut_ptr(), Some(M_QuickSaveResponse), 1);
+        M_StartMessage(
+            std::ptr::addr_of_mut!(QUICK_SAVE_MSG[0]),
+            Some(M_QuickSaveResponse),
+            1,
+        );
     }
 }
 
@@ -636,7 +636,9 @@ fn M_QuickLoad() {
     unsafe {
         if netgame != 0 {
             M_StartMessage(
-                b"you can't quickload during a netgame!\n\npress a key.\0".as_ptr() as *mut c_char,
+                c"you can't quickload during a netgame!\n\npress a key."
+                    .as_ptr()
+                    .cast_mut(),
                 None,
                 0,
             );
@@ -644,8 +646,7 @@ fn M_QuickLoad() {
         }
         if quickSaveSlot < 0 {
             M_StartMessage(
-                b"you haven't picked a quicksave slot yet!\n\npress a key.\0".as_ptr()
-                    as *mut c_char,
+                c"you haven't picked a quicksave slot yet!\n\npress a key.".as_ptr() as *mut c_char,
                 None,
                 0,
             );
@@ -659,7 +660,11 @@ fn M_QuickLoad() {
             "do you want to quickload the game named\n\n'{}'?\n\npress y or n.",
             slot_str
         );
-        M_StartMessage(QUICK_LOAD_MSG.as_mut_ptr(), Some(M_QuickLoadResponse), 1);
+        M_StartMessage(
+            std::ptr::addr_of_mut!(QUICK_LOAD_MSG[0]),
+            Some(M_QuickLoadResponse),
+            1,
+        );
     }
 }
 
@@ -688,22 +693,22 @@ extern "C" fn M_DrawReadThis1() {
             | d_mode::exe_doom_1_9
             | d_mode::exe_hacx => {
                 if gamemode == d_mode::commercial {
-                    lumpname = b"HELP\0".as_ptr() as *const c_char;
+                    lumpname = c"HELP".as_ptr();
                     skullx = 330;
                     skully = 165;
                 } else {
-                    lumpname = b"HELP2\0".as_ptr() as *const c_char;
+                    lumpname = c"HELP2".as_ptr();
                     skullx = 280;
                     skully = 185;
                 }
             }
             d_mode::exe_ultimate | d_mode::exe_chex => {
-                lumpname = b"HELP1\0".as_ptr() as *const c_char;
+                lumpname = c"HELP1".as_ptr();
                 skullx = 280;
                 skully = 185;
             }
             d_mode::exe_final | d_mode::exe_final2 => {
-                lumpname = b"HELP\0".as_ptr() as *const c_char;
+                lumpname = c"HELP".as_ptr();
                 skullx = 330;
                 skully = 165;
             }
@@ -722,11 +727,7 @@ extern "C" fn M_DrawReadThis1() {
 extern "C" fn M_DrawReadThis2() {
     unsafe {
         inhelpscreens = 1;
-        V_DrawPatchDirect(
-            0,
-            0,
-            W_CacheLumpName(b"HELP1\0".as_ptr() as *const c_char, 0) as *mut patch_t,
-        );
+        V_DrawPatchDirect(0, 0, W_CacheLumpName(c"HELP1".as_ptr(), 0) as *mut patch_t);
     }
 }
 
@@ -736,7 +737,7 @@ extern "C" fn M_DrawSound() {
         V_DrawPatchDirect(
             60,
             38,
-            W_CacheLumpName(b"M_SVOL\0".as_ptr() as *const c_char, 0) as *mut patch_t,
+            W_CacheLumpName(c"M_SVOL".as_ptr(), 0) as *mut patch_t,
         );
 
         M_DrawThermo(
@@ -755,9 +756,7 @@ extern "C" fn M_DrawSound() {
     }
 }
 
-extern "C" fn M_Sound(_choice: c_int) {
-    unsafe { M_SetupNextMenu(&mut SoundDef) };
-}
+extern "C" fn M_Sound(_choice: c_int) {}
 
 extern "C" fn M_SfxVol(choice: c_int) {
     use super::s_sound::sfxVolume;
@@ -792,35 +791,31 @@ extern "C" fn M_MusicVol(choice: c_int) {
 }
 
 extern "C" fn M_DrawMainMenu() {
-    unsafe {
-        V_DrawPatchDirect(
-            94,
-            2,
-            W_CacheLumpName(b"M_DOOM\0".as_ptr() as *const c_char, 0) as *mut patch_t,
-        );
-    }
+    V_DrawPatchDirect(
+        94,
+        2,
+        W_CacheLumpName(c"M_DOOM".as_ptr(), 0) as *mut patch_t,
+    );
 }
 
 extern "C" fn M_DrawNewGame() {
-    unsafe {
-        V_DrawPatchDirect(
-            96,
-            14,
-            W_CacheLumpName(b"M_NEWG\0".as_ptr() as *const c_char, 0) as *mut patch_t,
-        );
-        V_DrawPatchDirect(
-            54,
-            38,
-            W_CacheLumpName(b"M_SKILL\0".as_ptr() as *const c_char, 0) as *mut patch_t,
-        );
-    }
+    V_DrawPatchDirect(
+        96,
+        14,
+        W_CacheLumpName(c"M_NEWG".as_ptr(), 0) as *mut patch_t,
+    );
+    V_DrawPatchDirect(
+        54,
+        38,
+        W_CacheLumpName(c"M_SKILL".as_ptr(), 0) as *mut patch_t,
+    );
 }
 
 extern "C" fn M_NewGame(_choice: c_int) {
     unsafe {
         if netgame != 0 && demoplayback == 0 {
             M_StartMessage(
-                b"you can't start a new game\nwhile in a network game.\n\npress a key.\0".as_ptr()
+                c"you can't start a new game\nwhile in a network game.\n\npress a key.".as_ptr()
                     as *mut c_char,
                 None,
                 0,
@@ -828,21 +823,19 @@ extern "C" fn M_NewGame(_choice: c_int) {
             return;
         }
         if gamemode == d_mode::commercial || gameversion == d_mode::exe_chex {
-            M_SetupNextMenu(&mut NewDef);
+            M_SetupNextMenu(&raw mut NewDef);
         } else {
-            M_SetupNextMenu(&mut EpiDef);
+            M_SetupNextMenu(&raw mut EpiDef);
         }
     }
 }
 
 extern "C" fn M_DrawEpisode() {
-    unsafe {
-        V_DrawPatchDirect(
-            54,
-            38,
-            W_CacheLumpName(b"M_EPISOD\0".as_ptr() as *const c_char, 0) as *mut patch_t,
-        );
-    }
+    V_DrawPatchDirect(
+        54,
+        38,
+        W_CacheLumpName(c"M_EPISOD".as_ptr(), 0) as *mut patch_t,
+    );
 }
 
 static mut epi: c_int = 0;
@@ -861,7 +854,7 @@ extern "C" fn M_VerifyNightmare(key: c_int) {
 extern "C" fn M_ChooseSkill(choice: c_int) {
     if choice as usize == nightmare {
         M_StartMessage(
-            b"are you sure? this skill level\nisn't even remotely fair.\n\npress y or n.\0".as_ptr()
+            c"are you sure? this skill level\nisn't even remotely fair.\n\npress y or n.".as_ptr()
                 as *mut c_char,
             Some(M_VerifyNightmare),
             1,
@@ -878,12 +871,12 @@ extern "C" fn M_Episode(choice: c_int) {
     unsafe {
         if gamemode == d_mode::shareware && choice != 0 {
             M_StartMessage(
-                b"this is the shareware version of doom.\n\nyou need to order the entire trilogy.\n\npress a key.\0".as_ptr()
+                c"this is the shareware version of doom.\n\nyou need to order the entire trilogy.\n\npress a key.".as_ptr()
                     as *mut c_char,
                 None,
                 0,
             );
-            M_SetupNextMenu(&mut ReadDef1);
+            M_SetupNextMenu(&raw mut ReadDef1);
             return;
         }
         if gamemode == d_mode::registered && choice > 2 {
@@ -891,7 +884,7 @@ extern "C" fn M_Episode(choice: c_int) {
         } else {
             epi = choice;
         }
-        M_SetupNextMenu(&mut NewDef);
+        M_SetupNextMenu(&raw mut NewDef);
     }
 }
 
@@ -900,17 +893,11 @@ extern "C" fn M_DrawOptions() {
         V_DrawPatchDirect(
             108,
             15,
-            W_CacheLumpName(b"M_OPTTTL\0".as_ptr() as *const c_char, 0) as *mut patch_t,
+            W_CacheLumpName(c"M_OPTTTL".as_ptr(), 0) as *mut patch_t,
         );
 
-        let detail_names: [*const c_char; 2] = [
-            b"M_GDHIGH\0".as_ptr() as *const c_char,
-            b"M_GDLOW\0".as_ptr() as *const c_char,
-        ];
-        let msg_names: [*const c_char; 2] = [
-            b"M_MSGOFF\0".as_ptr() as *const c_char,
-            b"M_MSGON\0".as_ptr() as *const c_char,
-        ];
+        let detail_names: [*const c_char; 2] = [c"M_GDHIGH".as_ptr(), c"M_GDLOW".as_ptr()];
+        let msg_names: [*const c_char; 2] = [c"M_MSGOFF".as_ptr(), c"M_MSGON".as_ptr()];
 
         V_DrawPatchDirect(
             OptionsDef.x as c_int + 175,
@@ -940,17 +927,15 @@ extern "C" fn M_DrawOptions() {
     }
 }
 
-extern "C" fn M_Options(_choice: c_int) {
-    unsafe { M_SetupNextMenu(&mut OptionsDef) };
-}
+extern "C" fn M_Options(_choice: c_int) {}
 
 extern "C" fn M_ChangeMessages(_choice: c_int) {
     unsafe {
         showMessages = 1 - showMessages;
         if showMessages == 0 {
-            M_Menu_SetPlayerMessage(b"Messages OFF\0".as_ptr() as *const c_char);
+            M_Menu_SetPlayerMessage(c"Messages OFF".as_ptr());
         } else {
-            M_Menu_SetPlayerMessage(b"Messages ON\0".as_ptr() as *const c_char);
+            M_Menu_SetPlayerMessage(c"Messages ON".as_ptr());
         }
         message_dontfuckwithme = 1;
     }
@@ -965,7 +950,6 @@ extern "C" fn M_EndGameResponse(key: c_int) {
         (*currentMenu).lastOn = itemOn;
     }
     M_ClearMenus();
-    unsafe { D_StartTitle() };
 }
 
 extern "C" fn M_EndGame(_choice: c_int) {
@@ -976,37 +960,37 @@ extern "C" fn M_EndGame(_choice: c_int) {
         }
         if netgame != 0 {
             M_StartMessage(
-                b"you can't end a netgame!\n\npress a key.\0".as_ptr() as *mut c_char,
+                c"you can't end a netgame!\n\npress a key."
+                    .as_ptr()
+                    .cast_mut(),
                 None,
                 0,
             );
             return;
         }
         M_StartMessage(
-            b"are you sure you want to end the game?\n\npress y or n.\0".as_ptr() as *mut c_char,
+            c"are you sure you want to end the game?\n\npress y or n."
+                .as_ptr()
+                .cast_mut(),
             Some(M_EndGameResponse),
             1,
         );
     }
 }
 
-extern "C" fn M_ReadThis(_choice: c_int) {
-    unsafe { M_SetupNextMenu(&mut ReadDef1) };
-}
+extern "C" fn M_ReadThis(_choice: c_int) {}
 
 extern "C" fn M_ReadThis2(_choice: c_int) {
     unsafe {
         if gameversion <= d_mode::exe_doom_1_9 && gamemode != d_mode::commercial {
-            M_SetupNextMenu(&mut ReadDef2);
+            M_SetupNextMenu(&raw mut ReadDef2);
         } else {
             M_FinishReadThis(0);
         }
     }
 }
 
-extern "C" fn M_FinishReadThis(_choice: c_int) {
-    unsafe { M_SetupNextMenu(&mut MainDef) };
-}
+extern "C" fn M_FinishReadThis(_choice: c_int) {}
 
 static mut quitsounds: [c_int; 8] = [
     SFX_PLDETH, SFX_DMPAIN, SFX_POPAIN, SFX_SLOP, SFX_TELEPT, SFX_POSIT1, SFX_POSIT3, SFX_SGTATK,
@@ -1048,7 +1032,11 @@ extern "C" fn M_QuitDOOM(_choice: c_int) {
         let msg = M_SelectEndMessage();
         let msg_str = std::ffi::CStr::from_ptr(msg).to_string_lossy();
         c_write!(endstring, "{}\n\n(press y to quit to dos.)", msg_str);
-        M_StartMessage(endstring.as_mut_ptr(), Some(M_QuitResponse), 1);
+        M_StartMessage(
+            std::ptr::addr_of_mut!(endstring[0]),
+            Some(M_QuitResponse),
+            1,
+        );
     }
 }
 
@@ -1071,9 +1059,9 @@ extern "C" fn M_ChangeDetail(_choice: c_int) {
         detailLevel = 1 - detailLevel;
         R_SetViewSize(screenblocks, detailLevel);
         if detailLevel == 0 {
-            M_Menu_SetPlayerMessage(b"High detail\0".as_ptr() as *const c_char);
+            M_Menu_SetPlayerMessage(c"High detail".as_ptr());
         } else {
-            M_Menu_SetPlayerMessage(b"Low detail\0".as_ptr() as *const c_char);
+            M_Menu_SetPlayerMessage(c"Low detail".as_ptr());
         }
     }
 }
@@ -1096,34 +1084,32 @@ extern "C" fn M_SizeDisplay(choice: c_int) {
 }
 
 fn M_DrawThermo(x: c_int, y: c_int, thermWidth: c_int, thermDot: c_int) {
-    unsafe {
-        let mut xx = x;
+    let mut xx = x;
+    V_DrawPatchDirect(
+        xx,
+        y,
+        W_CacheLumpName(c"M_THERML".as_ptr(), 0) as *mut patch_t,
+    );
+    xx += 8;
+    for _ in 0..thermWidth {
         V_DrawPatchDirect(
             xx,
             y,
-            W_CacheLumpName(b"M_THERML\0".as_ptr() as *const c_char, 0) as *mut patch_t,
+            W_CacheLumpName(c"M_THERMM".as_ptr(), 0) as *mut patch_t,
         );
         xx += 8;
-        for _ in 0..thermWidth {
-            V_DrawPatchDirect(
-                xx,
-                y,
-                W_CacheLumpName(b"M_THERMM\0".as_ptr() as *const c_char, 0) as *mut patch_t,
-            );
-            xx += 8;
-        }
-        V_DrawPatchDirect(
-            xx,
-            y,
-            W_CacheLumpName(b"M_THERMR\0".as_ptr() as *const c_char, 0) as *mut patch_t,
-        );
-
-        V_DrawPatchDirect(
-            (x + 8) + thermDot * 8,
-            y,
-            W_CacheLumpName(b"M_THERMO\0".as_ptr() as *const c_char, 0) as *mut patch_t,
-        );
     }
+    V_DrawPatchDirect(
+        xx,
+        y,
+        W_CacheLumpName(c"M_THERMR".as_ptr(), 0) as *mut patch_t,
+    );
+
+    V_DrawPatchDirect(
+        (x + 8) + thermDot * 8,
+        y,
+        W_CacheLumpName(c"M_THERMO".as_ptr(), 0) as *mut patch_t,
+    );
 }
 
 fn M_DrawEmptyCell(_menu: *mut menu_t, _item: c_int) {}
@@ -1350,7 +1336,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
                 saveStringEnter = 0;
                 M_StringCopy(
                     savegamestrings[saveSlot as usize].as_mut_ptr(),
-                    saveOldString.as_ptr(),
+                    std::ptr::addr_of!(saveOldString[0]),
                     SAVESTRINGSIZE,
                 );
             } else if key == KEY_ENTER {
@@ -1429,9 +1415,9 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
             } else if key == key_menu_help {
                 M_StartControlPanel();
                 if gamemode == d_mode::retail {
-                    currentMenu = &mut ReadDef2;
+                    currentMenu = &raw mut ReadDef2;
                 } else {
-                    currentMenu = &mut ReadDef1;
+                    currentMenu = &raw mut ReadDef1;
                 }
                 itemOn = 0;
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
@@ -1448,7 +1434,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
                 return Boolean::TRUE;
             } else if key == key_menu_volume {
                 M_StartControlPanel();
-                currentMenu = &mut SoundDef;
+                currentMenu = &raw mut SoundDef;
                 itemOn = sfx_vol as i16;
                 S_StartSound(ptr::null_mut(), SFX_SWTCHN);
                 return Boolean::TRUE;
@@ -1482,7 +1468,7 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
                     usegamma = 0;
                 }
                 M_Menu_SetPlayerMessage(gammamsg[usegamma as usize].as_ptr());
-                I_SetPalette(W_CacheLumpName(b"PLAYPAL\0".as_ptr() as *const c_char, 0) as *mut u8);
+                I_SetPalette(W_CacheLumpName(c"PLAYPAL".as_ptr(), 0) as *mut u8);
                 return Boolean::TRUE;
             }
         }
@@ -1526,28 +1512,34 @@ pub extern "C" fn M_Responder(ev: *mut event_t) -> Boolean {
             return Boolean::TRUE;
         } else if key == key_menu_left {
             let item = &*(*currentMenu).menuitems.offset(itemOn as isize);
-            if item.routine.is_some() && item.status == 2 {
-                S_StartSound(ptr::null_mut(), SFX_STNMOV);
-                item.routine.unwrap()(0);
+            if item.status == 2 {
+                if let Some(routine) = item.routine {
+                    S_StartSound(ptr::null_mut(), SFX_STNMOV);
+                    routine(0);
+                }
             }
             return Boolean::TRUE;
         } else if key == key_menu_right {
             let item = &*(*currentMenu).menuitems.offset(itemOn as isize);
-            if item.routine.is_some() && item.status == 2 {
-                S_StartSound(ptr::null_mut(), SFX_STNMOV);
-                item.routine.unwrap()(1);
+            if item.status == 2 {
+                if let Some(routine) = item.routine {
+                    S_StartSound(ptr::null_mut(), SFX_STNMOV);
+                    routine(1);
+                }
             }
             return Boolean::TRUE;
         } else if key == key_menu_forward {
             let item = &*(*currentMenu).menuitems.offset(itemOn as isize);
-            if item.routine.is_some() && item.status != 0 {
-                (*currentMenu).lastOn = itemOn;
-                if item.status == 2 {
-                    item.routine.unwrap()(1);
-                    S_StartSound(ptr::null_mut(), SFX_STNMOV);
-                } else {
-                    item.routine.unwrap()(itemOn as c_int);
-                    S_StartSound(ptr::null_mut(), SFX_PISTOL);
+            if let Some(routine) = item.routine {
+                if item.status != 0 {
+                    (*currentMenu).lastOn = itemOn;
+                    if item.status == 2 {
+                        routine(1);
+                        S_StartSound(ptr::null_mut(), SFX_STNMOV);
+                    } else {
+                        routine(itemOn as c_int);
+                        S_StartSound(ptr::null_mut(), SFX_PISTOL);
+                    }
                 }
             }
             return Boolean::TRUE;
@@ -1596,7 +1588,7 @@ pub extern "C" fn M_StartControlPanel() {
             return;
         }
         menuactive = 1;
-        currentMenu = &mut MainDef;
+        currentMenu = &raw mut MainDef;
         itemOn = (*currentMenu).lastOn;
     }
 }
@@ -1695,7 +1687,7 @@ pub extern "C" fn M_Ticker() {
 #[no_mangle]
 pub extern "C" fn M_Init() {
     unsafe {
-        currentMenu = &mut MainDef;
+        currentMenu = &raw mut MainDef;
         menuactive = 0;
         itemOn = (*currentMenu).lastOn;
         whichSkull = 0;
@@ -1707,32 +1699,32 @@ pub extern "C" fn M_Init() {
         quickSaveSlot = -1;
 
         // Set menuitems pointers (couldn't be done at static init time)
-        MainDef.menuitems = MainMenu.as_mut_ptr();
-        EpiDef.menuitems = EpisodeMenu.as_mut_ptr();
-        NewDef.menuitems = NewGameMenu.as_mut_ptr();
-        OptionsDef.menuitems = OptionsMenu.as_mut_ptr();
-        ReadDef1.menuitems = ReadMenu1.as_mut_ptr();
-        ReadDef2.menuitems = ReadMenu2.as_mut_ptr();
-        SoundDef.menuitems = SoundMenu.as_mut_ptr();
-        LoadDef.menuitems = LoadMenu.as_mut_ptr();
-        SaveDef.menuitems = SaveMenu.as_mut_ptr();
+        MainDef.menuitems = std::ptr::addr_of_mut!(MainMenu[0]);
+        EpiDef.menuitems = std::ptr::addr_of_mut!(EpisodeMenu[0]);
+        NewDef.menuitems = std::ptr::addr_of_mut!(NewGameMenu[0]);
+        OptionsDef.menuitems = std::ptr::addr_of_mut!(OptionsMenu[0]);
+        ReadDef1.menuitems = std::ptr::addr_of_mut!(ReadMenu1[0]);
+        ReadDef2.menuitems = std::ptr::addr_of_mut!(ReadMenu2[0]);
+        SoundDef.menuitems = std::ptr::addr_of_mut!(SoundMenu[0]);
+        LoadDef.menuitems = std::ptr::addr_of_mut!(LoadMenu[0]);
+        SaveDef.menuitems = std::ptr::addr_of_mut!(SaveMenu[0]);
 
         // Set up prevMenu cross-links
-        EpiDef.prevMenu = &mut MainDef;
-        NewDef.prevMenu = &mut EpiDef;
-        OptionsDef.prevMenu = &mut MainDef;
-        ReadDef1.prevMenu = &mut MainDef;
-        ReadDef2.prevMenu = &mut ReadDef1;
-        SoundDef.prevMenu = &mut OptionsDef;
-        LoadDef.prevMenu = &mut MainDef;
-        SaveDef.prevMenu = &mut MainDef;
+        EpiDef.prevMenu = &raw mut MainDef;
+        NewDef.prevMenu = &raw mut EpiDef;
+        OptionsDef.prevMenu = &raw mut MainDef;
+        ReadDef1.prevMenu = &raw mut MainDef;
+        ReadDef2.prevMenu = &raw mut ReadDef1;
+        SoundDef.prevMenu = &raw mut OptionsDef;
+        LoadDef.prevMenu = &raw mut MainDef;
+        SaveDef.prevMenu = &raw mut MainDef;
 
         match gamemode {
             d_mode::commercial => {
                 ptr::write(&mut MainMenu[readthis], ptr::read(&MainMenu[quitdoom]));
                 MainDef.numitems -= 1;
                 MainDef.y += 8;
-                NewDef.prevMenu = &mut MainDef;
+                NewDef.prevMenu = &raw mut MainDef;
             }
             d_mode::shareware | d_mode::registered | d_mode::retail => {}
             _ => {}

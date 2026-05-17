@@ -33,36 +33,36 @@ pub extern "C" fn I_UpdateJoystick() {}
 pub extern "C" fn I_BindJoystickVariables() {
     unsafe {
         M_BindVariable(
-            b"use_joystick\0".as_ptr() as *mut c_char,
-            &mut usejoystick as *mut c_int as *mut c_void,
+            c"use_joystick".as_ptr().cast_mut(),
+            &raw mut usejoystick as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            b"joystick_index\0".as_ptr() as *mut c_char,
-            &mut joystick_index as *mut c_int as *mut c_void,
+            c"joystick_index".as_ptr().cast_mut(),
+            &raw mut joystick_index as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            b"joystick_x_axis\0".as_ptr() as *mut c_char,
-            &mut joystick_x_axis as *mut c_int as *mut c_void,
+            c"joystick_x_axis".as_ptr().cast_mut(),
+            &raw mut joystick_x_axis as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            b"joystick_y_axis\0".as_ptr() as *mut c_char,
-            &mut joystick_y_axis as *mut c_int as *mut c_void,
+            c"joystick_y_axis".as_ptr().cast_mut(),
+            &raw mut joystick_y_axis as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            b"joystick_strafe_axis\0".as_ptr() as *mut c_char,
-            &mut joystick_strafe_axis as *mut c_int as *mut c_void,
+            c"joystick_strafe_axis".as_ptr().cast_mut(),
+            &raw mut joystick_strafe_axis as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            b"joystick_x_invert\0".as_ptr() as *mut c_char,
-            &mut joystick_x_invert as *mut c_int as *mut c_void,
+            c"joystick_x_invert".as_ptr().cast_mut(),
+            &raw mut joystick_x_invert as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            b"joystick_y_invert\0".as_ptr() as *mut c_char,
-            &mut joystick_y_invert as *mut c_int as *mut c_void,
+            c"joystick_y_invert".as_ptr().cast_mut(),
+            &raw mut joystick_y_invert as *mut c_int as *mut c_void,
         );
         M_BindVariable(
-            b"joystick_strafe_invert\0".as_ptr() as *mut c_char,
-            &mut joystick_strafe_invert as *mut c_int as *mut c_void,
+            c"joystick_strafe_invert".as_ptr().cast_mut(),
+            &raw mut joystick_strafe_invert as *mut c_int as *mut c_void,
         );
 
         for i in 0..NUM_VIRTUAL_BUTTONS {

@@ -1,4 +1,4 @@
-#![allow(non_upper_case_globals, non_snake_case)]
+#![allow(non_upper_case_globals, non_snake_case, clippy::upper_case_acronyms)]
 
 use crate::i_error;
 use std::ffi::{c_char, c_int, c_long, c_void};
@@ -44,7 +44,7 @@ pub extern "C" fn M_CheckParmWithArgs(check: *mut c_char, num_args: c_int) -> c_
 
 #[no_mangle]
 pub extern "C" fn M_ParmExists(check: *mut c_char) -> c_int {
-    unsafe { (M_CheckParm(check) != 0) as c_int }
+    (M_CheckParm(check) != 0) as c_int
 }
 
 #[no_mangle]
@@ -55,19 +55,13 @@ pub extern "C" fn M_CheckParm(check: *mut c_char) -> c_int {
 unsafe fn LoadResponseFile(argv_index: c_int) {
     let response_filename: *mut c_char = (*myargv.offset(argv_index as isize)).offset(1);
 
-    let handle: *mut FILE = fopen(
-        response_filename as *const c_char,
-        b"rb\0".as_ptr() as *const c_char,
-    );
+    let handle: *mut FILE = fopen(response_filename as *const c_char, c"rb".as_ptr());
     if handle.is_null() {
-        printf(b"\nNo such response file!\0".as_ptr() as *const c_char);
+        printf(c"\nNo such response file!".as_ptr());
         return;
     }
 
-    printf(
-        b"Found response file %s!\n\0".as_ptr() as *const c_char,
-        response_filename,
-    );
+    printf(c"Found response file %s!\n".as_ptr(), response_filename);
 
     let size: c_long = M_FileLength(handle as *mut MiscFILE);
 

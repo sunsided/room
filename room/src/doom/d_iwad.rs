@@ -151,7 +151,7 @@ unsafe fn DirIsFile(path: *mut c_char, filename: *mut c_char) -> c_int {
     let path_len = strlen(path);
     let filename_len = strlen(filename);
 
-    if path_len >= filename_len + 1
+    if path_len > filename_len
         && *path.add(path_len - filename_len - 1) == DIR_SEPARATOR
         && strcasecmp(path.add(path_len - filename_len), filename) == 0
     {
@@ -166,9 +166,8 @@ unsafe fn CheckDirectoryHasIWAD(dir: *mut c_char, iwadname: *mut c_char) -> *mut
         return strdup(dir);
     }
 
-    let filename: *mut c_char;
-    if strcmp(dir, cstr!(".")) == 0 {
-        filename = strdup(iwadname);
+    let filename = if strcmp(dir, cstr!(".")) == 0 {
+        strdup(iwadname)
     } else {
         let strs: [*const c_char; 4] = [
             dir as *const c_char,
@@ -177,13 +176,10 @@ unsafe fn CheckDirectoryHasIWAD(dir: *mut c_char, iwadname: *mut c_char) -> *mut
             ptr::null(),
         ];
         // SAFETY: null-terminated pointer array; ownership transferred to caller via return.
-        filename = M_StringJoinA(strs.as_ptr());
-    }
+        M_StringJoinA(strs.as_ptr())
+    };
 
-    printf(
-        b"Trying IWAD file:%s\n\0".as_ptr() as *const c_char,
-        filename,
-    );
+    printf(c"Trying IWAD file:%s\n".as_ptr(), filename);
 
     if M_FileExists(filename) != 0 {
         return filename;
@@ -301,7 +297,7 @@ pub unsafe extern "C" fn D_FindIWAD(mask: c_int, mission: *mut c_int) -> *mut c_
         *mission = IdentifyIWADByName(result, mask);
         result
     } else {
-        printf(b"-iwad not specified, trying a few iwad names\n\0".as_ptr() as *const c_char);
+        printf(c"-iwad not specified, trying a few iwad names\n".as_ptr());
 
         let mut result: *mut c_char = ptr::null_mut();
 

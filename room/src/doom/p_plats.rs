@@ -11,7 +11,7 @@ use crate::doom::c_ffi as cffi;
 use crate::doom::i_timer::TICRATE;
 use crate::doom::m_fixed::{fixed_t, FRACUNIT};
 use crate::doom::m_random::P_Random;
-use crate::doom::p_floor::{side_t, T_MovePlane};
+use crate::doom::p_floor::T_MovePlane;
 use crate::doom::p_lights::{line_t, sector_t};
 use crate::doom::p_setup::{sectors, sides};
 use crate::doom::p_spec::{
@@ -101,13 +101,13 @@ pub unsafe extern "C" fn T_PlatRaise(plat: *mut plat_t) {
                 1,
             );
 
-            if (*plat).r#type == raiseAndChange || (*plat).r#type == raiseToNearestAndChange {
-                if (leveltime & 7) == 0 {
-                    S_StartSound(
-                        &(*(*plat).sector).soundorg as *const [u8; 40] as *mut c_void,
-                        sfx_stnmov,
-                    );
-                }
+            if ((*plat).r#type == raiseAndChange || (*plat).r#type == raiseToNearestAndChange)
+                && (leveltime & 7) == 0
+            {
+                S_StartSound(
+                    &(*(*plat).sector).soundorg as *const [u8; 40] as *mut c_void,
+                    sfx_stnmov,
+                );
             }
 
             if res == result_crushed && (*plat).crush == 0 {

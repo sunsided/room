@@ -10,8 +10,7 @@ use std::ffi::{c_int, c_short, c_uchar, c_void};
 use std::ptr;
 
 use super::m_fixed::{angle_t, fixed_t, FixedMul, FRACBITS};
-use super::r_bsp::{drawseg_t, line_t, sector_t, seg_t, side_t};
-use super::r_plane::visplane_t;
+use super::r_bsp::drawseg_t;
 use super::tables::{self, ANG180, ANG90, ANGLETOFINESHIFT};
 
 // ---------------------------------------------------------------------------
@@ -205,7 +204,7 @@ pub unsafe extern "C" fn R_RenderMaskedSegRange(ds: *mut drawseg_t, x1: c_int, x
         } else {
             (*backsector).ceilingheight
         };
-        dc_texturemid = dc_texturemid - viewz;
+        dc_texturemid -= viewz;
     }
     dc_texturemid += (*(*curline).sidedef).rowoffset;
 
@@ -383,7 +382,7 @@ unsafe fn R_RenderSegLoop() {
 
 #[no_mangle]
 pub unsafe extern "C" fn R_StoreWallRange(start: c_int, stop: c_int) {
-    if ds_p == drawsegs.as_mut_ptr().add(MAXDRAWSEGS) {
+    if ds_p == std::ptr::addr_of_mut!(drawsegs[0]).add(MAXDRAWSEGS) {
         return;
     }
 
@@ -401,7 +400,7 @@ pub unsafe extern "C" fn R_StoreWallRange(start: c_int, stop: c_int) {
     (*linedef).flags |= super::c_ffi::ML_MAPPED as c_short;
 
     rw_normalangle = (*curline).angle.wrapping_add(ANG90);
-    let mut offsetangle = (rw_normalangle.wrapping_sub(rw_angle1) as i32).abs() as u32;
+    let mut offsetangle = (rw_normalangle.wrapping_sub(rw_angle1) as i32).unsigned_abs();
 
     if offsetangle > ANG90 {
         offsetangle = ANG90;
@@ -457,8 +456,8 @@ pub unsafe extern "C" fn R_StoreWallRange(start: c_int, stop: c_int) {
         rw_midtexturemid += (*sidedef).rowoffset;
 
         (*ds_p).silhouette = SIL_BOTH;
-        (*ds_p).sprtopclip = screenheightarray.as_mut_ptr();
-        (*ds_p).sprbottomclip = negonearray.as_mut_ptr();
+        (*ds_p).sprtopclip = std::ptr::addr_of_mut!(screenheightarray[0]);
+        (*ds_p).sprbottomclip = std::ptr::addr_of_mut!(negonearray[0]);
         (*ds_p).bsilheight = c_int::MAX;
         (*ds_p).tsilheight = c_int::MIN;
     } else {
@@ -484,13 +483,13 @@ pub unsafe extern "C" fn R_StoreWallRange(start: c_int, stop: c_int) {
         }
 
         if (*backsector).ceilingheight <= (*frontsector).floorheight {
-            (*ds_p).sprbottomclip = negonearray.as_mut_ptr();
+            (*ds_p).sprbottomclip = std::ptr::addr_of_mut!(negonearray[0]);
             (*ds_p).bsilheight = c_int::MAX;
             (*ds_p).silhouette |= SIL_BOTTOM;
         }
 
         if (*backsector).floorheight >= (*frontsector).ceilingheight {
-            (*ds_p).sprtopclip = screenheightarray.as_mut_ptr();
+            (*ds_p).sprtopclip = std::ptr::addr_of_mut!(screenheightarray[0]);
             (*ds_p).tsilheight = c_int::MIN;
             (*ds_p).silhouette |= SIL_TOP;
         }
@@ -642,24 +641,22 @@ pub unsafe extern "C" fn R_StoreWallRange(start: c_int, stop: c_int) {
 
     R_RenderSegLoop();
 
-    if ((*ds_p).silhouette & SIL_TOP) != 0 || maskedtexture != 0 {
-        if (*ds_p).sprtopclip.is_null() {
-            for i in 0..(rw_stopx - start) {
-                *lastopening.add(i as usize) = ceilingclip[(start + i) as usize];
-            }
-            (*ds_p).sprtopclip = lastopening.sub(start as usize);
-            lastopening = lastopening.add((rw_stopx - start) as usize);
+    if (((*ds_p).silhouette & SIL_TOP) != 0 || maskedtexture != 0) && (*ds_p).sprtopclip.is_null() {
+        for i in 0..(rw_stopx - start) {
+            *lastopening.add(i as usize) = ceilingclip[(start + i) as usize];
         }
+        (*ds_p).sprtopclip = lastopening.sub(start as usize);
+        lastopening = lastopening.add((rw_stopx - start) as usize);
     }
 
-    if ((*ds_p).silhouette & SIL_BOTTOM) != 0 || maskedtexture != 0 {
-        if (*ds_p).sprbottomclip.is_null() {
-            for i in 0..(rw_stopx - start) {
-                *lastopening.add(i as usize) = floorclip[(start + i) as usize];
-            }
-            (*ds_p).sprbottomclip = lastopening.sub(start as usize);
-            lastopening = lastopening.add((rw_stopx - start) as usize);
+    if (((*ds_p).silhouette & SIL_BOTTOM) != 0 || maskedtexture != 0)
+        && (*ds_p).sprbottomclip.is_null()
+    {
+        for i in 0..(rw_stopx - start) {
+            *lastopening.add(i as usize) = floorclip[(start + i) as usize];
         }
+        (*ds_p).sprbottomclip = lastopening.sub(start as usize);
+        lastopening = lastopening.add((rw_stopx - start) as usize);
     }
 
     if maskedtexture != 0 && ((*ds_p).silhouette & SIL_TOP) == 0 {

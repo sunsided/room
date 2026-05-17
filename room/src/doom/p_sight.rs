@@ -182,24 +182,26 @@ fn P_DivlineSide(x: c_int, y: c_int, node: &divline_t) -> c_int {
 // Returns the fractional intercept point along the first divline.
 
 fn P_InterceptVector2(v2: &divline_t, v1: &divline_t) -> c_int {
-    let den = unsafe { FixedMul(v1.dy >> 8, v2.dx) - FixedMul(v1.dx >> 8, v2.dy) };
+    let den = FixedMul(v1.dy >> 8, v2.dx) - FixedMul(v1.dx >> 8, v2.dy);
 
     if den == 0 {
         return 0;
     }
 
-    let num = unsafe { FixedMul((v1.x - v2.x) >> 8, v1.dy) + FixedMul((v2.y - v1.y) >> 8, v1.dx) };
+    let num = FixedMul((v1.x - v2.x) >> 8, v1.dy) + FixedMul((v2.y - v1.y) >> 8, v1.dx);
 
-    unsafe { FixedDiv(num, den) }
+    FixedDiv(num, den)
 }
 
 fn P_CrossSubsector(num: c_int) -> bool {
     unsafe {
-        if num >= numsubsectors {
+        let strace_copy = strace;
+        let numsubsectors_val = *std::ptr::addr_of!(numsubsectors);
+        if num >= numsubsectors_val {
             i_error!(
                 "P_CrossSubsector: ss {} with numss = {}",
                 num,
-                numsubsectors
+                numsubsectors_val
             );
         }
 
@@ -225,8 +227,8 @@ fn P_CrossSubsector(num: c_int) -> bool {
             let v1 = &*line.v1;
             let v2 = &*line.v2;
 
-            let s1 = P_DivlineSide(v1.x, v1.y, &strace);
-            let s2 = P_DivlineSide(v2.x, v2.y, &strace);
+            let s1 = P_DivlineSide(v1.x, v1.y, &strace_copy);
+            let s2 = P_DivlineSide(v2.x, v2.y, &strace_copy);
 
             // Line isn't crossed?
             if s1 == s2 {
@@ -240,7 +242,7 @@ fn P_CrossSubsector(num: c_int) -> bool {
                 dy: v2.y - v1.y,
             };
 
-            let s1 = P_DivlineSide(strace.x, strace.y, &divl);
+            let s1 = P_DivlineSide(strace_copy.x, strace_copy.y, &divl);
             let s2 = P_DivlineSide(t2x, t2y, &divl);
 
             // Line isn't crossed?
@@ -292,7 +294,7 @@ fn P_CrossSubsector(num: c_int) -> bool {
                 return false;
             }
 
-            let frac = P_InterceptVector2(&strace, &divl);
+            let frac = P_InterceptVector2(&strace_copy, &divl);
 
             if front_floor != back_floor {
                 let slope = FixedDiv(openbottom - sightzstart, frac);
@@ -333,6 +335,7 @@ fn node_as_divline(node: &node_t) -> divline_t {
 
 fn P_CrossBSPNode(bspnum: c_int) -> bool {
     unsafe {
+        let strace_copy = strace;
         if bspnum & NF_SUBSECTOR as c_int != 0 {
             if bspnum == -1 {
                 return P_CrossSubsector(0);
@@ -344,7 +347,7 @@ fn P_CrossBSPNode(bspnum: c_int) -> bool {
         let bsp = &*(p_setup_nodes as *mut node_t).add(bspnum as usize);
         let bsp_div = node_as_divline(bsp);
 
-        let side = P_DivlineSide(strace.x, strace.y, &bsp_div);
+        let side = P_DivlineSide(strace_copy.x, strace_copy.y, &bsp_div);
         let side = if side == 2 { 0 } else { side };
 
         // Cross the starting side.
