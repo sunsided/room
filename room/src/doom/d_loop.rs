@@ -193,6 +193,11 @@ extern "C" {
 /// When `NEW_SYNC` is active, the raw millisecond clock is nudged by
 /// `offsetms / FRACUNIT` before conversion to tics. Corresponds to
 /// `GetAdjustedTime` in `d_loop.c`.
+///
+/// # Safety
+/// Must be called from the single-threaded game loop only. The function reads
+/// the mutable globals `NEW_SYNC` and `offsetms` without synchronisation, and
+/// calls the C FFI function `I_GetTimeMS`.
 unsafe fn get_adjusted_time() -> c_int {
     let mut time_ms = I_GetTimeMS();
     if NEW_SYNC != 0 {
@@ -210,6 +215,15 @@ unsafe fn get_adjusted_time() -> c_int {
 /// `d_loop.c`.
 ///
 /// Returns `true` if a new tic was successfully queued, `false` otherwise.
+///
+/// # Safety
+/// `LOOP_INTERFACE` must have been initialised by a prior call to
+/// [`D_RegisterLoopCallbacks`] and all four function pointers it contains
+/// (`ProcessEvents`, `RunMenu`, `BuildTiccmd`, and `RunTic`) must be non-null.
+/// Must be called from the single-threaded game loop only, as it reads and
+/// writes the mutable globals `gametic`, `ticdup`, `drone`, `NEW_SYNC`,
+/// `net_client_connected`, `MAKETIC`, `TICDATA`, and `LOCALPLAYER` without
+/// synchronisation.
 unsafe fn build_new_tic() -> bool {
     let gameticdiv = gametic / ticdup;
 
@@ -291,6 +305,10 @@ pub extern "C" fn NetUpdate() {
 /// the C original prints a diagnostic message; this port omits the `printf`
 /// but preserves the drone abort. Corresponds to `D_Disconnected` in
 /// `d_loop.c`.
+///
+/// # Safety
+/// Must be called from the single-threaded game loop only. The function reads
+/// the mutable global `drone` without synchronisation.
 unsafe fn d_disconnected() {
     if drone != 0 {
         i_error!("Disconnected from server in drone mode.");
@@ -408,6 +426,11 @@ pub extern "C" fn D_QuitNetGame() {
 /// In single-player mode this is simply `MAKETIC`. In networked play it is
 /// `min(MAKETIC, RECVTIC)` to prevent the game from running ahead of
 /// unconfirmed network tics. Corresponds to `GetLowTic` in `d_loop.c`.
+///
+/// # Safety
+/// Must be called from the single-threaded game loop only. The function reads
+/// the mutable globals `MAKETIC`, `RECVTIC`, `net_client_connected`, and
+/// `drone` without synchronisation.
 unsafe fn get_low_tic() -> c_int {
     let mut lowtic = MAKETIC;
     if net_client_connected != 0 && (drone != 0 || RECVTIC < lowtic) {
@@ -423,6 +446,12 @@ unsafe fn get_low_tic() -> c_int {
 /// ahead of received tics, records a frameskip entry, and sets `SKIPTICS = 1`
 /// if all four recent frames indicate skipping. Corresponds to `OldNetSync`
 /// in `d_loop.c`.
+///
+/// # Safety
+/// Must be called from the single-threaded game loop only. The function reads
+/// and writes the mutable globals `FRAMEON`, `LOCAL_PLAYERINGAME`,
+/// `LOCALPLAYER`, `MAKETIC`, `RECVTIC`, `LASTTIME`, `FRAMESKIP`,
+/// `OLDNETTICS`, and `SKIPTICS` without synchronisation.
 unsafe fn old_net_sync() {
     FRAMEON += 1;
 
@@ -460,6 +489,11 @@ unsafe fn old_net_sync() {
 /// In networked mode, checks `LOCAL_PLAYERINGAME`. In single-player mode
 /// (drone == 0 and not net-connected) always returns `true`. Corresponds to
 /// `PlayersInGame` in `d_loop.c`.
+///
+/// # Safety
+/// Must be called from the single-threaded game loop only. The function reads
+/// the mutable globals `net_client_connected`, `drone`, and
+/// `LOCAL_PLAYERINGAME` without synchronisation.
 unsafe fn players_in_game() -> bool {
     let mut result = false;
     if net_client_connected != 0 {

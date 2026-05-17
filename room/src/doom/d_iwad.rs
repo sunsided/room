@@ -218,6 +218,13 @@ static mut num_iwad_dirs: c_int = 0;
 ///
 /// Silently drops `dir` when [`MAX_IWAD_DIRS`] has been reached.
 /// Corresponds to `AddIWADDir` in `d_iwad.c`.
+///
+/// # Safety
+/// `dir` must be a valid, non-null pointer to a null-terminated C string that
+/// remains valid for as long as it may be read from `iwad_dirs`. Callers must
+/// only invoke this function from the single-threaded game-startup path, as it
+/// writes to the mutable globals `iwad_dirs` and `num_iwad_dirs` without
+/// synchronisation.
 unsafe fn AddIWADDir(dir: *mut c_char) {
     if num_iwad_dirs < MAX_IWAD_DIRS as c_int {
         iwad_dirs[num_iwad_dirs as usize] = dir;
@@ -230,6 +237,12 @@ unsafe fn AddIWADDir(dir: *mut c_char) {
 ///
 /// For example, `DirIsFile("/games/doom.wad", "doom.wad")` returns `1`.
 /// Corresponds to `DirIsFile` in `d_iwad.c`.
+///
+/// # Safety
+/// Both `path` and `filename` must be valid, non-null pointers to
+/// null-terminated C strings. The strings must remain valid for the duration
+/// of the call. The function passes these pointers directly to the C FFI
+/// functions `strlen` and `strcasecmp`, which impose the same requirements.
 unsafe fn DirIsFile(path: *mut c_char, filename: *mut c_char) -> c_int {
     let path_len = strlen(path);
     let filename_len = strlen(filename);
@@ -255,6 +268,14 @@ unsafe fn DirIsFile(path: *mut c_char, filename: *mut c_char) -> c_int {
 ///
 /// The caller is responsible for `free`-ing the returned string.
 /// Corresponds to `CheckDirectoryHasIWAD` in `d_iwad.c`.
+///
+/// # Safety
+/// Both `dir` and `iwadname` must be valid, non-null pointers to
+/// null-terminated C strings that remain valid for the duration of the call.
+/// These pointers are passed to `strlen`, `strcasecmp`, `strcmp`, `strdup`,
+/// and `free` via C FFI, all of which require the same pointer-validity
+/// guarantee. The heap-allocated string returned on success must be freed by
+/// the caller using `free`.
 unsafe fn CheckDirectoryHasIWAD(dir: *mut c_char, iwadname: *mut c_char) -> *mut c_char {
     if DirIsFile(dir, iwadname) != 0 && M_FileExists(dir) != 0 {
         return strdup(dir);
@@ -322,6 +343,13 @@ unsafe fn SearchDirectoryForIWAD(
 /// `d_mode::none` if the filename is not recognised.
 ///
 /// Corresponds to `IdentifyIWADByName` in `d_iwad.c`.
+///
+/// # Safety
+/// `name` must be a valid, non-null pointer to a null-terminated C string that
+/// remains valid for the duration of the call. The pointer is passed to the C
+/// FFI functions `strrchr` and `strcasecmp`, which require a valid
+/// null-terminated string. The pointer returned by `strrchr` (if non-null) is
+/// an interior pointer into the same string and is used only within this call.
 unsafe fn IdentifyIWADByName(mut name: *mut c_char, mask: c_int) -> c_int {
     let p = strrchr(name, DIR_SEPARATOR as c_int);
     if !p.is_null() {
@@ -351,6 +379,12 @@ unsafe fn IdentifyIWADByName(mut name: *mut c_char, mask: c_int) -> c_int {
 /// the C source) additionally checks `DOOMWADDIR`, `DOOMWADPATH`, Windows
 /// registry keys, and standard Unix paths -- none of which are supported here.
 /// Corresponds to `BuildIWADDirList` in `d_iwad.c`.
+///
+/// # Safety
+/// Must be called from the single-threaded game-startup path only. The
+/// function writes to the mutable globals `iwad_dirs`, `num_iwad_dirs`, and
+/// `iwad_dirs_built` without synchronisation, and calls `AddIWADDir` which
+/// imposes the same requirement.
 unsafe fn BuildIWADDirList() {
     AddIWADDir(cstr!("."));
     iwad_dirs_built = true;
