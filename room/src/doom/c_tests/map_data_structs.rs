@@ -271,7 +271,7 @@ fn mapthing_t_offsets() {
 }
 
 // ---------------------------------------------------------------------------
-// ML_ lump-index constants (doomdata.h enum values must be consecutive)
+// MapLump constants (doomdata.h enum values must be consecutive)
 // The constants live in c_ffi so the rest of the ported code can use them.
 // ---------------------------------------------------------------------------
 
@@ -293,7 +293,7 @@ fn ml_lump_order_values() {
 }
 
 // ---------------------------------------------------------------------------
-// linedef flag bits (ML_* defines from doomdata.h)
+// LinedefFlag bits (ML_* defines from doomdata.h)
 // Each flag occupies exactly one bit and the values must be powers of two.
 // ---------------------------------------------------------------------------
 
