@@ -30,11 +30,13 @@ pub(crate) static RNDTABLE: [u8; 256] = [
 #[no_mangle]
 pub static mut rndindex: c_int = 0;
 
-/// `int prndindex` — the play-simulation random cursor. No C file
-/// outside m_random.c references it, so we keep it Rust-local.
+/// `int prndindex` — the play-simulation random cursor.
+/// Exported with C linkage so the demo-playthrough integration test can
+/// read it via `extern "C"` for consistency-check snapshots.
 #[no_mangle]
 pub static mut prndindex: c_int = 0;
 
+// Which one is deterministic?
 #[no_mangle]
 pub extern "C" fn P_Random() -> c_int {
     unsafe {
@@ -93,6 +95,7 @@ mod tests {
         assert_eq!(a, b);
         unsafe {
             assert_eq!(rndindex, 1);
+            assert_eq!(prndindex, 1);
         }
     }
 
