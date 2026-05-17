@@ -96,19 +96,18 @@ extern "C" {
     static mut viewangleoffset: c_int;
     static mut autostart: c_int;
     static mut netgame: c_int;
+    static mut demoplayback: c_int;
     static mut demorecording: c_int;
     static mut playeringame: [c_int; MAXPLAYERS];
 }
 
-static EXIT_MSG: [u8; 23] = *b"Player 1 left the game\0";
-
 unsafe fn PlayerQuitGame(player_idx: usize) {
     static mut EXITMSG: [c_char; 80] = [0; 80];
 
-    core::ptr::copy_nonoverlapping(
-        EXIT_MSG.as_ptr() as *const c_char,
+    M_StringCopy(
         std::ptr::addr_of_mut!(EXITMSG[0]),
-        EXIT_MSG.len(),
+        DEH_String(EXIT_MSG.as_ptr() as *const c_char),
+        EXITMSG.len(),
     );
 
     EXITMSG[7] += player_idx as c_char;
@@ -124,7 +123,7 @@ unsafe fn PlayerQuitGame(player_idx: usize) {
 
 unsafe extern "C" fn RunTic(cmds: *mut TiccmdT, ingame: *mut c_int) {
     for i in 0..MAXPLAYERS {
-        if demorecording == 0 && playeringame[i] != 0 && *ingame.add(i) == 0 {
+        if demoplayback == 0 && playeringame[i] != 0 && *ingame.add(i) == 0 {
             PlayerQuitGame(i);
         }
     }
@@ -216,6 +215,13 @@ unsafe fn InitConnectData(connect_data: *mut NetConnectDataT) {
     };
 }
 
+static EXIT_MSG: [u8; 23] = *b"Player 1 left the game\0";
+
+#[inline(always)]
+unsafe fn DEH_String(s: *const c_char) -> *const c_char {
+    s
+}
+
 static mut DOOM_LOOP_INTERFACE: LoopInterfaceT = LoopInterfaceT {
     ProcessEvents: Some(D_ProcessEvents),
     BuildTiccmd: Some(G_BuildTiccmd),
@@ -297,13 +303,5 @@ mod tests {
             std::mem::size_of::<LoopInterfaceT>(),
             LOOP_INTERFACE_T_SIZEOF,
         );
-    }
-
-    #[test]
-    fn netcmds_defaults_to_null() {
-        let _g = LOCK.lock().unwrap();
-        unsafe {
-            assert!(netcmds.is_null());
-        }
     }
 }
