@@ -419,7 +419,7 @@ pub extern "C" fn P_BlockThingsIterator(
 // ---------------------------------------------------------------------------
 
 #[allow(unused_assignments)]
-unsafe fn InterceptsMemoryOverrun(location: c_int, _value: c_int) {
+unsafe fn InterceptsMemoryOverrun(location: c_int, value: c_int) {
     let mut offset: usize = 0;
     let loc = location as usize;
 
@@ -431,18 +431,54 @@ unsafe fn InterceptsMemoryOverrun(location: c_int, _value: c_int) {
             offset += $len;
         };
     }
+    macro_rules! write_i32 {
+        ($len:expr, $ptr:expr) => {
+            if offset + $len > loc {
+                let index = (loc - offset) / 4;
+                ($ptr as *mut c_int).add(index).write(value);
+                return;
+            }
+            offset += $len;
+        };
+    }
+    macro_rules! write_i16_arr {
+        ($len:expr, $ptr:expr) => {
+            if offset + $len > loc {
+                let index = (loc - offset) / 2;
+                let p = ($ptr as *mut _ as *mut u8) as *mut i16;
+                p.add(index).write((value & 0xffff) as i16);
+                p.add(index + 1).write(((value >> 16) & 0xffff) as i16);
+                return;
+            }
+            offset += $len;
+        };
+    }
+
     skip!(4); // 0
     skip!(4); // 1 earlyout
     skip!(4); // 2 intercept_p
+    write_i32!(4, std::ptr::addr_of_mut!(lowfloor)); // 3 lowfloor
+    write_i32!(4, std::ptr::addr_of_mut!(openbottom)); // 4 openbottom
+    write_i32!(4, std::ptr::addr_of_mut!(opentop)); // 5 opentop
+    write_i32!(4, std::ptr::addr_of_mut!(openrange)); // 6 openrange
     skip!(4); // 7
     skip!(120); // 8 activeplats
     skip!(8); // 9
+    write_i32!(4, std::ptr::addr_of_mut!(crate::doom::p_pspr::bulletslope)); // 10 bulletslope
     skip!(4); // 11 swingx
     skip!(4); // 12 swingy
     skip!(4); // 13
+    write_i16_arr!(
+        40,
+        std::ptr::addr_of_mut!(crate::doom::p_setup::playerstarts)
+    ); // 14 playerstarts
     skip!(4); // 15 blocklinks
+    write_i32!(4, std::ptr::addr_of_mut!(crate::doom::p_setup::bmapwidth)); // 16 bmapwidth
     skip!(4); // 17 blockmap
+    write_i32!(4, std::ptr::addr_of_mut!(crate::doom::p_setup::bmaporgx)); // 18 bmaporgx
+    write_i32!(4, std::ptr::addr_of_mut!(crate::doom::p_setup::bmaporgy)); // 19 bmaporgy
     skip!(4); // 20 blockmaplump
+    write_i32!(4, std::ptr::addr_of_mut!(crate::doom::p_setup::bmapheight)); // 21 bmapheight
 }
 
 unsafe fn InterceptsOverrun(num_intercepts: c_int, intercept: *mut intercept_t) {

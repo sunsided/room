@@ -332,7 +332,9 @@ pub extern "C" fn W_ReleaseLumpNum(lumpnum: c_int) {
 }
 
 #[no_mangle]
-pub extern "C" fn W_ReleaseLumpName(_name: *const c_char) {}
+pub extern "C" fn W_ReleaseLumpName(name: *const c_char) {
+    W_ReleaseLumpNum(W_GetNumForName(name))
+}
 
 #[no_mangle]
 pub extern "C" fn W_GenerateHashTable() {
