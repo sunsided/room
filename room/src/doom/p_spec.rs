@@ -12,7 +12,7 @@ use crate::doom::sounds::Sfx;
 use std::ffi::{c_char, c_int, c_short, c_void};
 use std::ptr;
 
-use crate::doom::c_ffi::{line_t, mobj_t, sector_t, side_t, FLOORSPEED, ML_TWOSIDED};
+use crate::doom::c_ffi::{line_t, mobj_t, sector_t, side_t, LindefFlag, FLOORSPEED};
 use crate::doom::d_player::{PlayerT, CF_GODMODE};
 use crate::doom::i_timer::TICRATE;
 use crate::doom::info::{MT_BFG, MT_BRUISERSHOT, MT_HEADSHOT, MT_PLASMA, MT_ROCKET, MT_TROOPSHOT};
@@ -293,12 +293,12 @@ pub unsafe extern "C" fn twoSided(sector: c_int, line: c_int) -> c_int {
     let line_ptr = *(*sectors.offset(sector as isize))
         .lines
         .offset(line as isize) as *mut line_t;
-    ((*line_ptr).flags as c_int) & (ML_TWOSIDED as c_int)
+    ((*line_ptr).flags as c_int) & (LindefFlag::TWOSIDED as c_int)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn getNextSector(line: *mut line_t, sec: *mut sector_t) -> *mut sector_t {
-    if ((*line).flags as c_int) & (ML_TWOSIDED as c_int) == 0 {
+    if ((*line).flags as c_int) & (LindefFlag::TWOSIDED as c_int) == 0 {
         return ptr::null_mut();
     }
     if (*line).frontsector == sec as *mut c_void {

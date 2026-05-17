@@ -191,7 +191,7 @@ pub unsafe extern "C" fn R_RenderMaskedSegRange(ds: *mut drawseg_t, x1: c_int, x
     crate::doom::r_things::mfloorclip = (*ds).sprbottomclip;
     crate::doom::r_things::mceilingclip = (*ds).sprtopclip;
 
-    if (*(*curline).linedef).flags & (super::c_ffi::ML_DONTPEGBOTTOM as c_short) != 0 {
+    if (*(*curline).linedef).flags & (super::c_ffi::LindefFlag::DONTPEGBOTTOM as c_short) != 0 {
         dc_texturemid = if (*frontsector).floorheight > (*backsector).floorheight {
             (*frontsector).floorheight
         } else {
@@ -397,7 +397,7 @@ pub unsafe extern "C" fn R_StoreWallRange(start: c_int, stop: c_int) {
     sidedef = (*curline).sidedef;
     linedef = (*curline).linedef;
 
-    (*linedef).flags |= super::c_ffi::ML_MAPPED as c_short;
+    (*linedef).flags |= super::c_ffi::LindefFlag::MAPPED as c_short;
 
     rw_normalangle = (*curline).angle.wrapping_add(ANG90);
     let mut offsetangle = (rw_normalangle.wrapping_sub(rw_angle1) as i32).unsigned_abs();
@@ -446,7 +446,7 @@ pub unsafe extern "C" fn R_StoreWallRange(start: c_int, stop: c_int) {
         markfloor = 1;
         markceiling = 1;
 
-        if (*linedef).flags & (super::c_ffi::ML_DONTPEGBOTTOM as c_short) != 0 {
+        if (*linedef).flags & (super::c_ffi::LindefFlag::DONTPEGBOTTOM as c_short) != 0 {
             let vtop =
                 (*frontsector).floorheight + *textureheight.add((*sidedef).midtexture as usize);
             rw_midtexturemid = vtop - viewz;
@@ -530,7 +530,7 @@ pub unsafe extern "C" fn R_StoreWallRange(start: c_int, stop: c_int) {
 
         if worldhigh < worldtop {
             toptexture = *texturetranslation.add((*sidedef).toptexture as usize);
-            if (*linedef).flags & (super::c_ffi::ML_DONTPEGTOP as c_short) != 0 {
+            if (*linedef).flags & (super::c_ffi::LindefFlag::DONTPEGTOP as c_short) != 0 {
                 rw_toptexturemid = worldtop;
             } else {
                 let vtop = (*backsector).ceilingheight
@@ -541,7 +541,7 @@ pub unsafe extern "C" fn R_StoreWallRange(start: c_int, stop: c_int) {
 
         if worldlow > worldbottom {
             bottomtexture = *texturetranslation.add((*sidedef).bottomtexture as usize);
-            if (*linedef).flags & (super::c_ffi::ML_DONTPEGBOTTOM as c_short) != 0 {
+            if (*linedef).flags & (super::c_ffi::LindefFlag::DONTPEGBOTTOM as c_short) != 0 {
                 rw_bottomtexturemid = worldtop;
             } else {
                 rw_bottomtexturemid = worldlow;

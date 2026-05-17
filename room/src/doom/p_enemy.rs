@@ -25,7 +25,7 @@ fn abs(x: c_int) -> c_int {
     }
 }
 
-use crate::doom::c_ffi::{line_t, sector_t, vertex_t, MAPBLOCKSHIFT};
+use crate::doom::c_ffi::{line_t, sector_t, vertex_t, LindefFlag, MAPBLOCKSHIFT};
 use crate::doom::d_loop::gametic;
 use crate::doom::d_player::{players, PlayerT, PspdefT, MAXPLAYERS};
 use crate::doom::doomstat::{gamemode, gameversion};
@@ -70,8 +70,6 @@ const MELEERANGE: c_int = 64 * FRACUNIT;
 const MISSILERANGE: c_int = 32 * 64 * FRACUNIT;
 const FLOATSPEED: c_int = FRACUNIT * 4;
 const MAXRADIUS: c_int = 32 * FRACUNIT;
-const ML_TWOSIDED: c_int = 4;
-const ML_SOUNDBLOCK: c_int = 64;
 
 // Direction type constants
 type dirtype_t = c_int;
@@ -148,7 +146,7 @@ pub unsafe extern "C" fn P_RecursiveSound(sec: *mut sector_t, soundblocks: c_int
     i = 0 as c_int;
     while i < (*sec).linecount {
         check = *(*sec).lines.offset(i as isize) as *mut line_t;
-        if (*check).flags as c_int & ML_TWOSIDED != 0 {
+        if (*check).flags as c_int & LindefFlag::TWOSIDED as c_int != 0 {
             P_LineOpening(check);
             if openrange > 0 as c_int {
                 if std::ptr::eq(
@@ -159,7 +157,7 @@ pub unsafe extern "C" fn P_RecursiveSound(sec: *mut sector_t, soundblocks: c_int
                 } else {
                     other = (*sides.offset((*check).sidenum[0 as c_int as usize] as isize)).sector;
                 }
-                if (*check).flags as c_int & ML_SOUNDBLOCK != 0 {
+                if (*check).flags as c_int & LindefFlag::SOUNDBLOCK as c_int != 0 {
                     if soundblocks == 0 {
                         P_RecursiveSound(other, 1 as c_int);
                     }

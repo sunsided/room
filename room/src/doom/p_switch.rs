@@ -5,6 +5,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::doom::c_ffi::LindefFlag;
 use crate::doom::sounds::Sfx;
 use std::ffi::{c_char, c_int, c_void};
 use std::os::raw::c_short;
@@ -30,9 +31,6 @@ const middle: c_int = 1;
 const bottom: c_int = 2;
 
 // sfx enum values
-
-// line flags
-const ML_SECRET: i16 = 32;
 
 // vldoor_e values
 const vld_normal: c_int = 0;
@@ -487,7 +485,7 @@ pub unsafe extern "C" fn P_UseSpecialLine(
     let mobj = thing as *mut crate::doom::c_ffi::mobj_t;
     if (*mobj).player.is_null() {
         // never open secret doors
-        if (*line).flags & ML_SECRET != 0 {
+        if (*line).flags & LindefFlag::SECRET as i16 != 0 {
             return 0;
         }
         match (*line).special {

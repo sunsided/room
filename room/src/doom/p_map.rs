@@ -8,8 +8,8 @@ use std::ffi::{c_int, c_uint, c_void};
 use std::ptr;
 
 use crate::doom::c_ffi::{
-    intercept_t, line_t, mobj_t, sector_t, subsector_t, DEFAULT_SPECHIT_MAGIC, MAPBLOCKSHIFT,
-    ML_BLOCKING, ML_BLOCKMONSTERS, ML_TWOSIDED,
+    intercept_t, line_t, mobj_t, sector_t, subsector_t, LindefFlag, DEFAULT_SPECHIT_MAGIC,
+    MAPBLOCKSHIFT,
 };
 use crate::doom::info::MobjInfo;
 use crate::doom::m_bbox::BBox;
@@ -211,10 +211,12 @@ pub unsafe extern "C" fn PIT_CheckLine(ld: *mut line_t) -> c_uint {
         return 0;
     }
     if (*tmthing).flags & MF_MISSILE == 0 {
-        if (ld.flags as c_int) & (ML_BLOCKING as c_int) != 0 {
+        if (ld.flags as c_int) & (LindefFlag::BLOCKING as c_int) != 0 {
             return 0;
         }
-        if (*tmthing).player.is_null() && (ld.flags as c_int) & (ML_BLOCKMONSTERS as c_int) != 0 {
+        if (*tmthing).player.is_null()
+            && (ld.flags as c_int) & (LindefFlag::BLOCKMONSTERS as c_int) != 0
+        {
             return 0;
         }
     }
@@ -504,7 +506,7 @@ pub unsafe extern "C" fn PTR_SlideTraverse(in_: *mut intercept_t) -> c_uint {
         i_error!("PTR_SlideTraverse: not a line?");
     }
     let li = in_.d.line;
-    if (*li).flags as c_int & ML_TWOSIDED as c_int == 0 {
+    if (*li).flags as c_int & LindefFlag::TWOSIDED as c_int == 0 {
         if P_PointOnLineSide((*slidemo).x, (*slidemo).y, li) != 0 {
             return 1;
         }
@@ -637,7 +639,7 @@ pub unsafe extern "C" fn PTR_AimTraverse(in_: *mut intercept_t) -> c_uint {
     let in_ = &*in_;
     if in_.isaline != 0 {
         let li = in_.d.line;
-        if (*li).flags as c_int & ML_TWOSIDED as c_int == 0 {
+        if (*li).flags as c_int & LindefFlag::TWOSIDED as c_int == 0 {
             return 0;
         }
         P_LineOpening(li);
@@ -702,7 +704,7 @@ pub unsafe extern "C" fn PTR_ShootTraverse(in_: *mut intercept_t) -> c_uint {
         if (*li).special != 0 {
             P_ShootSpecialLine(shootthing, li);
         }
-        if (*li).flags as c_int & ML_TWOSIDED as c_int != 0 {
+        if (*li).flags as c_int & LindefFlag::TWOSIDED as c_int != 0 {
             P_LineOpening(li);
             let dist = FixedMul(attackrange, in_.frac);
             let back = (*li).backsector as *mut sector_t;
