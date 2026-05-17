@@ -461,7 +461,7 @@ impl MusicInfo {
 
 const fn name<const N: usize>(s: &str) -> [c_char; N] {
     let b = s.as_bytes();
-    debug_assert!(b.len() < N, "String is too long for the array");
+    assert!(b.len() < N, "String is too long for the array");
     let mut a = [0i8; N];
     let mut i = 0;
     while i < b.len() {
