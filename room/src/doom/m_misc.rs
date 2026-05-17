@@ -418,12 +418,12 @@ pub extern "C" fn M_OEMToUTF8(_oem: *const c_char) -> *mut c_char {
 /// `m_snprintf_clamp`. No persistent heap allocation.
 #[macro_export]
 macro_rules! c_write {
-    ($buf:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {
-        $crate::doom::m_misc::write_c_buf_ptr(
-            ::std::ptr::addr_of_mut!($buf),
-            &::std::format!($fmt $(, $arg)*)
-        )
-    };
+    ($buf:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {{
+        let ptr = ::std::ptr::addr_of_mut!($buf);
+        let s = ::std::format!($fmt $(, $arg)*);
+        #[allow(unused_unsafe)]
+        unsafe { $crate::doom::m_misc::write_c_buf_ptr(ptr, &s) }
+    }};
 }
 
 /// Rust replacement for the C `DEH_snprintf` helper.
@@ -433,12 +433,12 @@ macro_rules! c_write {
 /// Rust literal instead of a `*const c_char`.
 #[macro_export]
 macro_rules! DEH_snprintf {
-    ($buf:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {
-        $crate::doom::m_misc::write_c_buf_ptr(
-            ::std::ptr::addr_of_mut!($buf),
-            &::std::format!($fmt $(, $arg)*)
-        )
-    };
+    ($buf:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {{
+        let ptr = ::std::ptr::addr_of_mut!($buf);
+        let s = ::std::format!($fmt $(, $arg)*);
+        #[allow(unused_unsafe)]
+        unsafe { $crate::doom::m_misc::write_c_buf_ptr(ptr, &s) }
+    }};
 }
 
 /// Format a message and call `I_Error`, which exits the process.
@@ -459,7 +459,7 @@ macro_rules! i_error {
     };
 }
 
-pub(crate) fn write_c_buf_ptr<const N: usize>(ptr: *mut [c_char; N], s: &str) {
+pub(crate) unsafe fn write_c_buf_ptr<const N: usize>(ptr: *mut [c_char; N], s: &str) {
     // SAFETY: ptr is valid for N c_chars; obtained via addr_of_mut! to avoid
     // creating a reference to a mutable static.
     let slice = unsafe { std::slice::from_raw_parts_mut(ptr.cast::<c_char>(), N) };

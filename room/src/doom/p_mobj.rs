@@ -384,7 +384,7 @@ pub unsafe extern "C" fn P_MobjThinker(mobj: *mut mobj_t) {
         mobj.tics -= 1;
         if mobj.tics == 0 {
             let state_ptr = mobj.state as *mut State;
-            if P_SetMobjState(mobj as *mut mobj_t, (*state_ptr).nextstate) == 0 {}
+            P_SetMobjState(mobj as *mut mobj_t, (*state_ptr).nextstate);
         }
     } else {
         if mobj.flags & MF_COUNTKILL == 0 {
