@@ -5,7 +5,7 @@
 //! In the original Doom, `d_net.c` implements tic-synchronisation over a
 //! network connection. In this single-player port, `FEATURE_MULTIPLAYER` is
 //! never defined, so the networking stack is replaced by stub implementations
-//! provided by `d_loop.c`. The primary responsibilities that remain are:
+//! provided by the loop interface defined in `d_loop.h`. The primary responsibilities that remain are:
 //!
 //! * Connecting and starting a "net game" via the loop back-end (`D_ConnectNetGame`,
 //!   `D_CheckNetGame`).

@@ -374,8 +374,7 @@ static VALID_VERSIONS: [ValidVersion; 10] = [
 /// game-mode/mission pair received over the network before accepting it.
 /// Returns `FALSE` for unrecognised combinations (e.g., `doom2` + `shareware`).
 ///
-/// Exported as `#[no_mangle]`; called from `d_main.c` and the network layer.
-/// Corresponds to `D_ValidGameMode` in `d_mode.c`.
+/// Exported as `#[no_mangle]` for C callers. Corresponds to `D_ValidGameMode` in `d_mode.c`.
 #[no_mangle]
 pub extern "C" fn D_ValidGameMode(mission: c_int, mode: c_int) -> Boolean {
     for vm in &VALID_MODES {
@@ -397,8 +396,7 @@ pub extern "C" fn D_ValidGameMode(mission: c_int, mode: c_int) -> Boolean {
 ///
 /// Returns `FALSE` for unknown mission/mode combinations.
 ///
-/// Exported as `#[no_mangle]`; called from menu code and the loop layer.
-/// Corresponds to `D_ValidEpisodeMap` in `d_mode.c`.
+/// Exported as `#[no_mangle]` for C callers. Corresponds to `D_ValidEpisodeMap` in `d_mode.c`.
 #[no_mangle]
 pub extern "C" fn D_ValidEpisodeMap(
     mission: c_int,
@@ -433,8 +431,7 @@ pub extern "C" fn D_ValidEpisodeMap(
 /// number. Commercial games (Doom 2, Hexen, Strife) have only episode 1.
 /// Returns 0 for unknown combinations.
 ///
-/// Exported as `#[no_mangle]`; called from the main menu to build the episode
-/// selection list. Corresponds to `D_GetNumEpisodes` in `d_mode.c`.
+/// Exported as `#[no_mangle]` for C callers. Corresponds to `D_GetNumEpisodes` in `d_mode.c`.
 #[no_mangle]
 pub extern "C" fn D_GetNumEpisodes(mission: c_int, mode: c_int) -> c_int {
     let mut episode = 1;
@@ -451,8 +448,7 @@ pub extern "C" fn D_GetNumEpisodes(mission: c_int, mode: c_int) -> c_int {
 /// the same set of valid executable versions. Returns `FALSE` for unknown
 /// combinations.
 ///
-/// Exported as `#[no_mangle]`; used during IWAD detection and net-game
-/// validation. Corresponds to `D_ValidGameVersion` in `d_mode.c`.
+/// Exported as `#[no_mangle]` for C callers. Corresponds to `D_ValidGameVersion` in `d_mode.c`.
 #[no_mangle]
 pub extern "C" fn D_ValidGameVersion(mission: c_int, version: c_int) -> Boolean {
     let mission = if mission == doom2
@@ -481,8 +477,7 @@ pub extern "C" fn D_ValidGameVersion(mission: c_int, version: c_int) -> Boolean 
 /// All other missions use `MAPxx` (e.g., `MAP01`). This distinction drives
 /// level-name formatting and warp/cheat parsing throughout the engine.
 ///
-/// Exported as `#[no_mangle]`; called from map utilities and the cheat system.
-/// Corresponds to `D_IsEpisodeMap` in `d_mode.c`.
+/// Exported as `#[no_mangle]` for C callers. Corresponds to `D_IsEpisodeMap` in `d_mode.c`.
 #[no_mangle]
 pub extern "C" fn D_IsEpisodeMap(mission: c_int) -> Boolean {
     match mission {
@@ -512,8 +507,8 @@ macro_rules! cstr {
 /// is read-only; writing to it is undefined behaviour, as it would be in the C
 /// original.
 ///
-/// Exported as `#[no_mangle]`; called from `d_main.c` for config-file output
-/// and from networking code. Corresponds to `D_GameMissionString` in `d_mode.c`.
+/// Exported as `#[no_mangle]`; called from `w_wad.c` during WAD loading.
+/// Corresponds to `D_GameMissionString` in `d_mode.c`.
 #[no_mangle]
 pub extern "C" fn D_GameMissionString(mission: c_int) -> *mut c_char {
     match mission {
