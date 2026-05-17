@@ -2310,6 +2310,7 @@ pub unsafe extern "C" fn G_CheckDemoStatus() -> boolean {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::doom::d_mode::exe_doom_1_9;
     use crate::doom::d_player::TiccmdT;
 
     fn zeroed_cmd() -> TiccmdT {

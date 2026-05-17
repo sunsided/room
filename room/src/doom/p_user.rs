@@ -380,6 +380,7 @@ mod tests {
     use super::*;
     use crate::doom::d_mode::{commercial, registered, retail, shareware};
     use crate::doom::d_player::{PspdefT, NUMPOWERS};
+    use crate::doom::tables::ANG270;
     use std::sync::Mutex;
 
     static LOCK: Mutex<()> = Mutex::new(());
