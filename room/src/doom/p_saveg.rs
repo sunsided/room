@@ -13,7 +13,7 @@ use crate::doom::d_player::{
     players, PlayerT, PspdefT, TiccmdT, MAXPLAYERS, NUMAMMO, NUMCARDS, NUMPOWERS, NUMPSPRITES,
     NUMWEAPONS,
 };
-use crate::doom::info::{mobjinfo, states, MobjInfo, State};
+use crate::doom::info::{mobjinfo, states, MobjInfo, State, NUMSTATES};
 use crate::doom::p_ceilng::{ceiling_t, P_AddActiveCeiling, T_MoveCeiling, MAXCEILINGS};
 use crate::doom::p_doors::{vldoor_t, T_VerticalDoor};
 use crate::doom::p_floor::{floormove_t, side_t, T_MoveFloor};
@@ -167,6 +167,10 @@ unsafe fn saveg_write_state_ptr(state: *const State) -> u32 {
 
 /// Deserialize state pointer from index into global `states` array.
 unsafe fn saveg_read_state_ptr(index: u32) -> *mut State {
+    if index as usize >= NUMSTATES {
+        savegame_error = 1;
+        return std::ptr::addr_of_mut!(states[0]);
+    }
     std::ptr::addr_of_mut!(states[0]).add(index as usize)
 }
 
