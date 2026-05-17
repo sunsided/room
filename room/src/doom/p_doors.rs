@@ -4,6 +4,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::doom::sounds::Sfx;
 use std::ffi::{c_char, c_void};
 use std::os::raw::c_int;
 
@@ -40,11 +41,6 @@ const result_crushed: c_int = 1;
 const result_pastdest: c_int = 2;
 
 // sfx enum values
-const sfx_doropn: c_int = 20;
-const sfx_dorcls: c_int = 21;
-const sfx_oof: c_int = 34;
-const sfx_bdopn: c_int = 88;
-const sfx_bdcls: c_int = 89;
 
 // card indices
 const it_bluecard: usize = 0;
@@ -102,21 +98,21 @@ pub unsafe extern "C" fn T_VerticalDoor(door: *mut vldoor_t) {
                         (*door).direction = -1;
                         S_StartSound(
                             &(*(*door).sector).soundorg as *const [u8; 40] as *mut c_void,
-                            sfx_bdcls,
+                            Sfx::BDCLS,
                         );
                     }
                     x if x == vld_normal => {
                         (*door).direction = -1;
                         S_StartSound(
                             &(*(*door).sector).soundorg as *const [u8; 40] as *mut c_void,
-                            sfx_dorcls,
+                            Sfx::DORCLS,
                         );
                     }
                     x if x == vld_close30ThenOpen => {
                         (*door).direction = 1;
                         S_StartSound(
                             &(*(*door).sector).soundorg as *const [u8; 40] as *mut c_void,
-                            sfx_doropn,
+                            Sfx::DOROPN,
                         );
                     }
                     _ => {}
@@ -133,7 +129,7 @@ pub unsafe extern "C" fn T_VerticalDoor(door: *mut vldoor_t) {
                         (*door).r#type = vld_normal;
                         S_StartSound(
                             &(*(*door).sector).soundorg as *const [u8; 40] as *mut c_void,
-                            sfx_doropn,
+                            Sfx::DOROPN,
                         );
                     }
                     _ => {}
@@ -157,7 +153,7 @@ pub unsafe extern "C" fn T_VerticalDoor(door: *mut vldoor_t) {
                         P_RemoveThinker(&mut (*door).thinker);
                         S_StartSound(
                             &(*(*door).sector).soundorg as *const [u8; 40] as *mut c_void,
-                            sfx_bdcls,
+                            Sfx::BDCLS,
                         );
                     }
                     x if x == vld_normal || x == vld_close => {
@@ -179,7 +175,7 @@ pub unsafe extern "C" fn T_VerticalDoor(door: *mut vldoor_t) {
                         (*door).direction = 1;
                         S_StartSound(
                             &(*(*door).sector).soundorg as *const [u8; 40] as *mut c_void,
-                            sfx_doropn,
+                            Sfx::DOROPN,
                         );
                     }
                 }
@@ -224,7 +220,7 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
             }
             if (*p).cards[it_bluecard] == 0 && (*p).cards[it_blueskull] == 0 {
                 (*p).message = cstr!("You need a blue key to activate this object");
-                S_StartSound(std::ptr::null_mut(), sfx_oof);
+                S_StartSound(std::ptr::null_mut(), Sfx::OOF);
                 return 0;
             }
         }
@@ -234,7 +230,7 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
             }
             if (*p).cards[it_redcard] == 0 && (*p).cards[it_redskull] == 0 {
                 (*p).message = cstr!("You need a red key to activate this object");
-                S_StartSound(std::ptr::null_mut(), sfx_oof);
+                S_StartSound(std::ptr::null_mut(), Sfx::OOF);
                 return 0;
             }
         }
@@ -244,7 +240,7 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
             }
             if (*p).cards[it_yellowcard] == 0 && (*p).cards[it_yellowskull] == 0 {
                 (*p).message = cstr!("You need a yellow key to activate this object");
-                S_StartSound(std::ptr::null_mut(), sfx_oof);
+                S_StartSound(std::ptr::null_mut(), Sfx::OOF);
                 return 0;
             }
         }
@@ -295,7 +291,7 @@ pub unsafe extern "C" fn EV_DoDoor(line: *mut line_t, r#type: c_int) -> c_int {
                 (*door).speed = VDOORSPEED * 4;
                 S_StartSound(
                     &(*(*door).sector).soundorg as *const [u8; 40] as *mut c_void,
-                    sfx_bdcls,
+                    Sfx::BDCLS,
                 );
             }
             x if x == vld_close => {
@@ -304,7 +300,7 @@ pub unsafe extern "C" fn EV_DoDoor(line: *mut line_t, r#type: c_int) -> c_int {
                 (*door).direction = -1;
                 S_StartSound(
                     &(*(*door).sector).soundorg as *const [u8; 40] as *mut c_void,
-                    sfx_dorcls,
+                    Sfx::DORCLS,
                 );
             }
             x if x == vld_close30ThenOpen => {
@@ -312,7 +308,7 @@ pub unsafe extern "C" fn EV_DoDoor(line: *mut line_t, r#type: c_int) -> c_int {
                 (*door).direction = -1;
                 S_StartSound(
                     &(*(*door).sector).soundorg as *const [u8; 40] as *mut c_void,
-                    sfx_dorcls,
+                    Sfx::DORCLS,
                 );
             }
             x if x == vld_blazeRaise || x == vld_blazeOpen => {
@@ -323,7 +319,7 @@ pub unsafe extern "C" fn EV_DoDoor(line: *mut line_t, r#type: c_int) -> c_int {
                 if (*door).topheight != (*sec).ceilingheight {
                     S_StartSound(
                         &(*(*door).sector).soundorg as *const [u8; 40] as *mut c_void,
-                        sfx_bdopn,
+                        Sfx::BDOPN,
                     );
                 }
             }
@@ -334,7 +330,7 @@ pub unsafe extern "C" fn EV_DoDoor(line: *mut line_t, r#type: c_int) -> c_int {
                 if (*door).topheight != (*sec).ceilingheight {
                     S_StartSound(
                         &(*(*door).sector).soundorg as *const [u8; 40] as *mut c_void,
-                        sfx_doropn,
+                        Sfx::DOROPN,
                     );
                 }
             }
@@ -358,7 +354,7 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
             }
             if (*player).cards[it_bluecard] == 0 && (*player).cards[it_blueskull] == 0 {
                 (*player).message = cstr!("You need a blue key to open this door");
-                S_StartSound(std::ptr::null_mut(), sfx_oof);
+                S_StartSound(std::ptr::null_mut(), Sfx::OOF);
                 return;
             }
         }
@@ -368,7 +364,7 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
             }
             if (*player).cards[it_yellowcard] == 0 && (*player).cards[it_yellowskull] == 0 {
                 (*player).message = cstr!("You need a yellow key to open this door");
-                S_StartSound(std::ptr::null_mut(), sfx_oof);
+                S_StartSound(std::ptr::null_mut(), Sfx::OOF);
                 return;
             }
         }
@@ -378,7 +374,7 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
             }
             if (*player).cards[it_redcard] == 0 && (*player).cards[it_redskull] == 0 {
                 (*player).message = cstr!("You need a red key to open this door");
-                S_StartSound(std::ptr::null_mut(), sfx_oof);
+                S_StartSound(std::ptr::null_mut(), Sfx::OOF);
                 return;
             }
         }
@@ -426,19 +422,19 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
         117 | 118 => {
             S_StartSound(
                 &(*sec).soundorg as *const [u8; 40] as *mut c_void,
-                sfx_bdopn,
+                Sfx::BDOPN,
             );
         }
         1 | 31 => {
             S_StartSound(
                 &(*sec).soundorg as *const [u8; 40] as *mut c_void,
-                sfx_doropn,
+                Sfx::DOROPN,
             );
         }
         _ => {
             S_StartSound(
                 &(*sec).soundorg as *const [u8; 40] as *mut c_void,
-                sfx_doropn,
+                Sfx::DOROPN,
             );
         }
     }

@@ -12,7 +12,7 @@ use crate::doom::c_ffi::{
     ML_BLOCKING, ML_BLOCKMONSTERS, ML_TWOSIDED,
 };
 use crate::doom::info::MobjInfo;
-use crate::doom::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
+use crate::doom::m_bbox::BBox;
 use crate::doom::m_fixed::{fixed_t, FixedDiv, FixedMul, FRACBITS, FRACUNIT};
 use crate::doom::m_random::P_Random;
 use crate::doom::p_maputl::{
@@ -152,10 +152,10 @@ pub unsafe extern "C" fn P_TeleportMove(thing: *mut mobj_t, x: fixed_t, y: fixed
     tmx = x;
     tmy = y;
 
-    tmbbox[BOXTOP] = y + (*tmthing).radius;
-    tmbbox[BOXBOTTOM] = y - (*tmthing).radius;
-    tmbbox[BOXRIGHT] = x + (*tmthing).radius;
-    tmbbox[BOXLEFT] = x - (*tmthing).radius;
+    tmbbox[BBox::TOP] = y + (*tmthing).radius;
+    tmbbox[BBox::BOTTOM] = y - (*tmthing).radius;
+    tmbbox[BBox::RIGHT] = x + (*tmthing).radius;
+    tmbbox[BBox::LEFT] = x - (*tmthing).radius;
 
     let newsubsec = R_PointInSubsector(x, y) as *mut subsector_t;
     ceilingline = ptr::null_mut();
@@ -167,10 +167,10 @@ pub unsafe extern "C" fn P_TeleportMove(thing: *mut mobj_t, x: fixed_t, y: fixed
     validcount = validcount.wrapping_add(1);
     numspechit = 0;
 
-    let xl = (tmbbox[BOXLEFT] - bmaporgx - MAXRADIUS) >> MAPBLOCKSHIFT;
-    let xh = (tmbbox[BOXRIGHT] - bmaporgx + MAXRADIUS) >> MAPBLOCKSHIFT;
-    let yl = (tmbbox[BOXBOTTOM] - bmaporgy - MAXRADIUS) >> MAPBLOCKSHIFT;
-    let yh = (tmbbox[BOXTOP] - bmaporgy + MAXRADIUS) >> MAPBLOCKSHIFT;
+    let xl = (tmbbox[BBox::LEFT] - bmaporgx - MAXRADIUS) >> MAPBLOCKSHIFT;
+    let xh = (tmbbox[BBox::RIGHT] - bmaporgx + MAXRADIUS) >> MAPBLOCKSHIFT;
+    let yl = (tmbbox[BBox::BOTTOM] - bmaporgy - MAXRADIUS) >> MAPBLOCKSHIFT;
+    let yh = (tmbbox[BBox::TOP] - bmaporgy + MAXRADIUS) >> MAPBLOCKSHIFT;
 
     for bx in xl..=xh {
         for by in yl..=yh {
@@ -197,10 +197,10 @@ pub unsafe extern "C" fn P_TeleportMove(thing: *mut mobj_t, x: fixed_t, y: fixed
 #[no_mangle]
 pub unsafe extern "C" fn PIT_CheckLine(ld: *mut line_t) -> c_uint {
     let ld = &*ld;
-    if tmbbox[BOXRIGHT] <= ld.bbox[BOXLEFT]
-        || tmbbox[BOXLEFT] >= ld.bbox[BOXRIGHT]
-        || tmbbox[BOXTOP] <= ld.bbox[BOXBOTTOM]
-        || tmbbox[BOXBOTTOM] >= ld.bbox[BOXTOP]
+    if tmbbox[BBox::RIGHT] <= ld.bbox[BBox::LEFT]
+        || tmbbox[BBox::LEFT] >= ld.bbox[BBox::RIGHT]
+        || tmbbox[BBox::TOP] <= ld.bbox[BBox::BOTTOM]
+        || tmbbox[BBox::BOTTOM] >= ld.bbox[BBox::TOP]
     {
         return 1;
     }
@@ -337,10 +337,10 @@ pub unsafe extern "C" fn P_CheckPosition(thing: *mut mobj_t, x: fixed_t, y: fixe
     tmx = x;
     tmy = y;
 
-    tmbbox[BOXTOP] = y + (*tmthing).radius;
-    tmbbox[BOXBOTTOM] = y - (*tmthing).radius;
-    tmbbox[BOXRIGHT] = x + (*tmthing).radius;
-    tmbbox[BOXLEFT] = x - (*tmthing).radius;
+    tmbbox[BBox::TOP] = y + (*tmthing).radius;
+    tmbbox[BBox::BOTTOM] = y - (*tmthing).radius;
+    tmbbox[BBox::RIGHT] = x + (*tmthing).radius;
+    tmbbox[BBox::LEFT] = x - (*tmthing).radius;
 
     let newsubsec = R_PointInSubsector(x, y) as *mut subsector_t;
     ceilingline = ptr::null_mut();
@@ -356,10 +356,10 @@ pub unsafe extern "C" fn P_CheckPosition(thing: *mut mobj_t, x: fixed_t, y: fixe
         return 1;
     }
 
-    let xl = (tmbbox[BOXLEFT] - bmaporgx - MAXRADIUS) >> MAPBLOCKSHIFT;
-    let xh = (tmbbox[BOXRIGHT] - bmaporgx + MAXRADIUS) >> MAPBLOCKSHIFT;
-    let yl = (tmbbox[BOXBOTTOM] - bmaporgy - MAXRADIUS) >> MAPBLOCKSHIFT;
-    let yh = (tmbbox[BOXTOP] - bmaporgy + MAXRADIUS) >> MAPBLOCKSHIFT;
+    let xl = (tmbbox[BBox::LEFT] - bmaporgx - MAXRADIUS) >> MAPBLOCKSHIFT;
+    let xh = (tmbbox[BBox::RIGHT] - bmaporgx + MAXRADIUS) >> MAPBLOCKSHIFT;
+    let yl = (tmbbox[BBox::BOTTOM] - bmaporgy - MAXRADIUS) >> MAPBLOCKSHIFT;
+    let yh = (tmbbox[BBox::TOP] - bmaporgy + MAXRADIUS) >> MAPBLOCKSHIFT;
 
     for bx in xl..=xh {
         for by in yl..=yh {
@@ -369,10 +369,10 @@ pub unsafe extern "C" fn P_CheckPosition(thing: *mut mobj_t, x: fixed_t, y: fixe
         }
     }
 
-    let xl = (tmbbox[BOXLEFT] - bmaporgx) >> MAPBLOCKSHIFT;
-    let xh = (tmbbox[BOXRIGHT] - bmaporgx) >> MAPBLOCKSHIFT;
-    let yl = (tmbbox[BOXBOTTOM] - bmaporgy) >> MAPBLOCKSHIFT;
-    let yh = (tmbbox[BOXTOP] - bmaporgy) >> MAPBLOCKSHIFT;
+    let xl = (tmbbox[BBox::LEFT] - bmaporgx) >> MAPBLOCKSHIFT;
+    let xh = (tmbbox[BBox::RIGHT] - bmaporgx) >> MAPBLOCKSHIFT;
+    let yl = (tmbbox[BBox::BOTTOM] - bmaporgy) >> MAPBLOCKSHIFT;
+    let yh = (tmbbox[BBox::TOP] - bmaporgy) >> MAPBLOCKSHIFT;
 
     for bx in xl..=xh {
         for by in yl..=yh {
@@ -1003,8 +1003,8 @@ pub unsafe extern "C" fn P_ChangeSector(sector: *mut sector_t, crunch: c_int) ->
     nofit = 0;
     crushchange = crunch;
     let sec = &*sector;
-    for x in sec.blockbox[BOXLEFT]..=sec.blockbox[BOXRIGHT] {
-        for y in sec.blockbox[BOXBOTTOM]..=sec.blockbox[BOXTOP] {
+    for x in sec.blockbox[BBox::LEFT]..=sec.blockbox[BBox::RIGHT] {
+        for y in sec.blockbox[BBox::BOTTOM]..=sec.blockbox[BBox::TOP] {
             P_BlockThingsIterator(x, y, Some(PIT_ChangeSector));
         }
     }

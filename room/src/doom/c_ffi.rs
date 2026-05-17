@@ -11,7 +11,7 @@ use std::ffi::{c_int, c_short, c_uint, c_ushort, c_void};
 
 pub use super::i_timer::TICRATE;
 pub use super::i_video::{SCREENHEIGHT, SCREENWIDTH};
-pub use super::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
+pub use super::m_bbox::BBox;
 pub use super::m_fixed::{FRACBITS, FRACUNIT};
 pub use super::tables::{ANG180, ANG270, ANG45, ANG90, ANGLETOFINESHIFT, FINEMASK};
 

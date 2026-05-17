@@ -1620,11 +1620,11 @@ mod vendor_table_tests {
 
     #[test]
     fn sfx_chgun_links_to_pistol() {
-        use crate::doom::sounds::{sfx_chgun, sfx_pistol, S_InitSfxLinks, S_sfx};
+        use crate::doom::sounds::{S_InitSfxLinks, S_sfx, Sfx};
         unsafe {
             S_InitSfxLinks();
-            let chgun_link = (*S_sfx.as_ptr().add(sfx_chgun as usize)).link;
-            let pistol_addr = S_sfx.as_ptr().add(sfx_pistol as usize);
+            let chgun_link = (*S_sfx.as_ptr().add(Sfx::CHGUN as usize)).link;
+            let pistol_addr = S_sfx.as_ptr().add(Sfx::PISTOL as usize);
             assert_eq!(
                 chgun_link, pistol_addr as *mut _,
                 "S_sfx[sfx_chgun].link must point to S_sfx[sfx_pistol]"

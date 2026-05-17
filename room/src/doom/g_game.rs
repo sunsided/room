@@ -4,6 +4,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::doom::sounds::Sfx;
 use std::ffi::{c_char, c_int, c_uint, c_void};
 
 use std::ptr;
@@ -111,7 +112,6 @@ const DEMOMARKER: byte = 0x80;
 const VERSIONSIZE: usize = 16;
 const am_clip: usize = 0;
 const MT_TFOG: c_int = 28;
-const sfx_telept: c_int = 35;
 
 // Initial player values when no DEH patch is applied.
 const DEH_INITIAL_HEALTH: c_int = 100;
@@ -1370,7 +1370,7 @@ pub unsafe extern "C" fn G_CheckSpot(playernum: c_int, mthing: *mut mapthing_t) 
     let mo = P_SpawnMobj(x + 20 * xa, y + 20 * ya, floorheight, MT_TFOG);
 
     if players[consoleplayer as usize].viewz != 1 {
-        S_StartSound(mo as *mut c_void, sfx_telept);
+        S_StartSound(mo as *mut c_void, Sfx::TELEPT);
     }
     1
 }

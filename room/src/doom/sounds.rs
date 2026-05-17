@@ -27,8 +27,229 @@ pub struct MusicInfo {
 pub const NUMSFX: usize = 109;
 pub const NUMMUSIC: usize = 68;
 
-pub const sfx_pistol: c_int = 1;
-pub const sfx_chgun: c_int = 86;
+/// Sound effect IDs, matching the `sfxenum_t` C enum in `sounds.h`.
+pub struct Sfx;
+
+impl Sfx {
+    #[doc(alias = "sfx_None")]
+    pub const NONE: c_int = 0;
+    #[doc(alias = "sfx_pistol")]
+    pub const PISTOL: c_int = 1;
+    #[doc(alias = "sfx_shotgn")]
+    pub const SHOTGN: c_int = 2;
+    #[doc(alias = "sfx_sgcock")]
+    pub const SGCOCK: c_int = 3;
+    #[doc(alias = "sfx_dshtgn")]
+    pub const DSHTGN: c_int = 4;
+    #[doc(alias = "sfx_dbopn")]
+    pub const DBOPN: c_int = 5;
+    #[doc(alias = "sfx_dbcls")]
+    pub const DBCLS: c_int = 6;
+    #[doc(alias = "sfx_dbload")]
+    pub const DBLOAD: c_int = 7;
+    #[doc(alias = "sfx_plasma")]
+    pub const PLASMA: c_int = 8;
+    #[doc(alias = "sfx_bfg")]
+    pub const BFG: c_int = 9;
+    #[doc(alias = "sfx_sawup")]
+    pub const SAWUP: c_int = 10;
+    #[doc(alias = "sfx_sawidl")]
+    pub const SAWIDL: c_int = 11;
+    #[doc(alias = "sfx_sawful")]
+    pub const SAWFUL: c_int = 12;
+    #[doc(alias = "sfx_sawhit")]
+    pub const SAWHIT: c_int = 13;
+    #[doc(alias = "sfx_rlaunc")]
+    pub const RLAUNC: c_int = 14;
+    #[doc(alias = "sfx_rxplod")]
+    pub const RXPLOD: c_int = 15;
+    #[doc(alias = "sfx_firsht")]
+    pub const FIRSHT: c_int = 16;
+    #[doc(alias = "sfx_firxpl")]
+    pub const FIRXPL: c_int = 17;
+    #[doc(alias = "sfx_pstart")]
+    pub const PSTART: c_int = 18;
+    #[doc(alias = "sfx_pstop")]
+    pub const PSTOP: c_int = 19;
+    #[doc(alias = "sfx_doropn")]
+    pub const DOROPN: c_int = 20;
+    #[doc(alias = "sfx_dorcls")]
+    pub const DORCLS: c_int = 21;
+    #[doc(alias = "sfx_stnmov")]
+    pub const STNMOV: c_int = 22;
+    #[doc(alias = "sfx_swtchn")]
+    pub const SWTCHN: c_int = 23;
+    #[doc(alias = "sfx_swtchx")]
+    pub const SWTCHX: c_int = 24;
+    #[doc(alias = "sfx_plpain")]
+    pub const PLPAIN: c_int = 25;
+    #[doc(alias = "sfx_dmpain")]
+    pub const DMPAIN: c_int = 26;
+    #[doc(alias = "sfx_popain")]
+    pub const POPAIN: c_int = 27;
+    #[doc(alias = "sfx_vipain")]
+    pub const VIPAIN: c_int = 28;
+    #[doc(alias = "sfx_mnpain")]
+    pub const MNPAIN: c_int = 29;
+    #[doc(alias = "sfx_pepain")]
+    pub const PEPAIN: c_int = 30;
+    #[doc(alias = "sfx_slop")]
+    pub const SLOP: c_int = 31;
+    #[doc(alias = "sfx_itemup")]
+    pub const ITEMUP: c_int = 32;
+    #[doc(alias = "sfx_wpnup")]
+    pub const WPNUP: c_int = 33;
+    #[doc(alias = "sfx_oof")]
+    pub const OOF: c_int = 34;
+    #[doc(alias = "sfx_telept")]
+    pub const TELEPT: c_int = 35;
+    #[doc(alias = "sfx_posit1")]
+    pub const POSIT1: c_int = 36;
+    #[doc(alias = "sfx_posit2")]
+    pub const POSIT2: c_int = 37;
+    #[doc(alias = "sfx_posit3")]
+    pub const POSIT3: c_int = 38;
+    #[doc(alias = "sfx_bgsit1")]
+    pub const BGSIT1: c_int = 39;
+    #[doc(alias = "sfx_bgsit2")]
+    pub const BGSIT2: c_int = 40;
+    #[doc(alias = "sfx_sgtsit")]
+    pub const SGTSIT: c_int = 41;
+    #[doc(alias = "sfx_cacsit")]
+    pub const CACSIT: c_int = 42;
+    #[doc(alias = "sfx_brssit")]
+    pub const BRSSIT: c_int = 43;
+    #[doc(alias = "sfx_cybsit")]
+    pub const CYBSIT: c_int = 44;
+    #[doc(alias = "sfx_spisit")]
+    pub const SPISIT: c_int = 45;
+    #[doc(alias = "sfx_bspsit")]
+    pub const BSPSIT: c_int = 46;
+    #[doc(alias = "sfx_kntsit")]
+    pub const KNTSIT: c_int = 47;
+    #[doc(alias = "sfx_vilsit")]
+    pub const VILSIT: c_int = 48;
+    #[doc(alias = "sfx_mansit")]
+    pub const MANSIT: c_int = 49;
+    #[doc(alias = "sfx_pesit")]
+    pub const PESIT: c_int = 50;
+    #[doc(alias = "sfx_sklatk")]
+    pub const SKLATK: c_int = 51;
+    #[doc(alias = "sfx_sgtatk")]
+    pub const SGTATK: c_int = 52;
+    #[doc(alias = "sfx_skepch")]
+    pub const SKEPCH: c_int = 53;
+    #[doc(alias = "sfx_vilatk")]
+    pub const VILATK: c_int = 54;
+    #[doc(alias = "sfx_claw")]
+    pub const CLAW: c_int = 55;
+    #[doc(alias = "sfx_skeswg")]
+    pub const SKESWG: c_int = 56;
+    #[doc(alias = "sfx_pldeth")]
+    pub const PLDETH: c_int = 57;
+    #[doc(alias = "sfx_pdiehi")]
+    pub const PDIEHI: c_int = 58;
+    #[doc(alias = "sfx_podth1")]
+    pub const PODTH1: c_int = 59;
+    #[doc(alias = "sfx_podth2")]
+    pub const PODTH2: c_int = 60;
+    #[doc(alias = "sfx_podth3")]
+    pub const PODTH3: c_int = 61;
+    #[doc(alias = "sfx_bgdth1")]
+    pub const BGDTH1: c_int = 62;
+    #[doc(alias = "sfx_bgdth2")]
+    pub const BGDTH2: c_int = 63;
+    #[doc(alias = "sfx_sgtdth")]
+    pub const SGTDTH: c_int = 64;
+    #[doc(alias = "sfx_cacdth")]
+    pub const CACDTH: c_int = 65;
+    #[doc(alias = "sfx_skldth")]
+    pub const SKLDTH: c_int = 66;
+    #[doc(alias = "sfx_brsdth")]
+    pub const BRSDTH: c_int = 67;
+    #[doc(alias = "sfx_cybdth")]
+    pub const CYBDTH: c_int = 68;
+    #[doc(alias = "sfx_spidth")]
+    pub const SPIDTH: c_int = 69;
+    #[doc(alias = "sfx_bspdth")]
+    pub const BSPDTH: c_int = 70;
+    #[doc(alias = "sfx_vildth")]
+    pub const VILDTH: c_int = 71;
+    #[doc(alias = "sfx_kntdth")]
+    pub const KNTDTH: c_int = 72;
+    #[doc(alias = "sfx_pedth")]
+    pub const PEDTH: c_int = 73;
+    #[doc(alias = "sfx_skedth")]
+    pub const SKEDTH: c_int = 74;
+    #[doc(alias = "sfx_posact")]
+    pub const POSACT: c_int = 75;
+    #[doc(alias = "sfx_bgact")]
+    pub const BGACT: c_int = 76;
+    #[doc(alias = "sfx_dmact")]
+    pub const DMACT: c_int = 77;
+    #[doc(alias = "sfx_bspact")]
+    pub const BSPACT: c_int = 78;
+    #[doc(alias = "sfx_bspwlk")]
+    pub const BSPWLK: c_int = 79;
+    #[doc(alias = "sfx_vilact")]
+    pub const VILACT: c_int = 80;
+    #[doc(alias = "sfx_noway")]
+    pub const NOWAY: c_int = 81;
+    #[doc(alias = "sfx_barexp")]
+    pub const BAREXP: c_int = 82;
+    #[doc(alias = "sfx_punch")]
+    pub const PUNCH: c_int = 83;
+    #[doc(alias = "sfx_hoof")]
+    pub const HOOF: c_int = 84;
+    #[doc(alias = "sfx_metal")]
+    pub const METAL: c_int = 85;
+    #[doc(alias = "sfx_chgun")]
+    pub const CHGUN: c_int = 86;
+    #[doc(alias = "sfx_tink")]
+    pub const TINK: c_int = 87;
+    #[doc(alias = "sfx_bdopn")]
+    pub const BDOPN: c_int = 88;
+    #[doc(alias = "sfx_bdcls")]
+    pub const BDCLS: c_int = 89;
+    #[doc(alias = "sfx_itmbk")]
+    pub const ITMBK: c_int = 90;
+    #[doc(alias = "sfx_flame")]
+    pub const FLAME: c_int = 91;
+    #[doc(alias = "sfx_flamst")]
+    pub const FLAMST: c_int = 92;
+    #[doc(alias = "sfx_getpow")]
+    pub const GETPOW: c_int = 93;
+    #[doc(alias = "sfx_bospit")]
+    pub const BOSPIT: c_int = 94;
+    #[doc(alias = "sfx_boscub")]
+    pub const BOSCUB: c_int = 95;
+    #[doc(alias = "sfx_bossit")]
+    pub const BOSSIT: c_int = 96;
+    #[doc(alias = "sfx_bospn")]
+    pub const BOSPN: c_int = 97;
+    #[doc(alias = "sfx_bosdth")]
+    pub const BOSDTH: c_int = 98;
+    #[doc(alias = "sfx_manatk")]
+    pub const MANATK: c_int = 99;
+    #[doc(alias = "sfx_mandth")]
+    pub const MANDTH: c_int = 100;
+    #[doc(alias = "sfx_sssit")]
+    pub const SSSIT: c_int = 101;
+    #[doc(alias = "sfx_ssdth")]
+    pub const SSDTH: c_int = 102;
+    #[doc(alias = "sfx_keenpn")]
+    pub const KEENPN: c_int = 103;
+    #[doc(alias = "sfx_keendt")]
+    pub const KEENDT: c_int = 104;
+    #[doc(alias = "sfx_skeact")]
+    pub const SKEACT: c_int = 105;
+    #[doc(alias = "sfx_skesit")]
+    pub const SKESIT: c_int = 106;
+    #[doc(alias = "sfx_skeatk")]
+    pub const SKEATK: c_int = 107;
+    #[doc(alias = "sfx_radio")]
+    pub const RADIO: c_int = 108;
+}
 
 unsafe impl Sync for SfxInfo {}
 unsafe impl Sync for MusicInfo {}
@@ -2213,7 +2434,7 @@ pub static mut S_music: [MusicInfo; NUMMUSIC] = [
 #[no_mangle]
 pub extern "C" fn S_InitSfxLinks() {
     unsafe {
-        S_sfx[sfx_chgun as usize].link = &mut S_sfx[sfx_pistol as usize] as *mut SfxInfo;
+        S_sfx[Sfx::CHGUN as usize].link = &mut S_sfx[Sfx::PISTOL as usize] as *mut SfxInfo;
     }
 }
 
@@ -2254,7 +2475,7 @@ mod tests {
     #[test]
     fn sfx_pistol_is_entry_1_with_priority_64() {
         unsafe {
-            let entry = &S_sfx[sfx_pistol as usize];
+            let entry = &S_sfx[Sfx::PISTOL as usize];
             assert_eq!(entry.priority, 64);
             // name must start with "pistol"
             let name_bytes: Vec<u8> = entry.name.iter().map(|&c| c as u8).collect();
@@ -2270,8 +2491,8 @@ mod tests {
     fn sfx_chgun_links_to_pistol_after_init() {
         unsafe {
             S_InitSfxLinks();
-            let pistol_ptr = &S_sfx[sfx_pistol as usize] as *const SfxInfo;
-            let chgun_link = S_sfx[sfx_chgun as usize].link as *const SfxInfo;
+            let pistol_ptr = &S_sfx[Sfx::PISTOL as usize] as *const SfxInfo;
+            let chgun_link = S_sfx[Sfx::CHGUN as usize].link as *const SfxInfo;
             assert_eq!(
                 chgun_link, pistol_ptr,
                 "sfx_chgun.link must point to sfx_pistol"

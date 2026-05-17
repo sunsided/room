@@ -4,6 +4,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::doom::sounds::Sfx;
 use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 
@@ -39,9 +40,6 @@ pub const HU_MSGTIMEOUT: c_int = 4 * TICRATE;
 
 use crate::doom::z_zone::PU_STATIC;
 const QUEUESIZE: usize = 128;
-
-const sfx_radio: c_int = 108;
-const sfx_tink: c_int = 87;
 
 /// Identity SHORT macro for little-endian.
 #[inline(always)]
@@ -474,9 +472,9 @@ pub extern "C" fn HU_Ticker() {
                                     message_on = 1;
                                     message_counter = HU_MSGTIMEOUT;
                                     if gamemode == d_mode::commercial {
-                                        S_StartSound(ptr::null_mut(), sfx_radio);
+                                        S_StartSound(ptr::null_mut(), Sfx::RADIO);
                                     } else {
-                                        S_StartSound(ptr::null_mut(), sfx_tink);
+                                        S_StartSound(ptr::null_mut(), Sfx::TINK);
                                     }
                                 }
                                 HUlib_resetIText(&mut w_inputbuffer[i]);

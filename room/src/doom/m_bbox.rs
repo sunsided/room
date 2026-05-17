@@ -4,12 +4,19 @@
 
 use super::m_fixed::fixed_t;
 
-// Indices must match m_bbox.h:
-//   BOXTOP=0, BOXBOTTOM=1, BOXLEFT=2, BOXRIGHT=3
-pub const BOXTOP: usize = 0;
-pub const BOXBOTTOM: usize = 1;
-pub const BOXLEFT: usize = 2;
-pub const BOXRIGHT: usize = 3;
+/// Indices into a 4-element bounding-box array, matching `m_bbox.h`.
+pub struct BBox;
+
+impl BBox {
+    #[doc(alias = "BOXTOP")]
+    pub const TOP: usize = 0;
+    #[doc(alias = "BOXBOTTOM")]
+    pub const BOTTOM: usize = 1;
+    #[doc(alias = "BOXLEFT")]
+    pub const LEFT: usize = 2;
+    #[doc(alias = "BOXRIGHT")]
+    pub const RIGHT: usize = 3;
+}
 
 /// `void M_ClearBox(fixed_t *box)` — initialises an inverted bbox so
 /// subsequent `M_AddToBox` calls shrink it to fit.
@@ -19,10 +26,10 @@ pub const BOXRIGHT: usize = 3;
 #[no_mangle]
 pub unsafe extern "C" fn M_ClearBox(bbox: *mut fixed_t) {
     let slice = std::slice::from_raw_parts_mut(bbox, 4);
-    slice[BOXTOP] = i32::MIN;
-    slice[BOXRIGHT] = i32::MIN;
-    slice[BOXBOTTOM] = i32::MAX;
-    slice[BOXLEFT] = i32::MAX;
+    slice[BBox::TOP] = i32::MIN;
+    slice[BBox::RIGHT] = i32::MIN;
+    slice[BBox::BOTTOM] = i32::MAX;
+    slice[BBox::LEFT] = i32::MAX;
 }
 
 /// `void M_AddToBox(fixed_t *box, fixed_t x, fixed_t y)`.
@@ -32,15 +39,15 @@ pub unsafe extern "C" fn M_ClearBox(bbox: *mut fixed_t) {
 #[no_mangle]
 pub unsafe extern "C" fn M_AddToBox(bbox: *mut fixed_t, x: fixed_t, y: fixed_t) {
     let slice = std::slice::from_raw_parts_mut(bbox, 4);
-    if x < slice[BOXLEFT] {
-        slice[BOXLEFT] = x;
-    } else if x > slice[BOXRIGHT] {
-        slice[BOXRIGHT] = x;
+    if x < slice[BBox::LEFT] {
+        slice[BBox::LEFT] = x;
+    } else if x > slice[BBox::RIGHT] {
+        slice[BBox::RIGHT] = x;
     }
-    if y < slice[BOXBOTTOM] {
-        slice[BOXBOTTOM] = y;
-    } else if y > slice[BOXTOP] {
-        slice[BOXTOP] = y;
+    if y < slice[BBox::BOTTOM] {
+        slice[BBox::BOTTOM] = y;
+    } else if y > slice[BBox::TOP] {
+        slice[BBox::TOP] = y;
     }
 }
 
@@ -55,11 +62,11 @@ mod tests {
             M_ClearBox(bbox.as_mut_ptr());
             M_AddToBox(bbox.as_mut_ptr(), 10, 20);
         }
-        // BOXTOP=0, BOXBOTTOM=1, BOXLEFT=2, BOXRIGHT=3
+        // BBox::TOP=0, BBox::BOTTOM=1, BBox::LEFT=2, BBox::RIGHT=3
         // After M_ClearBox: [INT_MIN, INT_MAX, INT_MAX, INT_MIN]
         // M_AddToBox(10, 20):
-        //   x=10 < BOXLEFT(INT_MAX) → true → BOXLEFT=10, skips else-if (BOXRIGHT stays INT_MIN)
-        //   y=20 < BOXBOTTOM(INT_MAX) → true → BOXBOTTOM=20, skips else-if (BOXTOP stays INT_MIN)
+        //   x=10 < BBox::LEFT(INT_MAX) → true → LEFT=10, skips else-if (RIGHT stays INT_MIN)
+        //   y=20 < BBox::BOTTOM(INT_MAX) → true → BOTTOM=20, skips else-if (TOP stays INT_MIN)
         assert_eq!(bbox[0], i32::MIN); // top still inverted (else-if branch)
         assert_eq!(bbox[1], 20); // bottom = y
         assert_eq!(bbox[2], 10); // left = x

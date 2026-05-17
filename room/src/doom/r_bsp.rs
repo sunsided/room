@@ -7,7 +7,7 @@
 use std::ffi::{c_int, c_short, c_void};
 use std::ptr;
 
-use super::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
+use super::m_bbox::BBox;
 use super::m_fixed::{angle_t, fixed_t};
 use super::tables::{ANG90, ANGLETOFINESHIFT};
 
@@ -735,17 +735,17 @@ unsafe fn R_AddLine(line: *mut seg_t) {
 // to show through (classic Doom HOM variant).
 #[no_mangle]
 pub unsafe extern "C" fn R_CheckBBox(bspcoord: *mut fixed_t) -> c_int {
-    let boxx = if viewx <= *bspcoord.add(BOXLEFT) {
+    let boxx = if viewx <= *bspcoord.add(BBox::LEFT) {
         0
-    } else if viewx < *bspcoord.add(BOXRIGHT) {
+    } else if viewx < *bspcoord.add(BBox::RIGHT) {
         1
     } else {
         2
     };
 
-    let boxy = if viewy >= *bspcoord.add(BOXTOP) {
+    let boxy = if viewy >= *bspcoord.add(BBox::TOP) {
         0
-    } else if viewy > *bspcoord.add(BOXBOTTOM) {
+    } else if viewy > *bspcoord.add(BBox::BOTTOM) {
         1
     } else {
         2
@@ -901,10 +901,10 @@ pub unsafe extern "C" fn R_RenderBSPNode(bspnum: c_int) {
         { PROBE_FRAME },
         bspnum,
         back_visible,
-        back_box[BOXLEFT],
-        back_box[BOXRIGHT],
-        back_box[BOXTOP],
-        back_box[BOXBOTTOM],
+        back_box[BBox::LEFT],
+        back_box[BBox::RIGHT],
+        back_box[BBox::TOP],
+        back_box[BBox::BOTTOM],
     );
     if back_visible {
         R_RenderBSPNode(bsp.children[(side ^ 1) as usize] as c_int);

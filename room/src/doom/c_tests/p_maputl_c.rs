@@ -11,7 +11,7 @@ use std::sync::Mutex;
 use crate::doom::c_ffi;
 use crate::doom::c_ffi::{divline_t, line_t, vertex_t};
 use crate::doom::c_tests::harness::C_GLOBAL_LOCK;
-use crate::doom::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
+use crate::doom::m_bbox::BBox;
 use crate::doom::m_fixed::FRACUNIT;
 use crate::doom::p_maputl;
 
@@ -516,8 +516,8 @@ fn box_on_line_horizontal_above() {
     };
     let mut tmbox = [0i32; 4];
     // Box entirely above the line → back side = 1
-    tmbox[BOXTOP] = FRACUNIT;
-    tmbox[BOXBOTTOM] = FRACUNIT / 2;
+    tmbox[BBox::TOP] = FRACUNIT;
+    tmbox[BBox::BOTTOM] = FRACUNIT / 2;
     unsafe {
         assert_eq!(p_maputl::P_BoxOnLineSide(tmbox.as_mut_ptr(), &mut line), 1);
     }
@@ -544,8 +544,8 @@ fn box_on_line_horizontal_below() {
     };
     let mut tmbox = [0i32; 4];
     // Box entirely below the line → front side = 0
-    tmbox[BOXTOP] = -FRACUNIT / 2;
-    tmbox[BOXBOTTOM] = -FRACUNIT;
+    tmbox[BBox::TOP] = -FRACUNIT / 2;
+    tmbox[BBox::BOTTOM] = -FRACUNIT;
     unsafe {
         assert_eq!(p_maputl::P_BoxOnLineSide(tmbox.as_mut_ptr(), &mut line), 0);
     }
@@ -572,8 +572,8 @@ fn box_on_line_vertical_right() {
     };
     let mut tmbox = [0i32; 4];
     // Box entirely to the right (x > 0) → front side = 0
-    tmbox[BOXRIGHT] = FRACUNIT;
-    tmbox[BOXLEFT] = FRACUNIT / 2;
+    tmbox[BBox::RIGHT] = FRACUNIT;
+    tmbox[BBox::LEFT] = FRACUNIT / 2;
     unsafe {
         assert_eq!(p_maputl::P_BoxOnLineSide(tmbox.as_mut_ptr(), &mut line), 0);
     }
@@ -600,8 +600,8 @@ fn box_on_line_vertical_left() {
     };
     let mut tmbox = [0i32; 4];
     // Box entirely to the left (x <= 0) → back side = 1
-    tmbox[BOXRIGHT] = -FRACUNIT / 2;
-    tmbox[BOXLEFT] = -FRACUNIT;
+    tmbox[BBox::RIGHT] = -FRACUNIT / 2;
+    tmbox[BBox::LEFT] = -FRACUNIT;
     unsafe {
         assert_eq!(p_maputl::P_BoxOnLineSide(tmbox.as_mut_ptr(), &mut line), 1);
     }
@@ -628,8 +628,8 @@ fn box_crosses_line_returns_negative_one() {
     };
     let mut tmbox = [0i32; 4];
     // Box straddles the line (top above, bottom below)
-    tmbox[BOXTOP] = FRACUNIT;
-    tmbox[BOXBOTTOM] = -FRACUNIT;
+    tmbox[BBox::TOP] = FRACUNIT;
+    tmbox[BBox::BOTTOM] = -FRACUNIT;
     unsafe {
         assert_eq!(p_maputl::P_BoxOnLineSide(tmbox.as_mut_ptr(), &mut line), -1);
     }

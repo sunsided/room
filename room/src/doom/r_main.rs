@@ -10,7 +10,7 @@ use std::ptr;
 
 use crate::doom::d_player::PlayerT;
 use crate::doom::i_video::{SCREENHEIGHT as SCREENHEIGHT_IV, SCREENWIDTH as SCREENWIDTH_IV};
-use crate::doom::m_bbox::{BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
+use crate::doom::m_bbox::BBox;
 use crate::doom::m_fixed::{angle_t, fixed_t, FixedDiv, FixedMul};
 use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::p_telept::mobj_t;
@@ -181,17 +181,17 @@ use crate::doom::r_things::{
 
 #[no_mangle]
 pub unsafe extern "C" fn R_AddPointToBox(x: c_int, y: c_int, box_: *mut fixed_t) {
-    if x < *box_.add(BOXLEFT) {
-        *box_.add(BOXLEFT) = x;
+    if x < *box_.add(BBox::LEFT) {
+        *box_.add(BBox::LEFT) = x;
     }
-    if x > *box_.add(BOXRIGHT) {
-        *box_.add(BOXRIGHT) = x;
+    if x > *box_.add(BBox::RIGHT) {
+        *box_.add(BBox::RIGHT) = x;
     }
-    if y < *box_.add(BOXBOTTOM) {
-        *box_.add(BOXBOTTOM) = y;
+    if y < *box_.add(BBox::BOTTOM) {
+        *box_.add(BBox::BOTTOM) = y;
     }
-    if y > *box_.add(BOXTOP) {
-        *box_.add(BOXTOP) = y;
+    if y > *box_.add(BBox::TOP) {
+        *box_.add(BBox::TOP) = y;
     }
 }
 

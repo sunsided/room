@@ -4,6 +4,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::doom::sounds::Sfx;
 use std::ffi::{c_char, c_int, c_short, c_uint};
 use std::ptr;
 
@@ -41,19 +42,6 @@ const mus_bunny: c_int = 30;
 const mus_evil: c_int = 63;
 
 // Sfx indices (from sounds.c)
-const sfx_dshtgn: c_int = 4;
-const sfx_pistol: c_int = 1;
-const sfx_shotgn: c_int = 2;
-const sfx_vilatk: c_int = 54;
-const sfx_skeswg: c_int = 56;
-const sfx_skepch: c_int = 53;
-const sfx_skeatk: c_int = 107;
-const sfx_firsht: c_int = 16;
-const sfx_claw: c_int = 55;
-const sfx_sgtatk: c_int = 52;
-const sfx_sklatk: c_int = 51;
-const sfx_plasma: c_int = 8;
-const sfx_rlaunc: c_int = 14;
 
 // ---------------------------------------------------------------------------
 // Finale text strings (from d_englsh.h)
@@ -726,23 +714,23 @@ pub extern "C" fn F_CastTicker() {
             castframes += 1;
 
             let sfx = match st {
-                S_PLAY_ATK1 => sfx_dshtgn,
-                S_POSS_ATK2 => sfx_pistol,
-                S_SPOS_ATK2 => sfx_shotgn,
-                S_VILE_ATK2 => sfx_vilatk,
-                S_SKEL_FIST2 => sfx_skeswg,
-                S_SKEL_FIST4 => sfx_skepch,
-                S_SKEL_MISS2 => sfx_skeatk,
-                S_FATT_ATK8 | S_FATT_ATK5 | S_FATT_ATK2 => sfx_firsht,
-                S_CPOS_ATK2 | S_CPOS_ATK3 | S_CPOS_ATK4 => sfx_shotgn,
-                S_TROO_ATK3 => sfx_claw,
-                S_SARG_ATK2 => sfx_sgtatk,
-                S_BOSS_ATK2 | S_BOS2_ATK2 | S_HEAD_ATK2 => sfx_firsht,
-                S_SKULL_ATK2 => sfx_sklatk,
-                S_SPID_ATK2 | S_SPID_ATK3 => sfx_shotgn,
-                S_BSPI_ATK2 => sfx_plasma,
-                S_CYBER_ATK2 | S_CYBER_ATK4 | S_CYBER_ATK6 => sfx_rlaunc,
-                S_PAIN_ATK3 => sfx_sklatk,
+                S_PLAY_ATK1 => Sfx::DSHTGN,
+                S_POSS_ATK2 => Sfx::PISTOL,
+                S_SPOS_ATK2 => Sfx::SHOTGN,
+                S_VILE_ATK2 => Sfx::VILATK,
+                S_SKEL_FIST2 => Sfx::SKESWG,
+                S_SKEL_FIST4 => Sfx::SKEPCH,
+                S_SKEL_MISS2 => Sfx::SKEATK,
+                S_FATT_ATK8 | S_FATT_ATK5 | S_FATT_ATK2 => Sfx::FIRSHT,
+                S_CPOS_ATK2 | S_CPOS_ATK3 | S_CPOS_ATK4 => Sfx::SHOTGN,
+                S_TROO_ATK3 => Sfx::CLAW,
+                S_SARG_ATK2 => Sfx::SGTATK,
+                S_BOSS_ATK2 | S_BOS2_ATK2 | S_HEAD_ATK2 => Sfx::FIRSHT,
+                S_SKULL_ATK2 => Sfx::SKLATK,
+                S_SPID_ATK2 | S_SPID_ATK3 => Sfx::SHOTGN,
+                S_BSPI_ATK2 => Sfx::PLASMA,
+                S_CYBER_ATK2 | S_CYBER_ATK4 | S_CYBER_ATK6 => Sfx::RLAUNC,
+                S_PAIN_ATK3 => Sfx::SKLATK,
                 _ => 0,
             };
 
@@ -973,7 +961,7 @@ pub extern "C" fn F_BunnyScroll() {
             stage = 6;
         }
         if stage > LAST_STAGE {
-            S_StartSound(ptr::null_mut(), sfx_pistol);
+            S_StartSound(ptr::null_mut(), Sfx::PISTOL);
             LAST_STAGE = stage;
         }
 

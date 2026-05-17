@@ -8,6 +8,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::doom::sounds::Sfx;
 use std::ffi::{c_char, c_int, c_short, c_void};
 use std::ptr;
 
@@ -90,7 +91,6 @@ const build8: c_int = 0;
 const turbo16: c_int = 1;
 
 // sfx
-const sfx_swtchn: c_int = 23;
 
 // powers
 const pw_ironfeet: usize = 3;
@@ -880,7 +880,7 @@ pub unsafe extern "C" fn P_UpdateSpecials() {
                 }
                 S_StartSound(
                     &mut buttonlist[i].soundorg as *mut _ as *mut c_void,
-                    sfx_swtchn,
+                    Sfx::SWTCHN,
                 );
                 buttonlist[i] = std::mem::zeroed();
             }
@@ -1157,7 +1157,7 @@ mod tests {
         assert_eq!(MAXLINEANIMS, 64);
         assert_eq!(MAX_ADJOINING_SECTORS, 20);
         assert_eq!(PU_LEVSPEC, 6);
-        assert_eq!(sfx_swtchn, 23);
+        assert_eq!(Sfx::SWTCHN, 23);
         assert_eq!(CF_GODMODE, 2);
         assert_eq!(pw_ironfeet, 3);
     }

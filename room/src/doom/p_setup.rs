@@ -12,7 +12,7 @@ use crate::doom::c_ffi::{line_t, node_t, sector_t, seg_t, side_t, subsector_t, v
 use crate::doom::d_mode;
 use crate::doom::d_player::{consoleplayer, players, MAXPLAYERS};
 use crate::doom::info::sprnames;
-use crate::doom::m_bbox::{M_AddToBox, M_ClearBox, BOXBOTTOM, BOXLEFT, BOXRIGHT, BOXTOP};
+use crate::doom::m_bbox::{BBox, M_AddToBox, M_ClearBox};
 use crate::doom::m_fixed::{FRACBITS, FRACUNIT};
 use crate::doom::p_tick::{leveltime, P_InitThinkers};
 use crate::doom::z_zone::{PU_LEVEL, PU_STATIC};
@@ -565,19 +565,19 @@ pub extern "C" fn P_LoadLineDefs(lump: c_int) {
             }
 
             if (*v1).x < (*v2).x {
-                (*ld).bbox[BOXLEFT] = (*v1).x;
-                (*ld).bbox[BOXRIGHT] = (*v2).x;
+                (*ld).bbox[BBox::LEFT] = (*v1).x;
+                (*ld).bbox[BBox::RIGHT] = (*v2).x;
             } else {
-                (*ld).bbox[BOXLEFT] = (*v2).x;
-                (*ld).bbox[BOXRIGHT] = (*v1).x;
+                (*ld).bbox[BBox::LEFT] = (*v2).x;
+                (*ld).bbox[BBox::RIGHT] = (*v1).x;
             }
 
             if (*v1).y < (*v2).y {
-                (*ld).bbox[BOXBOTTOM] = (*v1).y;
-                (*ld).bbox[BOXTOP] = (*v2).y;
+                (*ld).bbox[BBox::BOTTOM] = (*v1).y;
+                (*ld).bbox[BBox::TOP] = (*v2).y;
             } else {
-                (*ld).bbox[BOXBOTTOM] = (*v2).y;
-                (*ld).bbox[BOXTOP] = (*v1).y;
+                (*ld).bbox[BBox::BOTTOM] = (*v2).y;
+                (*ld).bbox[BBox::TOP] = (*v1).y;
             }
 
             (*ld).sidenum[0] = SHORT((*mld).sidenum[0]);
@@ -762,37 +762,37 @@ pub extern "C" fn P_GroupLines() {
             }
 
             // Set the degenmobj_t to the middle of the bounding box.
-            let soundorg_x = (bbox[BOXRIGHT] + bbox[BOXLEFT]) / 2;
-            let soundorg_y = (bbox[BOXTOP] + bbox[BOXBOTTOM]) / 2;
+            let soundorg_x = (bbox[BBox::RIGHT] + bbox[BBox::LEFT]) / 2;
+            let soundorg_y = (bbox[BBox::TOP] + bbox[BBox::BOTTOM]) / 2;
             // sector->soundorg is a 40-byte degenmobj_t; first two fields are x,y.
             let soundorg_ptr = (*sector).soundorg.as_mut_ptr() as *mut c_int;
             *soundorg_ptr = soundorg_x;
             *soundorg_ptr.add(1) = soundorg_y;
 
             // Adjust bounding box to map blocks.
-            let mut block = (bbox[BOXTOP] - bmaporgy + MAXRADIUS) >> MAPBLOCKSHIFT;
+            let mut block = (bbox[BBox::TOP] - bmaporgy + MAXRADIUS) >> MAPBLOCKSHIFT;
             block = if block >= bmapheight {
                 bmapheight - 1
             } else {
                 block
             };
-            (*sector).blockbox[BOXTOP] = block;
+            (*sector).blockbox[BBox::TOP] = block;
 
-            block = (bbox[BOXBOTTOM] - bmaporgy - MAXRADIUS) >> MAPBLOCKSHIFT;
+            block = (bbox[BBox::BOTTOM] - bmaporgy - MAXRADIUS) >> MAPBLOCKSHIFT;
             block = if block < 0 { 0 } else { block };
-            (*sector).blockbox[BOXBOTTOM] = block;
+            (*sector).blockbox[BBox::BOTTOM] = block;
 
-            block = (bbox[BOXRIGHT] - bmaporgx + MAXRADIUS) >> MAPBLOCKSHIFT;
+            block = (bbox[BBox::RIGHT] - bmaporgx + MAXRADIUS) >> MAPBLOCKSHIFT;
             block = if block >= bmapwidth {
                 bmapwidth - 1
             } else {
                 block
             };
-            (*sector).blockbox[BOXRIGHT] = block;
+            (*sector).blockbox[BBox::RIGHT] = block;
 
-            block = (bbox[BOXLEFT] - bmaporgx - MAXRADIUS) >> MAPBLOCKSHIFT;
+            block = (bbox[BBox::LEFT] - bmaporgx - MAXRADIUS) >> MAPBLOCKSHIFT;
             block = if block < 0 { 0 } else { block };
-            (*sector).blockbox[BOXLEFT] = block;
+            (*sector).blockbox[BBox::LEFT] = block;
 
             sector = sector.add(1);
         }

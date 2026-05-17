@@ -5,6 +5,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
+use crate::doom::sounds::Sfx;
 use std::ffi::{c_char, c_int, c_void};
 use std::os::raw::c_short;
 
@@ -29,8 +30,6 @@ const middle: c_int = 1;
 const bottom: c_int = 2;
 
 // sfx enum values
-const sfx_swtchn: c_int = 23;
-const sfx_swtchx: c_int = 24;
 
 // line flags
 const ML_SECRET: i16 = 32;
@@ -429,11 +428,11 @@ pub unsafe extern "C" fn P_ChangeSwitchTexture(line: *mut line_t, useAgain: c_in
     let texMid = (*sides.offset(sidenum)).midtexture;
     let texBot = (*sides.offset(sidenum)).bottomtexture;
 
-    let mut sound = sfx_swtchn;
+    let mut sound = Sfx::SWTCHN;
 
     // EXIT SWITCH?
     if (*line).special == 11 {
-        sound = sfx_swtchx;
+        sound = Sfx::SWTCHX;
     }
 
     for i in 0..(numswitches * 2) as usize {
