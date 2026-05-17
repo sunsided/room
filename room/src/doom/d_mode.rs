@@ -536,31 +536,37 @@ mod tests {
     use crate::types::Boolean;
     use std::ffi::CStr;
 
+    /// Verifies that `doom` shareware is a valid game mode combination.
     #[test]
     fn valid_game_mode_doom_shareware() {
         assert_eq!(D_ValidGameMode(doom, shareware), Boolean::TRUE);
     }
 
+    /// Verifies that `doom2` shareware is not a valid game mode combination.
     #[test]
     fn valid_game_mode_doom2_shareware_invalid() {
         assert_eq!(D_ValidGameMode(doom2, shareware), Boolean::FALSE);
     }
 
+    /// Verifies that Doom retail has exactly 4 episodes.
     #[test]
     fn get_num_episodes_doom_retail() {
         assert_eq!(D_GetNumEpisodes(doom, retail), 4);
     }
 
+    /// Verifies that `doom2` does not use the episode-map (`ExMy`) naming scheme.
     #[test]
     fn is_episode_map_doom2_false() {
         assert_eq!(D_IsEpisodeMap(doom2), Boolean::FALSE);
     }
 
+    /// Verifies that `doom` uses the episode-map (`ExMy`) naming scheme.
     #[test]
     fn is_episode_map_doom_true() {
         assert_eq!(D_IsEpisodeMap(doom), Boolean::TRUE);
     }
 
+    /// Verifies that `D_GameMissionString` returns `"heretic"` for the Heretic mission.
     #[test]
     fn game_mission_string_heretic() {
         let ptr = D_GameMissionString(heretic);
@@ -568,6 +574,7 @@ mod tests {
         assert_eq!(s.to_str().unwrap(), "heretic");
     }
 
+    /// Verifies that an unrecognised mission value returns `"none"`.
     #[test]
     fn game_mission_string_unknown() {
         let ptr = D_GameMissionString(42);
@@ -575,21 +582,25 @@ mod tests {
         assert_eq!(s.to_str().unwrap(), "none");
     }
 
+    /// Verifies that `exe_final2` is a valid game version for the `doom` mission.
     #[test]
     fn valid_game_version_doom_final2() {
         assert_eq!(D_ValidGameVersion(doom, exe_final2), Boolean::TRUE);
     }
 
+    /// Verifies that `doom2` is normalised to `doom` when checking game versions.
     #[test]
     fn valid_game_version_doom2_mapped_to_doom() {
         assert_eq!(D_ValidGameVersion(doom2, exe_final2), Boolean::TRUE);
     }
 
+    /// Verifies that episode 4 map 9 is valid for Doom retail.
     #[test]
     fn valid_episode_map_doom_retail_ep4_map9() {
         assert_eq!(D_ValidEpisodeMap(doom, retail, 4, 9), Boolean::TRUE);
     }
 
+    /// Verifies that episode 5 is out of bounds for Doom retail (max is 4).
     #[test]
     fn valid_episode_map_doom_retail_ep5_map1_invalid() {
         assert_eq!(D_ValidEpisodeMap(doom, retail, 5, 1), Boolean::FALSE);
