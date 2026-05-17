@@ -1,6 +1,33 @@
 //! Rust port of vendor/doomgeneric/d_mode.c.
 //!
-//! Provides game mode/mission validation functions and string constants.
+//! Game mode and mission validation helpers used throughout the engine to
+//! determine what content is available, which maps are valid, and which
+//! executable version to emulate.
+//!
+//! The three central concepts are:
+//!
+//! * **`GameMission_t`** - which game is being played (Doom 1, Doom 2, Heretic,
+//!   Hexen, Strife, or a commercial expansion pack).
+//! * **`GameMode_t`** - the release tier of the IWAD (shareware, registered,
+//!   commercial, or retail/ultimate).
+//! * **`GameVersion_t`** - which engine executable version is being emulated,
+//!   used primarily for demo compatibility.
+//!
+//! All three concepts are modelled here as `pub const c_int` groups rather
+//! than Rust enums, preserving bit-for-bit compatibility with the C enums they
+//! were ported from and allowing the values to be passed through the FFI
+//! boundary without conversion. The corresponding C enums are defined in
+//! `d_mode.h`.
+//!
+//! Notable Rust-vs-C differences:
+//! * Enum discriminants are `pub const c_int` rather than Rust `enum` variants
+//!   so that they can be stored in `c_int` globals and passed directly over FFI.
+//! * `D_GameMissionString` returns `*mut c_char` pointing into static string
+//!   literals rather than stack-allocated `char *` (the C version returns
+//!   read-only string literals cast to `char *` which would be UB to mutate;
+//!   the Rust port matches the C signature but the same caveat applies).
+//! * The `skill_t` enum from `d_mode.h` is not present here; it lives in
+//!   `doomdef.h` and is ported elsewhere.
 
 #![allow(non_snake_case, non_upper_case_globals)]
 
@@ -8,45 +35,197 @@ use std::ffi::{c_char, c_int};
 
 use crate::types::Boolean;
 
+// ---------------------------------------------------------------------------
+// GameMission_t constants
+//
+// Identify which game (IWAD) is loaded. Corresponds to `GameMission_t` in
+// `d_mode.h`. Stored as plain `c_int` for direct FFI compatibility.
+// ---------------------------------------------------------------------------
+
+/// No game mission; used as a sentinel / unset value.
+///
+/// Maps to `none` in `GameMission_t`. Stored as `9` in the C enum.
 pub const none: c_int = 9;
+
+/// Doom / Ultimate Doom (IWAD: `doom.wad`, `doom1.wad`, or `doomu.wad`).
+///
+/// Maps to `doom` (discriminant 0) in `GameMission_t`.
 pub const doom: c_int = 0;
+
+/// Doom II: Hell on Earth (IWAD: `doom2.wad`).
+///
+/// Maps to `doom2` (discriminant 1) in `GameMission_t`.
 pub const doom2: c_int = 1;
+
+/// Final Doom: TNT Evilution (IWAD: `tnt.wad`).
+///
+/// Maps to `pack_tnt` (discriminant 2) in `GameMission_t`.
 pub const pack_tnt: c_int = 2;
+
+/// Final Doom: The Plutonia Experiment (IWAD: `plutonia.wad`).
+///
+/// Maps to `pack_plut` (discriminant 3) in `GameMission_t`.
 pub const pack_plut: c_int = 3;
+
+/// Chex Quest (shareware Doom mod; IWAD: `chex.wad`).
+///
+/// Maps to `pack_chex` (discriminant 4) in `GameMission_t`. Uses episode-based
+/// map layout like Doom 1 rather than the `MAPxx` layout of Doom 2.
 pub const pack_chex: c_int = 4;
+
+/// Hacx: Twitch 'n Kill (Doom 2 mod; IWAD: `hacx.wad`).
+///
+/// Maps to `pack_hacx` (discriminant 5) in `GameMission_t`.
 pub const pack_hacx: c_int = 5;
+
+/// Heretic: Shadow of the Serpent Riders (IWAD: `heretic.wad`).
+///
+/// Maps to `heretic` (discriminant 6) in `GameMission_t`.
 pub const heretic: c_int = 6;
+
+/// Hexen: Beyond Heretic (IWAD: `hexen.wad`).
+///
+/// Maps to `hexen` (discriminant 7) in `GameMission_t`.
 pub const hexen: c_int = 7;
+
+/// Strife: Quest for the Sigil (IWAD: `strife1.wad`).
+///
+/// Maps to `strife` (discriminant 8) in `GameMission_t`.
 pub const strife: c_int = 8;
 
+// ---------------------------------------------------------------------------
+// GameMode_t constants
+//
+// Identify the release tier of the loaded IWAD. Corresponds to `GameMode_t`
+// in `d_mode.h`. Stored as plain `c_int` for direct FFI compatibility.
+// ---------------------------------------------------------------------------
+
+/// Shareware release of Doom or Heretic (one episode, freely distributable).
+///
+/// Maps to `shareware` (discriminant 0) in `GameMode_t`.
 pub const shareware: c_int = 0;
+
+/// Registered (three-episode) release of Doom or Heretic.
+///
+/// Maps to `registered` (discriminant 1) in `GameMode_t`.
 pub const registered: c_int = 1;
+
+/// Commercial (MAPxx-based) release: Doom II, Final Doom, Hexen, Strife, etc.
+///
+/// Maps to `commercial` (discriminant 2) in `GameMode_t`.
 pub const commercial: c_int = 2;
+
+/// Retail / Ultimate Doom (four-episode release, `doom.wad`).
+///
+/// Maps to `retail` (discriminant 3) in `GameMode_t`.
 pub const retail: c_int = 3;
+
+/// Unknown or undetected game mode (IWAD not yet loaded or not recognised).
+///
+/// Maps to `indetermined` (discriminant 4) in `GameMode_t`.
 pub const indetermined: c_int = 4;
 
+// ---------------------------------------------------------------------------
+// GameVersion_t constants
+//
+// Identify which executable version is being emulated, primarily for demo
+// compatibility. Corresponds to `GameVersion_t` in `d_mode.h`. Stored as
+// plain `c_int` for direct FFI compatibility.
+// ---------------------------------------------------------------------------
+
+/// Doom v1.2: earliest shareware and registered release.
+///
+/// Maps to `exe_doom_1_2` (discriminant 0) in `GameVersion_t`.
 pub const exe_doom_1_2: c_int = 0;
+
+/// Doom v1.666: first release compatible with all three edition types.
+///
+/// Maps to `exe_doom_1_666` (discriminant 1) in `GameVersion_t`.
 pub const exe_doom_1_666: c_int = 1;
+
+/// Doom v1.7 / v1.7a.
+///
+/// Maps to `exe_doom_1_7` (discriminant 2) in `GameVersion_t`.
 pub const exe_doom_1_7: c_int = 2;
+
+/// Doom v1.8.
+///
+/// Maps to `exe_doom_1_8` (discriminant 3) in `GameVersion_t`.
 pub const exe_doom_1_8: c_int = 3;
+
+/// Doom v1.9: the most widely distributed version; default emulation target.
+///
+/// Maps to `exe_doom_1_9` (discriminant 4) in `GameVersion_t`.
 pub const exe_doom_1_9: c_int = 4;
+
+/// Hacx standalone executable (based on Doom 1.9).
+///
+/// Maps to `exe_hacx` (discriminant 5) in `GameVersion_t`.
 pub const exe_hacx: c_int = 5;
+
+/// Ultimate Doom (retail four-episode) executable.
+///
+/// Maps to `exe_ultimate` (discriminant 6) in `GameVersion_t`.
 pub const exe_ultimate: c_int = 6;
+
+/// Final Doom executable (v1.9 variant used by `tnt.wad` and `plutonia.wad`).
+///
+/// Maps to `exe_final` (discriminant 7) in `GameVersion_t`.
 pub const exe_final: c_int = 7;
+
+/// Alternate Final Doom executable (second `final.exe` binary).
+///
+/// Maps to `exe_final2` (discriminant 8) in `GameVersion_t`.
 pub const exe_final2: c_int = 8;
+
+/// Chex Quest executable (derived from the Final Doom binary).
+///
+/// Maps to `exe_chex` (discriminant 9) in `GameVersion_t`.
 pub const exe_chex: c_int = 9;
+
+/// Heretic v1.3 executable.
+///
+/// Maps to `exe_heretic_1_3` (discriminant 10) in `GameVersion_t`.
 pub const exe_heretic_1_3: c_int = 10;
+
+/// Hexen v1.1 executable.
+///
+/// Maps to `exe_hexen_1_1` (discriminant 11) in `GameVersion_t`.
 pub const exe_hexen_1_1: c_int = 11;
+
+/// Strife v1.2 executable.
+///
+/// Maps to `exe_strife_1_2` (discriminant 12) in `GameVersion_t`.
 pub const exe_strife_1_2: c_int = 12;
+
+/// Strife v1.31 executable.
+///
+/// Maps to `exe_strife_1_31` (discriminant 13) in `GameVersion_t`.
 pub const exe_strife_1_31: c_int = 13;
 
+/// A single valid (mission, mode) combination with its episode and map bounds.
+///
+/// Each entry in [`VALID_MODES`] records the maximum episode and maximum map
+/// number accessible in that combination. [`D_ValidEpisodeMap`] uses these
+/// bounds for range-checking. Corresponds to the anonymous struct inside the
+/// `valid_modes[]` array in `d_mode.c`.
 struct ValidMode {
+    /// `GameMission_t` constant for this entry.
     mission: c_int,
+    /// `GameMode_t` constant for this entry.
     mode: c_int,
+    /// Maximum valid episode number (inclusive).
     episode: c_int,
+    /// Maximum valid map number within any episode (inclusive).
     map: c_int,
 }
 
+/// Table of all valid (mission, mode) combinations and their map bounds.
+///
+/// Iterated by [`D_ValidGameMode`], [`D_ValidEpisodeMap`], and
+/// [`D_GetNumEpisodes`]. Entries are ordered as in the C `valid_modes[]` array
+/// in `d_mode.c`. There is no entry for unknown / indetermined combinations;
+/// those return false from the validation functions.
 static VALID_MODES: [ValidMode; 13] = [
     ValidMode {
         mission: pack_chex,
@@ -128,11 +307,24 @@ static VALID_MODES: [ValidMode; 13] = [
     },
 ];
 
+/// A single valid (mission, version) pair for game-version checking.
+///
+/// Each entry in [`VALID_VERSIONS`] asserts that a given `GameVersion_t` is
+/// legal for a given `GameMission_t`. Corresponds to the anonymous struct
+/// inside `valid_versions[]` in `d_mode.c`.
 struct ValidVersion {
+    /// `GameMission_t` constant for this entry.
     mission: c_int,
+    /// `GameVersion_t` constant for this entry.
     version: c_int,
 }
 
+/// Table of valid (mission, version) pairs.
+///
+/// Iterated by [`D_ValidGameVersion`]. Doom-family variants (`doom2`,
+/// `pack_plut`, `pack_tnt`, `pack_hacx`, `pack_chex`) are normalised to
+/// `doom` before the lookup, so only `doom` entries need to appear here for
+/// those games. Corresponds to `valid_versions[]` in `d_mode.c`.
 static VALID_VERSIONS: [ValidVersion; 10] = [
     ValidVersion {
         mission: doom,
@@ -176,6 +368,14 @@ static VALID_VERSIONS: [ValidVersion; 10] = [
     },
 ];
 
+/// Return `TRUE` if `(mission, mode)` is a recognised game configuration.
+///
+/// Scans `VALID_MODES` for a matching entry. Used to validate a
+/// game-mode/mission pair received over the network before accepting it.
+/// Returns `FALSE` for unrecognised combinations (e.g., `doom2` + `shareware`).
+///
+/// Exported as `#[no_mangle]`; called from `d_main.c` and the network layer.
+/// Corresponds to `D_ValidGameMode` in `d_mode.c`.
 #[no_mangle]
 pub extern "C" fn D_ValidGameMode(mission: c_int, mode: c_int) -> Boolean {
     for vm in &VALID_MODES {
@@ -186,6 +386,19 @@ pub extern "C" fn D_ValidGameMode(mission: c_int, mode: c_int) -> Boolean {
     Boolean::FALSE
 }
 
+/// Return `TRUE` if `episode`/`map` is reachable in the given `(mission, mode)`.
+///
+/// Checks that `episode` and `map` are both at least 1 and do not exceed the
+/// bounds recorded in `VALID_MODES`. Two Heretic-specific secret episodes are
+/// handled as special cases before the table lookup:
+///
+/// * Heretic retail, episode 6: only maps 1-3 are valid (the secret episode).
+/// * Heretic registered, episode 4: only map 1 is valid.
+///
+/// Returns `FALSE` for unknown mission/mode combinations.
+///
+/// Exported as `#[no_mangle]`; called from menu code and the loop layer.
+/// Corresponds to `D_ValidEpisodeMap` in `d_mode.c`.
 #[no_mangle]
 pub extern "C" fn D_ValidEpisodeMap(
     mission: c_int,
@@ -213,6 +426,15 @@ pub extern "C" fn D_ValidEpisodeMap(
     Boolean::FALSE
 }
 
+/// Return the number of valid episodes for the given `(mission, mode)`.
+///
+/// Increments an episode counter starting at 1, calling [`D_ValidEpisodeMap`]
+/// with map 1 until it returns false, then returns the last valid episode
+/// number. Commercial games (Doom 2, Hexen, Strife) have only episode 1.
+/// Returns 0 for unknown combinations.
+///
+/// Exported as `#[no_mangle]`; called from the main menu to build the episode
+/// selection list. Corresponds to `D_GetNumEpisodes` in `d_mode.c`.
 #[no_mangle]
 pub extern "C" fn D_GetNumEpisodes(mission: c_int, mode: c_int) -> c_int {
     let mut episode = 1;
@@ -222,6 +444,15 @@ pub extern "C" fn D_GetNumEpisodes(mission: c_int, mode: c_int) -> c_int {
     episode - 1
 }
 
+/// Return `TRUE` if `version` is a valid executable version for `mission`.
+///
+/// All Doom-family variants (`doom2`, `pack_plut`, `pack_tnt`, `pack_hacx`,
+/// `pack_chex`) are normalised to `doom` before the lookup because they share
+/// the same set of valid executable versions. Returns `FALSE` for unknown
+/// combinations.
+///
+/// Exported as `#[no_mangle]`; used during IWAD detection and net-game
+/// validation. Corresponds to `D_ValidGameVersion` in `d_mode.c`.
 #[no_mangle]
 pub extern "C" fn D_ValidGameVersion(mission: c_int, version: c_int) -> Boolean {
     let mission = if mission == doom2
@@ -244,6 +475,14 @@ pub extern "C" fn D_ValidGameVersion(mission: c_int, version: c_int) -> Boolean 
     Boolean::FALSE
 }
 
+/// Return `TRUE` if `mission` uses `ExMy` episode-map naming rather than `MAPxx`.
+///
+/// `doom`, `heretic`, and `pack_chex` use the `ExMy` format (e.g., `E1M1`).
+/// All other missions use `MAPxx` (e.g., `MAP01`). This distinction drives
+/// level-name formatting and warp/cheat parsing throughout the engine.
+///
+/// Exported as `#[no_mangle]`; called from map utilities and the cheat system.
+/// Corresponds to `D_IsEpisodeMap` in `d_mode.c`.
 #[no_mangle]
 pub extern "C" fn D_IsEpisodeMap(mission: c_int) -> Boolean {
     match mission {
@@ -252,12 +491,29 @@ pub extern "C" fn D_IsEpisodeMap(mission: c_int) -> Boolean {
     }
 }
 
+/// Convenience macro to produce a `*mut c_char` from a string literal.
+///
+/// Appends a NUL terminator and casts the resulting static byte slice to a raw
+/// `c_char` pointer. Used only within [`D_GameMissionString`].
 macro_rules! cstr {
     ($s:literal) => {
         concat!($s, "\0").as_ptr() as *mut c_char
     };
 }
 
+/// Return a NUL-terminated C string naming the given mission.
+///
+/// Returns one of `"doom"`, `"doom2"`, `"tnt"`, `"plutonia"`, `"hacx"`,
+/// `"chex"`, `"heretic"`, `"hexen"`, `"strife"`, or `"none"` for unrecognised
+/// values. The returned pointer refers to a static string literal embedded in
+/// the binary and must not be freed or written through.
+///
+/// The return type is `*mut c_char` to match the C signature, but the memory
+/// is read-only; writing to it is undefined behaviour, as it would be in the C
+/// original.
+///
+/// Exported as `#[no_mangle]`; called from `d_main.c` for config-file output
+/// and from networking code. Corresponds to `D_GameMissionString` in `d_mode.c`.
 #[no_mangle]
 pub extern "C" fn D_GameMissionString(mission: c_int) -> *mut c_char {
     match mission {
