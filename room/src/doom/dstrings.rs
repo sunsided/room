@@ -1,11 +1,34 @@
 //! Rust port of vendor/doomgeneric/dstrings.c.
 //!
-//! Globally defined quit messages.
+//! Globally defined quit messages, one table for Doom 1 and one for Doom 2.
+//!
+//! In C, `doom1_endmsg` and `doom2_endmsg` are `char *[]` arrays of mutable
+//! pointers to string literals.  In Rust, string literals are `'static`
+//! read-only data, so the array element type cannot be `*mut c_char`.
+//! Instead, a thin `repr(transparent)` wrapper [`Ptr`] around `*const c_char`
+//! is used; `unsafe impl Sync` is required because raw pointers are not
+//! `Sync` by default, even though the pointers here only ever point at
+//! immutable `'static` data.
+//!
+//! The `cstr!` macro appends `"\0"` at compile time and casts the resulting
+//! `&str` to `*const c_char`, producing a valid NUL-terminated C string from
+//! a Rust string literal without any heap allocation.
+//!
+//! The engine selects a message from these tables at random when the player
+//! attempts to quit, using `gamemission` to pick the correct table
+//! (`doom1_endmsg` for Doom 1 / Chex Quest, `doom2_endmsg` for Doom 2 /
+//! TNT / Plutonia).
 
 #![allow(non_upper_case_globals, non_snake_case)]
 
 use std::ffi::c_char;
 
+/// A `*const c_char` newtype that is safe to store in a `static`.
+///
+/// `*const c_char` does not implement `Sync`, so it cannot appear in a
+/// `static` without a wrapper.  [`Ptr`] is `repr(transparent)`, guaranteeing
+/// ABI compatibility with `*const c_char` for C interop: the C side can read
+/// the table entries as plain `char *` values.
 // `*const c_char` does not implement `Sync`, so wrap it.
 // `repr(transparent)` guarantees ABI compatibility with `*const c_char` for C interop.
 #[repr(transparent)]
@@ -13,17 +36,29 @@ pub struct Ptr(pub *const c_char);
 unsafe impl Sync for Ptr {}
 
 impl Ptr {
+    /// Returns the inner raw pointer as `*const c_char`.
     pub fn as_ptr(&self) -> *const c_char {
         self.0
     }
 }
 
+/// Construct a [`Ptr`] pointing to a NUL-terminated C string from a string literal.
+///
+/// The macro concatenates `"\0"` onto the literal at compile time, then casts
+/// the `&'static str` data pointer to `*const c_char`.  No heap allocation
+/// occurs; the string resides in the binary's read-only data segment.
 macro_rules! cstr {
     ($s:literal) => {
         Ptr(concat!($s, "\0").as_ptr() as *const c_char)
     };
 }
 
+/// Eight randomised quit messages shown when a Doom 1 player tries to exit.
+///
+/// Corresponds to `char *doom1_endmsg[]` in `dstrings.c`.  The game picks
+/// one at random (via `M_Random`) when the quit dialog is opened in a Doom 1
+/// game session.  The `#[no_mangle]` export allows C code in `m_misc.c` (or
+/// equivalent) to access the table by its original symbol name.
 #[no_mangle]
 pub static doom1_endmsg: [Ptr; 8] = [
     cstr!("are you sure you want to\nquit this great game?"),
@@ -36,6 +71,11 @@ pub static doom1_endmsg: [Ptr; 8] = [
     cstr!("go ahead and leave. see if i care."),
 ];
 
+/// Eight randomised quit messages shown when a Doom 2 player tries to exit.
+///
+/// Corresponds to `char *doom2_endmsg[]` in `dstrings.c`.  Functionally
+/// identical to [`doom1_endmsg`] but with Doom-II-themed text.  Used when
+/// `gamemission` is `doom2`, `pack_tnt`, or `pack_plut`.
 #[no_mangle]
 pub static doom2_endmsg: [Ptr; 8] = [
     cstr!("are you sure you want to\nquit this great game?"),
