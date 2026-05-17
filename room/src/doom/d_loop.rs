@@ -10,7 +10,7 @@
 //! undefined so all network-specific paths are stripped out. The Rust port
 //! faithfully reflects this simplified build: `D_InitNetGame`,
 //! `D_StartNetGame`, and `D_QuitNetGame` are stubs, and `D_ReceiveTic` only
-//! handles the single-player code path.
+//! handles only the `null` net client branch (the multiplayer branch is compiled out).
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
