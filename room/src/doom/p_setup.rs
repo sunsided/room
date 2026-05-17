@@ -9,7 +9,7 @@ use std::ffi::{c_char, c_int, c_short, c_uint, c_ushort, c_void};
 use std::ptr;
 
 use crate::doom::c_ffi::{
-    line_t, node_t, sector_t, seg_t, side_t, subsector_t, vertex_t, LindefFlag, MapLump,
+    line_t, node_t, sector_t, seg_t, side_t, subsector_t, vertex_t, LinedefFlag, MapLump,
 };
 use crate::doom::d_mode;
 use crate::doom::d_player::{consoleplayer, players, MAXPLAYERS};
@@ -336,7 +336,7 @@ pub extern "C" fn P_LoadSegs(lump: c_int) {
             (*li).sidedef = sides.offset((*ldef).sidenum[side as usize] as isize);
             (*li).frontsector = (*sides.offset((*ldef).sidenum[side as usize] as isize)).sector;
 
-            if (*ldef).flags & LindefFlag::TWOSIDED as i16 != 0 {
+            if (*ldef).flags & LinedefFlag::TWOSIDED as i16 != 0 {
                 let sidenum = (*ldef).sidenum[side as usize ^ 1];
                 if sidenum < 0 || sidenum as c_int >= numsides {
                     (*li).backsector = GetSectorAtNullAddress();

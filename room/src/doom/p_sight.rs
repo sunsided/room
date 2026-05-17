@@ -11,7 +11,7 @@ use crate::doom::m_fixed::{FixedDiv, FixedMul};
 
 use crate::doom::m_fixed::FRACBITS;
 
-use crate::doom::c_ffi::LindefFlag;
+use crate::doom::c_ffi::LinedefFlag;
 
 const NF_SUBSECTOR: u32 = 0x8000;
 
@@ -260,7 +260,7 @@ fn P_CrossSubsector(num: c_int) -> bool {
 
             // Stop because it is not two sided anyway.
             // Also must use line->flags, not a re-read through seg->linedef.
-            if line.flags & LindefFlag::TWOSIDED as i16 == 0 {
+            if line.flags & LinedefFlag::TWOSIDED as i16 == 0 {
                 return false;
             }
 

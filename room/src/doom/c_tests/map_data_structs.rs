@@ -301,15 +301,15 @@ fn ml_lump_order_values() {
 fn ml_linedef_flags() {
     // Verify every flag is a distinct power of two — no two flags may overlap.
     let all_flags = [
-        c_ffi::LindefFlag::BLOCKING,
-        c_ffi::LindefFlag::BLOCKMONSTERS,
-        c_ffi::LindefFlag::TWOSIDED,
-        c_ffi::LindefFlag::DONTPEGTOP,
-        c_ffi::LindefFlag::DONTPEGBOTTOM,
-        c_ffi::LindefFlag::SECRET,
-        c_ffi::LindefFlag::SOUNDBLOCK,
-        c_ffi::LindefFlag::DONTDRAW,
-        c_ffi::LindefFlag::MAPPED,
+        c_ffi::LinedefFlag::BLOCKING,
+        c_ffi::LinedefFlag::BLOCKMONSTERS,
+        c_ffi::LinedefFlag::TWOSIDED,
+        c_ffi::LinedefFlag::DONTPEGTOP,
+        c_ffi::LinedefFlag::DONTPEGBOTTOM,
+        c_ffi::LinedefFlag::SECRET,
+        c_ffi::LinedefFlag::SOUNDBLOCK,
+        c_ffi::LinedefFlag::DONTDRAW,
+        c_ffi::LinedefFlag::MAPPED,
     ];
 
     // Each value must be a power of two.
@@ -332,15 +332,15 @@ fn ml_linedef_flags() {
     assert_eq!(combined, (1u16 << 9) - 1);
 
     // Verify expected absolute values match the C header definitions.
-    assert_eq!(c_ffi::LindefFlag::BLOCKING, 1);
-    assert_eq!(c_ffi::LindefFlag::BLOCKMONSTERS, 2);
-    assert_eq!(c_ffi::LindefFlag::TWOSIDED, 4);
-    assert_eq!(c_ffi::LindefFlag::DONTPEGTOP, 8);
-    assert_eq!(c_ffi::LindefFlag::DONTPEGBOTTOM, 16);
-    assert_eq!(c_ffi::LindefFlag::SECRET, 32);
-    assert_eq!(c_ffi::LindefFlag::SOUNDBLOCK, 64);
-    assert_eq!(c_ffi::LindefFlag::DONTDRAW, 128);
-    assert_eq!(c_ffi::LindefFlag::MAPPED, 256);
+    assert_eq!(c_ffi::LinedefFlag::BLOCKING, 1);
+    assert_eq!(c_ffi::LinedefFlag::BLOCKMONSTERS, 2);
+    assert_eq!(c_ffi::LinedefFlag::TWOSIDED, 4);
+    assert_eq!(c_ffi::LinedefFlag::DONTPEGTOP, 8);
+    assert_eq!(c_ffi::LinedefFlag::DONTPEGBOTTOM, 16);
+    assert_eq!(c_ffi::LinedefFlag::SECRET, 32);
+    assert_eq!(c_ffi::LinedefFlag::SOUNDBLOCK, 64);
+    assert_eq!(c_ffi::LinedefFlag::DONTDRAW, 128);
+    assert_eq!(c_ffi::LinedefFlag::MAPPED, 256);
 }
 
 // ---------------------------------------------------------------------------

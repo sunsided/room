@@ -10,7 +10,7 @@ use std::os::raw::c_uint;
 use std::ptr;
 
 use crate::c_write;
-use crate::doom::c_ffi::{mobj_t, sector_t, LindefFlag, MAPBLOCKUNITS};
+use crate::doom::c_ffi::{mobj_t, sector_t, LinedefFlag, MAPBLOCKUNITS};
 use crate::doom::d_event::event_t;
 use crate::doom::d_player::{PlayerT, MAXPLAYERS};
 use crate::doom::g_game::{
@@ -1206,8 +1206,8 @@ unsafe fn AM_drawWalls() {
 
         let flags = li.flags as c_int;
 
-        if cheating != 0 || (flags & LindefFlag::MAPPED as c_int) != 0 {
-            if (flags & LindefFlag::DONTDRAW as c_int) != 0 && cheating == 0 {
+        if cheating != 0 || (flags & LinedefFlag::MAPPED as c_int) != 0 {
+            if (flags & LinedefFlag::DONTDRAW as c_int) != 0 && cheating == 0 {
                 continue;
             }
             if li.backsector.is_null() {
@@ -1218,7 +1218,7 @@ unsafe fn AM_drawWalls() {
                 if li.special == 39 {
                     // teleporters
                     AM_drawMline(&raw mut l, WALLCOLORS + WALLRANGE / 2);
-                } else if (flags & LindefFlag::SECRET as c_int) != 0 {
+                } else if (flags & LinedefFlag::SECRET as c_int) != 0 {
                     if cheating != 0 {
                         AM_drawMline(&raw mut l, SECRETWALLCOLORS + lightlev);
                     } else {
@@ -1234,7 +1234,7 @@ unsafe fn AM_drawWalls() {
             }
         } else if (*plr).powers[4] != 0 {
             // pw_allmap
-            if (flags & LindefFlag::DONTDRAW as c_int) == 0 {
+            if (flags & LinedefFlag::DONTDRAW as c_int) == 0 {
                 AM_drawMline(&raw mut l, GRAYS + 3);
             }
         }

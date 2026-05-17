@@ -25,7 +25,7 @@ fn abs(x: c_int) -> c_int {
     }
 }
 
-use crate::doom::c_ffi::{line_t, sector_t, vertex_t, LindefFlag, MAPBLOCKSHIFT};
+use crate::doom::c_ffi::{line_t, sector_t, vertex_t, LinedefFlag, MAPBLOCKSHIFT};
 use crate::doom::d_loop::gametic;
 use crate::doom::d_player::{players, PlayerT, PspdefT, MAXPLAYERS};
 use crate::doom::doomstat::{gamemode, gameversion};
@@ -146,7 +146,7 @@ pub unsafe extern "C" fn P_RecursiveSound(sec: *mut sector_t, soundblocks: c_int
     i = 0 as c_int;
     while i < (*sec).linecount {
         check = *(*sec).lines.offset(i as isize) as *mut line_t;
-        if (*check).flags as c_int & LindefFlag::TWOSIDED as c_int != 0 {
+        if (*check).flags as c_int & LinedefFlag::TWOSIDED as c_int != 0 {
             P_LineOpening(check);
             if openrange > 0 as c_int {
                 if std::ptr::eq(
@@ -157,7 +157,7 @@ pub unsafe extern "C" fn P_RecursiveSound(sec: *mut sector_t, soundblocks: c_int
                 } else {
                     other = (*sides.offset((*check).sidenum[0 as c_int as usize] as isize)).sector;
                 }
-                if (*check).flags as c_int & LindefFlag::SOUNDBLOCK as c_int != 0 {
+                if (*check).flags as c_int & LinedefFlag::SOUNDBLOCK as c_int != 0 {
                     if soundblocks == 0 {
                         P_RecursiveSound(other, 1 as c_int);
                     }
@@ -784,7 +784,7 @@ pub unsafe extern "C" fn A_TroopAttack(actor: *mut mobj_t) {
     }
     A_FaceTarget(actor);
     if P_CheckMeleeRange(actor).is_truthy() {
-        S_StartSound(actor as *mut c_void, Sfx::Sgtsit as c_int);
+        S_StartSound(actor as *mut c_void, Sfx::Claw as c_int);
         damage = (P_Random() % 8 as c_int + 1 as c_int) * 3 as c_int;
         P_DamageMobj((*actor).target, actor, actor, damage);
         return;
@@ -835,7 +835,7 @@ pub unsafe extern "C" fn A_BruisAttack(actor: *mut mobj_t) {
         return;
     }
     if P_CheckMeleeRange(actor).is_truthy() {
-        S_StartSound(actor as *mut c_void, Sfx::Sgtsit as c_int);
+        S_StartSound(actor as *mut c_void, Sfx::Claw as c_int);
         damage = (P_Random() % 8 as c_int + 1 as c_int) * 10 as c_int;
         P_DamageMobj((*actor).target, actor, actor, damage);
         return;
@@ -923,7 +923,7 @@ pub unsafe extern "C" fn A_SkelWhoosh(actor: *mut mobj_t) {
         return;
     }
     A_FaceTarget(actor);
-    S_StartSound(actor as *mut c_void, Sfx::Cacsit as c_int);
+    S_StartSound(actor as *mut c_void, Sfx::Skeswg as c_int);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_SkelFist(actor: *mut mobj_t) {
@@ -935,7 +935,7 @@ pub unsafe extern "C" fn A_SkelFist(actor: *mut mobj_t) {
     A_FaceTarget(actor);
     if P_CheckMeleeRange(actor).is_truthy() {
         damage = (P_Random() % 10 as c_int + 1 as c_int) * 6 as c_int;
-        S_StartSound(actor as *mut c_void, Sfx::Brssit as c_int);
+        S_StartSound(actor as *mut c_void, Sfx::Skepch as c_int);
         P_DamageMobj((*actor).target, actor, actor, damage);
     }
 }
@@ -1032,7 +1032,7 @@ pub unsafe extern "C" fn A_VileChase(actor: *mut mobj_t) {
                     A_FaceTarget(actor);
                     (*actor).target = temp;
                     P_SetMobjState(actor, S_VILE_HEAL1);
-                    S_StartSound(corpsehit as *mut c_void, Sfx::Sgtatk as c_int);
+                    S_StartSound(corpsehit as *mut c_void, Sfx::Slop as c_int);
                     info = (*corpsehit).info as *mut MobjInfo;
                     P_SetMobjState(corpsehit, (*info).raisestate as statenum_t);
                     (*corpsehit).height <<= 2 as c_int;
@@ -1050,16 +1050,16 @@ pub unsafe extern "C" fn A_VileChase(actor: *mut mobj_t) {
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_VileStart(actor: *mut mobj_t) {
-    S_StartSound(actor as *mut c_void, Sfx::Cybsit as c_int);
+    S_StartSound(actor as *mut c_void, Sfx::Vilatk as c_int);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_StartFire(actor: *mut mobj_t) {
-    S_StartSound(actor as *mut c_void, Sfx::Spisit as c_int);
+    S_StartSound(actor as *mut c_void, Sfx::Flamst as c_int);
     A_Fire(actor);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_FireCrackle(actor: *mut mobj_t) {
-    S_StartSound(actor as *mut c_void, Sfx::Bspsit as c_int);
+    S_StartSound(actor as *mut c_void, Sfx::Flamst as c_int);
     A_Fire(actor);
 }
 #[no_mangle]
@@ -1105,7 +1105,7 @@ pub unsafe extern "C" fn A_VileAttack(actor: *mut mobj_t) {
     if P_CheckSight(actor, (*actor).target) == 0 {
         return;
     }
-    S_StartSound(actor as *mut c_void, Sfx::Mansit as c_int);
+    S_StartSound(actor as *mut c_void, Sfx::Barexp as c_int);
     P_DamageMobj((*actor).target, actor, actor, 20 as c_int);
     (*(*actor).target).momz =
         (1000 as c_int * FRACUNIT / (*((*(*actor).target).info as *mut MobjInfo)).mass) as fixed_t;
@@ -1122,7 +1122,7 @@ pub unsafe extern "C" fn A_VileAttack(actor: *mut mobj_t) {
 #[no_mangle]
 pub unsafe extern "C" fn A_FatRaise(actor: *mut mobj_t) {
     A_FaceTarget(actor);
-    S_StartSound(actor as *mut c_void, Sfx::Pesit as c_int);
+    S_StartSound(actor as *mut c_void, Sfx::Manatk as c_int);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_FatAttack1(actor: *mut mobj_t) {
@@ -1298,7 +1298,7 @@ pub unsafe extern "C" fn A_Scream(actor: *mut mobj_t) {
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_XScream(actor: *mut mobj_t) {
-    S_StartSound(actor as *mut c_void, Sfx::Sgtatk as c_int);
+    S_StartSound(actor as *mut c_void, Sfx::Slop as c_int);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_Pain(actor: *mut mobj_t) {
@@ -1457,30 +1457,30 @@ pub unsafe extern "C" fn A_BossDeath(mo: *mut mobj_t) {
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_Hoof(mo: *mut mobj_t) {
-    S_StartSound(mo as *mut c_void, Sfx::Bspdth as c_int);
+    S_StartSound(mo as *mut c_void, Sfx::Hoof as c_int);
     A_Chase(mo);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_Metal(mo: *mut mobj_t) {
-    S_StartSound(mo as *mut c_void, Sfx::Vildth as c_int);
+    S_StartSound(mo as *mut c_void, Sfx::Metal as c_int);
     A_Chase(mo);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_BabyMetal(mo: *mut mobj_t) {
-    S_StartSound(mo as *mut c_void, Sfx::Kntdth as c_int);
+    S_StartSound(mo as *mut c_void, Sfx::Bspwlk as c_int);
     A_Chase(mo);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_OpenShotgun2(player: *mut PlayerT, _psp: *mut PspdefT) {
-    S_StartSound((*player).mo as *mut c_void, Sfx::Pedth as c_int);
+    S_StartSound((*player).mo as *mut c_void, Sfx::Dbopn as c_int);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_LoadShotgun2(player: *mut PlayerT, _psp: *mut PspdefT) {
-    S_StartSound((*player).mo as *mut c_void, Sfx::Skedth as c_int);
+    S_StartSound((*player).mo as *mut c_void, Sfx::Dbload as c_int);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_CloseShotgun2(player: *mut PlayerT, psp: *mut PspdefT) {
-    S_StartSound((*player).mo as *mut c_void, Sfx::Posact as c_int);
+    S_StartSound((*player).mo as *mut c_void, Sfx::Dbcls as c_int);
     A_ReFire(player, psp);
 }
 #[no_mangle]
@@ -1515,11 +1515,11 @@ pub unsafe extern "C" fn A_BrainAwake(_mo: *mut mobj_t) {
         }
         thinker = (*thinker).next;
     }
-    S_StartSound(std::ptr::null_mut::<c_void>(), Sfx::Bgact as c_int);
+    S_StartSound(std::ptr::null_mut::<c_void>(), Sfx::Bossit as c_int);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_BrainPain(_mo: *mut mobj_t) {
-    S_StartSound(std::ptr::null_mut::<c_void>(), Sfx::Dmact as c_int);
+    S_StartSound(std::ptr::null_mut::<c_void>(), Sfx::Bospn as c_int);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_BrainScream(mo: *mut mobj_t) {
@@ -1544,7 +1544,7 @@ pub unsafe extern "C" fn A_BrainScream(mo: *mut mobj_t) {
         }
         x += FRACUNIT * 8 as c_int;
     }
-    S_StartSound(std::ptr::null_mut::<c_void>(), Sfx::Bspact as c_int);
+    S_StartSound(std::ptr::null_mut::<c_void>(), Sfx::Bosdth as c_int);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_BrainExplode(mo: *mut mobj_t) {
@@ -1577,11 +1577,11 @@ pub unsafe extern "C" fn A_BrainSpit(mo: *mut mobj_t) {
     (*newmobj).reactiontime = ((*targ).y as c_int - (*mo).y as c_int)
         / (*newmobj).momy as c_int
         / (*((*newmobj).state as *mut State)).tics;
-    S_StartSound(std::ptr::null_mut::<c_void>(), Sfx::Bspwlk as c_int);
+    S_StartSound(std::ptr::null_mut::<c_void>(), Sfx::Bospit as c_int);
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_SpawnSound(mo: *mut mobj_t) {
-    S_StartSound(mo as *mut c_void, Sfx::Vilact as c_int);
+    S_StartSound(mo as *mut c_void, Sfx::Boscub as c_int);
     A_SpawnFly(mo);
 }
 #[no_mangle]
@@ -1594,7 +1594,7 @@ pub unsafe extern "C" fn A_SpawnFly(mo: *mut mobj_t) {
     }
     let targ: *mut mobj_t = P_SubstNullMobj((*mo).target);
     let fog: *mut mobj_t = P_SpawnMobj((*targ).x, (*targ).y, (*targ).z, MT_SPAWNFIRE);
-    S_StartSound(fog as *mut c_void, Sfx::Noway as c_int);
+    S_StartSound(fog as *mut c_void, Sfx::Telept as c_int);
     let r: c_int = P_Random();
     if r < 50 as c_int {
         type_0 = MT_TROOP;
@@ -1631,9 +1631,9 @@ pub unsafe extern "C" fn A_SpawnFly(mo: *mut mobj_t) {
 }
 #[no_mangle]
 pub unsafe extern "C" fn A_PlayerScream(mo: *mut mobj_t) {
-    let mut sound: c_int = Sfx::Barexp as c_int;
+    let mut sound: c_int = Sfx::Pldeth as c_int;
     if gamemode as c_uint == commercial as c_int as c_uint && (*mo).health < -50 as c_int {
-        sound = Sfx::Punch as c_int;
+        sound = Sfx::Pdiehi as c_int;
     }
     S_StartSound(mo as *mut c_void, sound);
 }

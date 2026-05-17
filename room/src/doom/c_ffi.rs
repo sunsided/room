@@ -243,8 +243,8 @@ const _: () = assert!(
 /// Linedef flag bits (`ML_*` in `doomdata.h`). Stored in `line_t.flags` as
 /// a bitmask; each constant is a single-bit mask.
 #[repr(C)]
-pub struct LindefFlag;
-impl LindefFlag {
+pub struct LinedefFlag;
+impl LinedefFlag {
     #[doc(alias = "ML_BLOCKING")]
     pub const BLOCKING: u16 = 1; // Solid obstacle
     #[doc(alias = "ML_BLOCKMONSTERS")]
@@ -267,7 +267,7 @@ impl LindefFlag {
 
 const _: () = assert!(
     std::mem::size_of::<u16>() == std::mem::size_of::<std::os::raw::c_short>(),
-    "LindefFlag masks are u16; u16 must match c_short (line_t.flags)"
+    "LinedefFlag masks are u16; u16 must match c_short (line_t.flags)"
 );
 
 // ---------------------------------------------------------------------------

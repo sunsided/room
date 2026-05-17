@@ -48,7 +48,7 @@ const floor_raiseFloor512: c_int = 12;
 const stair_build8: c_int = 0;
 const stair_turbo16: c_int = 1;
 
-use crate::doom::c_ffi::LindefFlag;
+use crate::doom::c_ffi::LinedefFlag;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -476,7 +476,7 @@ pub unsafe extern "C" fn EV_BuildStairs(line: *mut line_t, stype: c_int) -> c_in
             let mut ok: c_int = 0;
             for i in 0..(*sec).linecount as c_int {
                 let l = *(*sec).lines.offset(i as isize) as *mut line_t;
-                if (*l).flags & LindefFlag::TWOSIDED as i16 == 0 {
+                if (*l).flags & LinedefFlag::TWOSIDED as i16 == 0 {
                     continue;
                 }
 
