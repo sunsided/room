@@ -1372,7 +1372,7 @@ extern "C" fn D_Endoom() {
             return;
         }
 
-        let endoom = W_CacheLumpName(DEH_String(c"ENDOOM".as_ptr()), PU_STATIC) as *mut c_char;
+        let endoom = W_CacheLumpName(DEH_String(c"ENDOOM".as_ptr()), PU_STATIC) as *mut u8;
         I_Endoom(endoom);
 
         exit(0);
