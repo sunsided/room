@@ -5,10 +5,8 @@ edition = "2021"
 description = "A Rust implementation of the doomgeneric platform layer using winit and wgpu"
 repository = "https://github.com/sunsided/room"
 license = "GPL-2.0"
+authors = ["Markus Mayer <widemeadows@gmail.com>"]
 readme = "../README.md"
-
-[package.metadata]
-maintainers = ["Markus Mayer <widemeadows@gmail.com>"]
 
 [lib]
 name = "room"
