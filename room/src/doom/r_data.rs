@@ -24,8 +24,10 @@
 //!
 //! # Globals exported to C
 //!
-//! All `#[no_mangle]` statics in this module are declared `extern` in
+//! Most `#[no_mangle]` statics in this module are declared `extern` in
 //! `r_state.h` and consumed by multiple renderer and physics C files.
+//! Exceptions: `lastflat` and `numflats` are only declared locally in
+//! `p_spec.c`, not in `r_state.h`.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -259,15 +261,15 @@ pub static mut firstflat: c_int = 0;
 
 /// WAD lump index of the last flat (the lump before `F_END`).
 ///
-/// Exported as part of `r_state.h`.  Together with `firstflat` it defines
-/// the flat lump range in the WAD.
+/// Not in `r_state.h`; declared locally in `p_spec.c`.  Together with
+/// `firstflat` it defines the flat lump range in the WAD.
 #[no_mangle]
 pub static mut lastflat: c_int = 0;
 
 /// Total number of flat lumps (`lastflat - firstflat + 1`).
 ///
-/// Exported as `extern int numflats` (used by `p_spec.c` for animation bounds
-/// checking).
+/// Declared locally in `p_spec.c` (not in `r_state.h`) as `extern int numflats`
+/// for animation bounds checking.
 #[no_mangle]
 pub static mut numflats: c_int = 0;
 
@@ -647,7 +649,8 @@ pub unsafe extern "C" fn R_GenerateLookup(texnum: c_int) {
 /// Applies the width mask to wrap `col` into range, then looks up the result
 /// in the pre-computed `texturecolumnlump` / `texturecolumnofs` tables:
 /// - If `lump > 0`: data comes directly from the WAD cache (single-patch
-///   column).
+///   column). Note: lump 0 is treated as composite even though it is a valid
+///   WAD lump number — this matches the C original.
 /// - Otherwise: calls `R_GenerateComposite` on the first access for that
 ///   texture, then returns into the composite buffer.
 ///
@@ -1184,7 +1187,7 @@ pub unsafe extern "C" fn R_TextureNumForName(name: *mut c_char) -> c_int {
 /// Note: the sky texture is always marked present regardless of which sectors
 /// are in the level.
 ///
-/// Called by `g_game.c` after a level has been set up.
+/// Called from `p_setup.c`'s `P_SetupLevel` after the level geometry is loaded.
 ///
 /// # Safety
 ///
