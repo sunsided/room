@@ -329,22 +329,35 @@ static PACKS: [PackDesc; 3] = [
 
 extern "C" {
     // net_dedicated.c / net_query.c — not yet ported:
+    /// Runs the dedicated server loop; from `net_dedicated.c` (not yet ported).
     fn NET_DedicatedServer();
+    /// Queries the master server for a game list; from `net_query.c` (not yet ported).
     fn NET_MasterQuery();
+    /// Queries a specific network address for a game; from `net_query.c` (not yet ported).
     fn NET_QueryAddress(addr: *mut c_char);
+    /// Scans the local network (LAN) for games; from `net_query.c` (not yet ported).
     fn NET_LANQuery();
 
     // d_loop.rs — drone not yet exported as pub static:
+    /// Whether this instance is a drone (spectator) player; from `d_loop.rs`.
     static mut drone: c_int;
 
     // C standard library:
+    /// Returns the length of the null-terminated C string `s`, excluding the null terminator.
     fn strlen(s: *const c_char) -> usize;
+    /// Compares two null-terminated C strings lexicographically; returns 0 if equal.
     fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int;
+    /// Case-insensitive comparison of two null-terminated C strings; returns 0 if equal.
     fn strcasecmp(s1: *const c_char, s2: *const c_char) -> c_int;
+    /// Case-insensitive comparison of at most `n` bytes of two null-terminated C strings.
     fn strncasecmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int;
+    /// Converts the initial portion of the null-terminated C string `nptr` to `c_int`.
     fn atoi(nptr: *const c_char) -> c_int;
+    /// Terminates the process with the given exit `status` code.
     fn exit(status: c_int) -> !;
+    /// Returns non-zero if `c` is a whitespace character per the current locale.
     fn isspace(c: c_int) -> c_int;
+    /// Copies `n` bytes from `src` to `dest`, handling overlapping regions correctly.
     fn memmove(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
 }
 
