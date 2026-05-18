@@ -22,10 +22,10 @@ conflicts resolve trivially.
 ## Core / Game Logic (`d_*`, `g_*`, misc)
 
 - [x] doom/d_event.rs (114 lines, 0 docs)
-- [ ] doom/d_items.rs (161 lines, 6 docs)
+- [~] doom/d_items.rs (161 lines, 6 docs)
 - [x] doom/d_iwad.rs (374 lines, 0 docs)
 - [x] doom/d_loop.rs (383 lines, 0 docs)
-- [ ] doom/d_main.rs (1808 lines, 53 docs)
+- [~] doom/d_main.rs (1808 lines, 53 docs)
 - [x] doom/d_mode.rs (452 lines, 12 docs)
 - [x] doom/d_net.rs (307 lines, 0 docs)
 - [x] doom/d_player.rs (133 lines, 3 docs)
