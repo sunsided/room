@@ -349,7 +349,7 @@ extern "C" {
     fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int;
     /// Case-insensitive comparison of two null-terminated C strings; returns 0 if equal.
     fn strcasecmp(s1: *const c_char, s2: *const c_char) -> c_int;
-    /// Case-insensitive comparison of at most `n` bytes of two null-terminated C strings.
+    /// Case-insensitive comparison of at most `n` bytes of two null-terminated C strings; returns 0 if equal.
     fn strncasecmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int;
     /// Converts the initial portion of the null-terminated C string `nptr` to `c_int`.
     fn atoi(nptr: *const c_char) -> c_int;
@@ -1113,7 +1113,8 @@ pub extern "C" fn D_StartTitle() {
 /// # Safety
 ///
 /// `gamename` must be a valid, null-terminated C string pointer that remains live for the
-/// duration of the call. The `banners` static must be in a consistent state.
+/// duration of the call. Each element of the `banners` static array must be a valid,
+/// null-terminated C string (guaranteed for the compile-time string literals stored there).
 unsafe fn GetGameName(gamename: *mut c_char) -> *mut c_char {
     for i in 0..7 {
         let banner = banners[i];
