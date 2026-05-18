@@ -24,44 +24,72 @@ use crate::{c_write, i_error};
 // String constants from d_englsh.h / dstrings.h
 // ---------------------------------------------------------------------------
 
+/// Message printed to stdout when `-devparm` is active.
 static D_DEVSTR: &str = "Development mode ON.\n";
 
-/// Chat key bindings for multiplayer messages.
+/// Multiplayer chat target key for the green player.
 const HUSTR_KEYGREEN: c_char = b'g' as c_char;
+/// Multiplayer chat target key for the indigo player.
 const HUSTR_KEYINDIGO: c_char = b'i' as c_char;
+/// Multiplayer chat target key for the brown player.
 const HUSTR_KEYBROWN: c_char = b'b' as c_char;
+/// Multiplayer chat target key for the red player.
 const HUSTR_KEYRED: c_char = b'r' as c_char;
 
 // ---------------------------------------------------------------------------
 // Type aliases matching C enums
 // ---------------------------------------------------------------------------
 
+/// C-compatible game state discriminant (`gamestate_t`).
 type gamestate_t = c_int;
+/// C-compatible pending game action discriminant (`gameaction_t`).
 type gameaction_t = c_int;
+/// C-compatible skill level discriminant (`skill_t`).
 type skill_t = c_int;
+/// Single byte, matching the C `byte` typedef.
 type byte = u8;
 
+/// Game state: playing a level.
 const GS_LEVEL: gamestate_t = 0;
+/// Game state: intermission screen between levels.
 const GS_INTERMISSION: gamestate_t = 1;
+/// Game state: end-of-episode finale.
 const GS_FINALE: gamestate_t = 2;
+/// Game state: title / demo screen.
 const GS_DEMOSCREEN: gamestate_t = 3;
 
+/// No pending action.
 const ga_nothing: gameaction_t = 0;
+/// Pending action: load a level.
 const ga_loadlevel: gameaction_t = 1;
+/// Pending action: start a new game.
 const ga_newgame: gameaction_t = 2;
+/// Pending action: load a saved game.
 const ga_loadgame: gameaction_t = 3;
+/// Pending action: save the current game.
 const ga_savegame: gameaction_t = 4;
+/// Pending action: play a demo.
 const ga_playdemo: gameaction_t = 5;
+/// Pending action: level completed.
 const ga_completed: gameaction_t = 6;
+/// Pending action: episode victory sequence.
 const ga_victory: gameaction_t = 7;
+/// Pending action: world (episode) done.
 const ga_worlddone: gameaction_t = 8;
+/// Pending action: take a screenshot.
 const ga_screenshot: gameaction_t = 9;
 
+/// Skill level: "I'm Too Young To Die" (baby).
 const sk_baby: skill_t = 0;
+/// Skill level: "Hey, Not Too Rough" (easy).
 const sk_easy: skill_t = 1;
+/// Skill level: "Hurt Me Plenty" (medium).
 const sk_medium: skill_t = 2;
+/// Skill level: "Ultra-Violence" (hard).
 const sk_hard: skill_t = 3;
+/// Skill level: "Nightmare!".
 const sk_nightmare: skill_t = 4;
+/// Sentinel: no items mode (internal use only).
 const sk_noitems: skill_t = -1;
 
 use crate::doom::z_zone::{PU_CACHE, PU_STATIC};
@@ -95,7 +123,7 @@ pub static mut respawnparm: c_int = 0;
 #[no_mangle]
 pub static mut fastparm: c_int = 0;
 
-/// Episode to start at (set by -episode).
+/// Skill level to start at (set by -skill).
 #[no_mangle]
 pub static mut startskill: c_int = 0;
 
@@ -160,11 +188,17 @@ pub static mut pagename: *mut c_char = ptr::null_mut();
 pub static mut wipegamestate: c_int = GS_DEMOSCREEN;
 
 // D_Display static local state — these must persist across frames.
+/// Cached `viewactive` value from the previous frame.
 static mut D_DISP_VIEWACTIVE: c_int = 0;
+/// Cached `menuactive` value from the previous frame.
 static mut D_DISP_MENUACTIVE: c_int = 0;
+/// Cached `inhelpscreens` value from the previous frame.
 static mut D_DISP_INHELPSCREENS: c_int = 0;
+/// Non-zero when the view fills the full screen (no status bar visible).
 static mut D_DISP_FULLSCREEN: c_int = 0;
+/// Game state from the previous frame; -1 forces border and palette redraws.
 static mut D_DISP_OLD_GAMESTATE: c_int = -1;
+/// Remaining frames for which the view border must be redrawn.
 static mut D_DISP_BORDERDRAWCOUNT: c_int = 0;
 
 /// Title string printed at startup.
@@ -190,21 +224,27 @@ static mut banners: [*const c_char; 7] = [
         .as_ptr() as *const c_char,
 ];
 
-/// Game version descriptors for -gameversion.
+/// Newtype wrapper that makes a raw C-string pointer `Sync` for use in statics.
 struct SyncPtr(*const c_char);
 unsafe impl Sync for SyncPtr {}
 
+/// One entry in the `-gameversion` lookup table.
 #[repr(C)]
 struct GameVersionDesc {
+    /// Human-readable version label shown in the help list.
     description: SyncPtr,
+    /// Command-line argument string (e.g. `"1.9"`, `"ultimate"`).
     cmdline: SyncPtr,
+    /// Numeric version constant from `d_mode` (e.g. `exe_doom_1_9`).
     version: c_int,
 }
 
+/// Construct a [`SyncPtr`] from a static byte-string literal.
 const fn sp(s: &'static [u8]) -> SyncPtr {
     SyncPtr(s.as_ptr() as *const c_char)
 }
 
+/// Table of known game versions, termined by a null-description sentinel entry.
 static GAME_VERSIONS: [GameVersionDesc; 10] = [
     GameVersionDesc {
         description: sp(b"Doom 1.666\0"),
@@ -258,13 +298,16 @@ static GAME_VERSIONS: [GameVersionDesc; 10] = [
     },
 ];
 
-/// Mission pack descriptors for -pack.
+/// One entry in the `-pack` lookup table.
 #[repr(C)]
 struct PackDesc {
+    /// Command-line pack name (e.g. `"tnt"`, `"plutonia"`).
     name: SyncPtr,
+    /// `gamemission` value to assign when this pack is selected.
     mission: c_int,
 }
 
+/// Recognized `-pack` arguments, mapping names to `gamemission` values.
 static PACKS: [PackDesc; 3] = [
     PackDesc {
         name: sp(b"doom2\0"),
@@ -443,6 +486,7 @@ use crate::doom::i_endoom::I_Endoom;
 // Constants for lump name checks (IWAD detection)
 // ---------------------------------------------------------------------------
 
+/// Lump names whose presence in the WAD confirms a registered (non-shareware) IWAD.
 static IWAD_CHECK_NAMES: [SyncPtr; 23] = [
     sp(b"e2m1\0"),
     sp(b"e2m2\0"),
@@ -481,7 +525,13 @@ fn DEH_String(s: *const c_char) -> *const c_char {
     s
 }
 
-/// Safe wrapper: check if a C string ends with a given suffix.
+/// Return `true` if the C string `s` ends with `suffix` (case-insensitive).
+/// Returns `false` for null pointers.
+///
+/// # Safety
+///
+/// Both `s` and `suffix`, if non-null, must point to valid, null-terminated C strings that remain
+/// live for the duration of the call.
 unsafe fn c_str_ends_with(s: *const c_char, suffix: *const c_char) -> bool {
     if s.is_null() || suffix.is_null() {
         return false;
@@ -494,7 +544,13 @@ unsafe fn c_str_ends_with(s: *const c_char, suffix: *const c_char) -> bool {
     strncasecmp(s.add(s_len.wrapping_sub(suf_len)), suffix, suf_len) == 0
 }
 
-/// Safe wrapper: case-insensitive string comparison.
+/// Return `true` if the two C strings are equal under a case-insensitive comparison.
+/// Returns `false` if either pointer is null.
+///
+/// # Safety
+///
+/// Both `s1` and `s2`, if non-null, must point to valid, null-terminated C strings that remain
+/// live for the duration of the call.
 unsafe fn c_str_eq(s1: *const c_char, s2: *const c_char) -> bool {
     if s1.is_null() || s2.is_null() {
         return false;
@@ -502,7 +558,13 @@ unsafe fn c_str_eq(s1: *const c_char, s2: *const c_char) -> bool {
     strcasecmp(s1, s2) == 0
 }
 
-/// Safe wrapper: compare first n bytes case-insensitive.
+/// Return `true` if the first `n` bytes of the two C strings differ under a case-insensitive
+/// comparison. Returns `true` (not-equal) if either pointer is null.
+///
+/// # Safety
+///
+/// Both `s1` and `s2`, if non-null, must point to valid C strings with at least `n` accessible
+/// bytes that remain live for the duration of the call.
 unsafe fn c_str_ne_n(s1: *const c_char, s2: *const c_char, n: usize) -> bool {
     if s1.is_null() || s2.is_null() {
         return true;
@@ -510,6 +572,12 @@ unsafe fn c_str_ne_n(s1: *const c_char, s2: *const c_char, n: usize) -> bool {
     strncasecmp(s1, s2, n) != 0
 }
 
+/// Convert a raw C string to an owned `String`, returning empty string for null pointers.
+///
+/// # Safety
+///
+/// `s`, if non-null, must point to a valid, null-terminated C string that remains live for the
+/// duration of the call.
 unsafe fn c_str_to_str(s: *const c_char) -> String {
     if s.is_null() {
         return String::new();
@@ -786,6 +854,9 @@ pub extern "C" fn D_BindVariables() {
 // D_GrabMouseCallback
 // ---------------------------------------------------------------------------
 
+/// Return `TRUE` when the window should grab (capture) the mouse pointer.
+///
+/// The mouse is released for drone players, while the menu is open, or while a demo is playing.
 extern "C" fn D_GrabMouseCallback() -> Boolean {
     unsafe {
         // Drone players don't need mouse focus
@@ -809,6 +880,9 @@ extern "C" fn D_GrabMouseCallback() -> Boolean {
 // doomgeneric_Tick
 // ---------------------------------------------------------------------------
 
+/// Execute one rendered frame: run game tics, update sounds, and draw the display.
+///
+/// Called by the doomgeneric platform layer once per video frame.
 #[no_mangle]
 pub extern "C" fn doomgeneric_Tick() {
     unsafe {
@@ -1018,8 +1092,15 @@ pub extern "C" fn D_StartTitle() {
 // GetGameName
 // ---------------------------------------------------------------------------
 
-/// Get game name: if the startup banner has been replaced, use that.
-/// Otherwise use the provided default.
+/// Return the game name string.
+///
+/// If any startup banner has been replaced by a DEH patch, the patched string is formatted and
+/// returned (allocated from the zone heap). Otherwise `gamename` is returned unchanged.
+///
+/// # Safety
+///
+/// `gamename` must be a valid, null-terminated C string pointer that remains live for the
+/// duration of the call. The `banners` static must be in a consistent state.
 unsafe fn GetGameName(gamename: *mut c_char) -> *mut c_char {
     for i in 0..7 {
         let banner = banners[i];
@@ -1078,7 +1159,12 @@ unsafe fn GetGameName(gamename: *mut c_char) -> *mut c_char {
 // SetMissionForPackName
 // ---------------------------------------------------------------------------
 
-/// Set the game mission based on a pack name.
+/// Set `gamemission` from the `-pack` argument string, or abort with an error if unrecognized.
+///
+/// # Safety
+///
+/// `pack_name` must be a valid, null-terminated C string pointer that remains live for the
+/// duration of the call.
 unsafe fn SetMissionForPackName(pack_name: *mut c_char) {
     for pack in &PACKS {
         if c_str_eq(pack_name, pack.name.0) {
@@ -1148,7 +1234,14 @@ pub extern "C" fn D_IdentifyVersion() {
     }
 }
 
-/// Replicate the C `logical_gamemission` macro from `doomstat.h`.
+/// Return the logical game mission, collapsing pack-specific variants to their base mission.
+///
+/// Mirrors the `logical_gamemission` macro from `doomstat.h`: `pack_chex` maps to `doom` and
+/// `pack_hacx` maps to `doom2`; all other values are returned unchanged.
+///
+/// # Safety
+///
+/// Reads the `gamemission` global; must be called in a context where the global is initialized.
 unsafe fn logical_gamemission() -> c_int {
     if gamemission == d_mode::pack_chex {
         d_mode::doom
@@ -1207,7 +1300,14 @@ pub extern "C" fn D_SetGameDescription() {
 // D_AddFile
 // ---------------------------------------------------------------------------
 
-/// Add a WAD file to the search path.
+/// Add a WAD file to the search path, printing its name to stdout.
+///
+/// Returns `true` if the file was opened successfully.
+///
+/// # Safety
+///
+/// `filename` must be a valid, null-terminated C string pointer that remains live for the
+/// duration of the call.
 unsafe fn D_AddFile(filename: *mut c_char) -> bool {
     println!(" adding {}", c_str_to_str(filename));
     let handle = W_AddFile(filename);
@@ -1218,6 +1318,7 @@ unsafe fn D_AddFile(filename: *mut c_char) -> bool {
 // PrintDehackedBanners
 // ---------------------------------------------------------------------------
 
+/// Copyright notice strings that are printed when replaced by DEH patches.
 static COPYRIGHT_BANNERS: [SyncPtr; 3] = [
     sp(
         b"===========================================================================\n\
@@ -1240,7 +1341,11 @@ get a copy of the original game, call 1-800-IDGAMES or see the readme file.\n\
     ),
 ];
 
-/// Print dehacked-replaced copyright banners.
+/// Print any copyright banners that have been replaced by DEH patches.
+///
+/// # Safety
+///
+/// Reads the `COPYRIGHT_BANNERS` static; must be called after the DEH subsystem is initialized.
 unsafe fn PrintDehackedBanners() {
     for i in 0..COPYRIGHT_BANNERS.len() {
         let banner = COPYRIGHT_BANNERS[i].0;
@@ -1262,7 +1367,12 @@ unsafe fn PrintDehackedBanners() {
 // InitGameVersion
 // ---------------------------------------------------------------------------
 
-/// Initialize the game version.
+/// Set `gameversion` from the `-gameversion` argument, or auto-detect it from `gamemode` and
+/// `gamemission`. Also adjusts `gamemode` / `gamemission` for version compatibility.
+///
+/// # Safety
+///
+/// Reads and writes multiple game-state globals; must be called after `D_IdentifyVersion`.
 unsafe fn InitGameVersion() {
     let p = M_CheckParmWithArgs(c"-gameversion".as_ptr().cast_mut(), 1);
 
@@ -1335,6 +1445,7 @@ unsafe fn InitGameVersion() {
 // PrintGameVersion
 // ---------------------------------------------------------------------------
 
+/// Print a startup message identifying which original executable version is being emulated.
 #[no_mangle]
 pub extern "C" fn PrintGameVersion() {
     unsafe {
@@ -1357,6 +1468,10 @@ pub extern "C" fn PrintGameVersion() {
 // D_Endoom
 // ---------------------------------------------------------------------------
 
+/// `I_AtExit` callback: display the ENDOOM lump and exit when the game shuts down.
+///
+/// Skipped when `show_endoom` is 0, when the main loop never started, or in
+/// screensaver / test-controls mode.
 extern "C" fn D_Endoom() {
     unsafe {
         // Don't show ENDOOM if disabled, or in screensaver/control test mode.
@@ -1738,6 +1853,7 @@ pub extern "C" fn D_DoomMain() {
 mod tests {
     use super::*;
 
+    /// Verify all startup flag globals are zero-initialized (except `show_endoom`).
     #[test]
     fn startup_flags_defaults() {
         unsafe {
@@ -1756,6 +1872,7 @@ mod tests {
         }
     }
 
+    /// Verify `wipegamestate` starts at `GS_DEMOSCREEN` so the first frame always wipes.
     #[test]
     fn wipegamestate_default() {
         unsafe {
@@ -1763,6 +1880,7 @@ mod tests {
         }
     }
 
+    /// Verify the sizes of the fixed-length character buffers match their C counterparts.
     #[test]
     fn global_buffer_sizes() {
         unsafe {
@@ -1772,6 +1890,7 @@ mod tests {
         }
     }
 
+    /// Verify the `GAME_VERSIONS` table is terminated by a null-description sentinel entry.
     #[test]
     fn game_version_table_complete() {
         // Last entry should be null-terminated
@@ -1781,6 +1900,7 @@ mod tests {
         assert_eq!(last.version, 0);
     }
 
+    /// Verify the `PACKS` table contains exactly three entries with non-null names.
     #[test]
     fn packs_table_complete() {
         assert_eq!(PACKS.len(), 3);
@@ -1789,16 +1909,19 @@ mod tests {
         assert!(!PACKS[2].name.0.is_null());
     }
 
+    /// Verify the IWAD check name array contains exactly 23 lump names.
     #[test]
     fn iwad_check_names_count() {
         assert_eq!(IWAD_CHECK_NAMES.len(), 23);
     }
 
+    /// Verify the copyright banners array contains exactly three entries.
     #[test]
     fn copyright_banners_count() {
         assert_eq!(COPYRIGHT_BANNERS.len(), 3);
     }
 
+    /// Verify the startup banners array contains exactly seven entries.
     #[test]
     fn banners_count() {
         unsafe {
