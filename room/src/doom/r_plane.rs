@@ -1,7 +1,22 @@
-//! Rust port of vendor/doomgeneric/r_plane.c.
+//! Visplane (floor and ceiling) renderer.
 //!
-//! Core visplane rendering: drawing floors and ceilings while maintaining
-//! a per-column clipping list. Also handles sky areas.
+//! Rust port of `vendor/doomgeneric/r_plane.c`.
+//!
+//! # Overview
+//!
+//! Doom renders floors and ceilings as horizontal pixel spans.  During BSP
+//! traversal each wall segment calls [`R_CheckPlane`] / [`R_FindPlane`] to
+//! record the per-column screen-y extents into a [`visplane_t`].  After the
+//! full BSP walk, [`R_DrawPlanes`] iterates over every accumulated visplane
+//! and rasterizes it into horizontal spans via [`R_MakeSpans`] /
+//! [`R_MapPlane`].  Sky columns are treated as a special case: they are drawn
+//! with [`colfunc`] rather than [`spanfunc`].
+//!
+//! # Coordinate system
+//!
+//! All heights use the fixed-point `fixed_t` type (`i32`, 16.16 format,
+//! `FRACUNIT = 1 << 16`).  Angles are `angle_t = u32` where a full circle is
+//! `0x1_0000_0000` (wrapping arithmetic).
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -17,20 +32,49 @@ use super::tables::{ANG90, ANGLETOFINESHIFT, FINEMASK};
 // Constants
 // ---------------------------------------------------------------------------
 
+/// Screen width in pixels, re-exported from [`i_video`] for local use.
 const SCREENWIDTH: usize = crate::doom::i_video::SCREENWIDTH as usize;
+
+/// Screen height in pixels, re-exported from [`i_video`] for local use.
 const SCREENHEIGHT: usize = crate::doom::i_video::SCREENHEIGHT as usize;
 
+/// Maximum number of simultaneous visplanes per frame.
+///
+/// Doom aborts with `I_Error` when this limit is exceeded.  The Rust port
+/// currently returns a null pointer instead (see [`R_FindPlane`]).
 const MAXVISPLANES: usize = 128;
+
+/// Maximum number of `c_short` slots in the [`openings`] array.
+///
+/// Used as scratch space for sprite clipping arrays stored by
+/// [`R_StoreWallRange`] (in `r_segs`).  The C source comments this as `"?"`.
 const MAXOPENINGS: usize = SCREENWIDTH * 64;
 
+/// Number of distinct light levels used by the colormap tables.
 const LIGHTLEVELS: usize = 16;
+
+/// Shift applied to a sector's `lightlevel` to derive a colormap-table index.
 const LIGHTSEGSHIFT: u32 = 4;
+
+/// Number of distance-based light entries per light level in `zlight`.
 const MAXLIGHTZ: usize = 128;
+
+/// Shift applied to a world distance to derive an index into `zlight[n]`.
 const LIGHTZSHIFT: u32 = 20;
 
+/// Shift applied to a view angle to derive a sky-texture column index.
+///
+/// Produces a coarser (less precise) mapping than `ANGLETOFINESHIFT` so that
+/// the sky texture wraps once around the full horizontal field of view.
 const ANGLETOSKYSHIFT: u32 = 22;
 
 /// Safe accessor for finecosine table (it's a pointer into finesine).
+///
+/// # Safety
+///
+/// The index is masked to `FINEMASK` before dereferencing, so the access is
+/// always within the bounds of the static sine table exported by
+/// [`tables`].
 #[inline]
 fn finecosine(idx: usize) -> c_int {
     unsafe { *tables::finecosine.0.add(idx & FINEMASK as usize) }
@@ -40,27 +84,57 @@ fn finecosine(idx: usize) -> c_int {
 // Type aliases
 // ---------------------------------------------------------------------------
 
+/// Colormap entry type: a single palette index byte.
 type lighttable_t = c_uchar;
 
+/// Function pointer type for horizontal-span and sky-column draw callbacks.
+///
+/// The two parameters are the left (`x1`) and right (`x2`) screen columns of
+/// the span, matching the C `planefunction_t` signature
+/// `void (*)(int top, int bottom)`.
 pub type planefunction_t = unsafe extern "C" fn(c_int, c_int);
 
 // ---------------------------------------------------------------------------
 // visplane_t — mirrors the C struct including pad bytes
 // ---------------------------------------------------------------------------
 
+/// One floor or ceiling plane accumulator.
+///
+/// A visplane records which columns (screen x) are covered by a particular
+/// flat/height/lightlevel combination.  For each covered column, `top` and
+/// `bottom` store the inclusive screen-y range that the span rasterizer must
+/// fill.  A value of `0xFF` in `top[x]` means column `x` is not yet used.
+///
+/// The `pad1`/`pad2`/`pad3`/`pad4` bytes are intentional: the C renderer uses
+/// `pl->top[pl->minx-1]` and `pl->top[pl->maxx+1]` as sentinel writes, which
+/// land in the padding when the plane spans the full screen width.  The layout
+/// is verified at compile time by the `assert!` blocks below.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct visplane_t {
+    /// World height of the flat, in fixed-point units.
     pub height: fixed_t,
+    /// Flat texture number (lump index relative to `firstflat`).
     pub picnum: c_int,
+    /// Sector light level (0-255) for this plane.
     pub lightlevel: c_int,
+    /// Leftmost screen column used by this plane (inclusive).
     pub minx: c_int,
+    /// Rightmost screen column used by this plane (inclusive).
     pub maxx: c_int,
+    /// Padding byte before `top[]`; acts as a sentinel slot for
+    /// `top[minx-1]` when `minx == 0`.
     pub pad1: c_uchar,
+    /// Per-column top clip (inclusive screen-y).  `0xFF` means unused.
     pub top: [c_uchar; SCREENWIDTH],
+    /// Padding byte after `top[]`; sentinel for `top[maxx+1]` when
+    /// `maxx == SCREENWIDTH - 1`.
     pub pad2: c_uchar,
+    /// Padding byte before `bottom[]`; mirrors the pad3 slot in C.
     pub pad3: c_uchar,
+    /// Per-column bottom clip (inclusive screen-y).
     pub bottom: [c_uchar; SCREENWIDTH],
+    /// Padding byte after `bottom[]`.
     pub pad4: c_uchar,
 }
 
@@ -114,12 +188,32 @@ impl Default for visplane_t {
 // Global mutable state (exported for C consumers)
 // ---------------------------------------------------------------------------
 
+/// Callback invoked by [`R_MapPlane`] for each floor span.
+///
+/// Exported as `#[no_mangle]` for C callers.  Set to `R_DrawSpan` (normal
+/// detail) or `R_DrawSpanLow` (low detail) by `R_SetupFrame` in `r_main`.
 #[no_mangle]
 pub static mut floorfunc: Option<planefunction_t> = None;
 
+/// Callback invoked by [`R_MapPlane`] for each ceiling span.
+///
+/// Exported as `#[no_mangle]` for C callers.  Parallels [`floorfunc`].
 #[no_mangle]
 pub static mut ceilingfunc: Option<planefunction_t> = None;
 
+/// Fixed-size pool of visplane accumulators for one frame.
+///
+/// Exported as `#[no_mangle]` for C callers.  [`lastvisplane`] tracks how
+/// many are in use.  Initialized to all-zero at program start; each slot is
+/// reset via [`R_FindPlane`] before use.
+///
+/// # Note
+///
+/// The compile-time initializer leaves `top[]` as `0x00` instead of `0xFF`.
+/// [`R_ClearPlanes`] does not reset individual slots; only [`R_FindPlane`]
+/// writes the sentinel `0xFF` pattern when it claims a new slot.  This matches
+/// the C behavior where `lastvisplane` is rewound to `visplanes[0]` each frame
+/// and slots are re-initialized on demand.
 #[no_mangle]
 pub static mut visplanes: [visplane_t; MAXVISPLANES] = {
     // Can't use Default::default() in const context, so we transmute
@@ -143,60 +237,141 @@ pub static mut visplanes: [visplane_t; MAXVISPLANES] = {
     arr
 };
 
+/// Pointer to the next free slot in [`visplanes`].
+///
+/// Exported as `#[no_mangle]` for C callers.  Reset to `&visplanes[0]` by
+/// [`R_ClearPlanes`] at the start of each frame.
 #[no_mangle]
 pub static mut lastvisplane: *mut visplane_t = ptr::null_mut();
 
+/// The current floor visplane being built for this BSP subtree.
+///
+/// Exported as `#[no_mangle]` for C callers.  Updated by
+/// `R_StoreWallRange` (in `r_segs`) via [`R_CheckPlane`].
 #[no_mangle]
 pub static mut floorplane: *mut visplane_t = ptr::null_mut();
 
+/// The current ceiling visplane being built for this BSP subtree.
+///
+/// Exported as `#[no_mangle]` for C callers.  Updated by
+/// `R_StoreWallRange` (in `r_segs`) via [`R_CheckPlane`].
 #[no_mangle]
 pub static mut ceilingplane: *mut visplane_t = ptr::null_mut();
 
+/// Scratch buffer for sprite clipping arrays.
+///
+/// Exported as `#[no_mangle]` for C callers.  Slices within this buffer are
+/// handed out by `R_StoreWallRange` (in `r_segs`) and later read by the
+/// sprite renderer.  [`lastopening`] tracks the allocation watermark.
 #[no_mangle]
 pub static mut openings: [c_short; MAXOPENINGS] = [0; MAXOPENINGS];
 
+/// Allocation watermark within [`openings`].
+///
+/// Exported as `#[no_mangle]` for C callers.  Advanced by
+/// `R_StoreWallRange` each time it allocates a clipping sub-array.
+/// Reset to `&openings[0]` by [`R_ClearPlanes`].
 #[no_mangle]
 pub static mut lastopening: *mut c_short = ptr::null_mut();
 
+/// Per-column floor clip (highest opaque pixel so far, inclusive).
+///
+/// Exported as `#[no_mangle]` for C callers.  `floorclip[x]` is the
+/// screen-y of the lowest pixel that is still open for floor rendering in
+/// column `x`.  Initialized to `viewheight` (fully open) by
+/// [`R_ClearPlanes`].
 #[no_mangle]
 pub static mut floorclip: [c_short; SCREENWIDTH] = [0; SCREENWIDTH];
 
+/// Per-column ceiling clip (lowest opaque pixel so far, inclusive).
+///
+/// Exported as `#[no_mangle]` for C callers.  `ceilingclip[x]` is the
+/// screen-y of the highest pixel that is still open for ceiling rendering in
+/// column `x`.  Initialized to `-1` (fully open) by [`R_ClearPlanes`].
 #[no_mangle]
 pub static mut ceilingclip: [c_short; SCREENWIDTH] = [0; SCREENWIDTH];
 
+/// Per-row span start columns, indexed by screen-y.
+///
+/// Exported as `#[no_mangle]` for C callers.  [`R_MakeSpans`] writes the
+/// left edge of a span in progress here; [`R_MapPlane`] reads it to obtain
+/// `x1` when the span ends.
 #[no_mangle]
 pub static mut spanstart: [c_int; SCREENHEIGHT] = [0; SCREENHEIGHT];
 
+/// Per-row span stop columns (unused in the current implementation).
+///
+/// Exported as `#[no_mangle]` for C callers.  Present in the C source but
+/// never written; kept for ABI compatibility.
 #[no_mangle]
 pub static mut spanstop: [c_int; SCREENHEIGHT] = [0; SCREENHEIGHT];
 
+/// Pointer into the distance-based light table for the current plane.
+///
+/// Exported as `#[no_mangle]` for C callers.  Set by [`R_DrawPlanes`] from
+/// `zlight[light]` before iterating a visplane's columns.
 #[no_mangle]
 pub static mut planezlight: *const *const lighttable_t = ptr::null();
 
+/// Absolute height difference between the current flat and the viewpoint.
+///
+/// Exported as `#[no_mangle]` for C callers.  Written by [`R_DrawPlanes`]
+/// before calling [`R_MakeSpans`]; read by [`R_MapPlane`] to derive the
+/// per-row texture step.
 #[no_mangle]
 pub static mut planeheight: fixed_t = 0;
 
+/// Per-row slope factor used to convert plane distance to a screen-y fraction.
+///
+/// Exported as `#[no_mangle]` for C callers.  Precomputed by `R_ExecuteSetViewSize`
+/// in `r_main` for each possible screen row.
 #[no_mangle]
 pub static mut yslope: [fixed_t; SCREENHEIGHT] = [0; SCREENHEIGHT];
 
+/// Per-column angular distance scale from the screen center.
+///
+/// Exported as `#[no_mangle]` for C callers.  Precomputed by `R_ExecuteSetViewSize`
+/// in `r_main`; used by [`R_MapPlane`] to project a flat texel onto a column.
 #[no_mangle]
 pub static mut distscale: [fixed_t; SCREENWIDTH] = [0; SCREENWIDTH];
 
+/// Base x-axis texture step per unit of distance, computed from `viewangle`.
+///
+/// Exported as `#[no_mangle]` for C callers.  Recomputed each frame by
+/// [`R_ClearPlanes`].
 #[no_mangle]
 pub static mut basexscale: fixed_t = 0;
 
+/// Base y-axis texture step per unit of distance, computed from `viewangle`.
+///
+/// Exported as `#[no_mangle]` for C callers.  Recomputed each frame by
+/// [`R_ClearPlanes`].
 #[no_mangle]
 pub static mut baseyscale: fixed_t = 0;
 
+/// Cache of the last `planeheight` value computed for each screen row.
+///
+/// Exported as `#[no_mangle]` for C callers.  [`R_MapPlane`] avoids
+/// recomputing `distance`, `xstep`, and `ystep` when the plane height has not
+/// changed since the previous span on the same row.
 #[no_mangle]
 pub static mut cachedheight: [fixed_t; SCREENHEIGHT] = [0; SCREENHEIGHT];
 
+/// Cache of the last computed world distance for each screen row.
+///
+/// Exported as `#[no_mangle]` for C callers.  Paired with [`cachedheight`].
 #[no_mangle]
 pub static mut cacheddistance: [fixed_t; SCREENHEIGHT] = [0; SCREENHEIGHT];
 
+/// Cache of the last computed flat x-step for each screen row.
+///
+/// Exported as `#[no_mangle]` for C callers.  Paired with [`cachedheight`].
 #[no_mangle]
 pub static mut cachedxstep: [fixed_t; SCREENHEIGHT] = [0; SCREENHEIGHT];
 
+/// Cache of the last computed flat y-step for each screen row.
+///
+/// Exported as `#[no_mangle]` for C callers.  Paired with [`cachedheight`].
 #[no_mangle]
 pub static mut cachedystep: [fixed_t; SCREENHEIGHT] = [0; SCREENHEIGHT];
 
@@ -221,6 +396,13 @@ use crate::doom::w_wad::{W_CacheLumpNum, W_ReleaseLumpNum};
 // R_InitPlanes — called once at game startup
 // ---------------------------------------------------------------------------
 
+/// Initialises the plane renderer at game startup.
+///
+/// The C source contains only a comment `"Doh!"`.  There is nothing to
+/// initialise; the function exists so that `R_Init` can call it unconditionally
+/// alongside the other renderer subsystems.
+///
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub extern "C" fn R_InitPlanes() {
     // Doh! — nothing to do here, matching original C
@@ -230,6 +412,24 @@ pub extern "C" fn R_InitPlanes() {
 // R_MapPlane — maps a single plane span
 // ---------------------------------------------------------------------------
 
+/// Draws one horizontal span of a floor or ceiling flat.
+///
+/// Called by [`R_MakeSpans`] with the screen row `y` and the inclusive column
+/// range `[x1, x2]`.  Sets up all `ds_*` globals required by [`spanfunc`]
+/// and then calls it.
+///
+/// Uses globals: `planeheight`, `basexscale`, `baseyscale`, `viewx`, `viewy`,
+/// `viewangle`, `xtoviewangle`, `distscale`, `yslope`, `planezlight`,
+/// `fixedcolormap`, `spanfunc`.
+///
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+///
+/// Reads and writes numerous `static mut` renderer globals.  All pointers
+/// (`planezlight`, `spanfunc`, `fixedcolormap`) must be valid when called.
+/// The range-check feature gate guards against out-of-bounds `x1`/`x2`/`y`
+/// values; without it the caller is responsible for passing valid coordinates.
 #[no_mangle]
 pub extern "C" fn R_MapPlane(y: c_int, x1: c_int, x2: c_int) {
     unsafe {
@@ -289,6 +489,19 @@ pub extern "C" fn R_MapPlane(y: c_int, x1: c_int, x2: c_int) {
 // R_ClearPlanes — called at beginning of each frame
 // ---------------------------------------------------------------------------
 
+/// Resets all plane state at the start of each frame.
+///
+/// Initialises clip arrays, rewinds the visplane and opening allocation
+/// pointers, clears the per-row height cache, and recomputes the base
+/// texture-step scales from the current `viewangle`.
+///
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+///
+/// Writes to several `static mut` renderer globals and reads `viewwidth`,
+/// `viewheight`, and `viewangle`.  Must be called exactly once per frame
+/// before any BSP traversal begins.
 #[no_mangle]
 pub extern "C" fn R_ClearPlanes() {
     unsafe {
@@ -322,6 +535,26 @@ pub extern "C" fn R_ClearPlanes() {
 // R_FindPlane — find or create a visplane matching the given parameters
 // ---------------------------------------------------------------------------
 
+/// Returns a visplane for the given `height`, `picnum`, and `lightlevel`.
+///
+/// Searches the already-allocated visplanes for an exact match.  If none is
+/// found, claims the next free slot from [`visplanes`] and initialises it.
+/// All sky flats (`picnum == skyflatnum`) share a single visplane at height 0
+/// and light level 0.
+///
+/// Returns a null pointer if the visplane pool (128 entries) is exhausted
+/// (the C source would call `I_Error` instead).
+///
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+///
+/// Reads and writes the `static mut` globals [`visplanes`], [`lastvisplane`],
+/// and [`r_sky::skyflatnum`].  The returned pointer is valid for the lifetime
+/// of the current frame (until the next [`R_ClearPlanes`] call).
+// FIXME: C aborts with I_Error on MAXVISPLANES overflow; Rust returns null.
+//        Callers in r_segs dereference the result unconditionally, which will
+//        cause undefined behavior if the limit is hit.
 #[no_mangle]
 pub extern "C" fn R_FindPlane(
     height: fixed_t,
@@ -380,6 +613,20 @@ pub extern "C" fn R_FindPlane(
 // R_CheckPlane — check if a visplane can cover [start..stop] without overlap
 // ---------------------------------------------------------------------------
 
+/// Ensures the visplane `pl` can accommodate the column range `[start, stop]`.
+///
+/// If the range does not overlap any already-filled column in `pl`, the
+/// plane's `minx`/`maxx` bounds are extended to cover the union and `pl` is
+/// returned unchanged.  Otherwise a new visplane with the same flat/height/
+/// lightlevel is allocated for `[start, stop]` and returned.
+///
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+///
+/// Reads and writes the `static mut` globals [`lastvisplane`] and the
+/// [`visplane_t`] pointed to by `pl`.  `pl` must be a non-null pointer to a
+/// valid, frame-lived visplane obtained from [`R_FindPlane`].
 #[no_mangle]
 pub extern "C" fn R_CheckPlane(pl: *mut visplane_t, start: c_int, stop: c_int) -> *mut visplane_t {
     unsafe {
@@ -435,6 +682,24 @@ pub extern "C" fn R_CheckPlane(pl: *mut visplane_t, start: c_int, stop: c_int) -
 // R_MakeSpans — generate spans from ceiling/floor clip differences
 // ---------------------------------------------------------------------------
 
+/// Closes and opens horizontal spans as the per-column clip bounds change.
+///
+/// Called once per column `x` during [`R_DrawPlanes`].  `t1`/`b1` are the
+/// top/bottom clip values for the previous column; `t2`/`b2` are those for
+/// the current column.  Any row that was open in the previous column but
+/// closed in the current one is flushed to [`R_MapPlane`].  Any row that
+/// opens in the current column but was closed in the previous one has its
+/// start recorded in [`spanstart`].
+///
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+///
+/// Reads and writes the `static mut` globals [`spanstart`].  Calls
+/// [`R_MapPlane`], which itself writes additional globals.  All indices
+/// derived from `t1`/`b1`/`t2`/`b2` must be valid screen rows
+/// (`0 <= row < SCREENHEIGHT`); the caller (the `R_DrawPlanes` loop) is
+/// responsible for keeping them in range.
 #[no_mangle]
 pub extern "C" fn R_MakeSpans(x: c_int, t1: c_int, b1: c_int, t2: c_int, b2: c_int) {
     unsafe {
@@ -469,6 +734,22 @@ pub extern "C" fn R_MakeSpans(x: c_int, t1: c_int, b1: c_int, t2: c_int, b2: c_i
 
 use crate::doom::z_zone::PU_STATIC;
 
+/// Rasterizes all accumulated visplanes into horizontal pixel spans.
+///
+/// Called once per frame after BSP traversal is complete.  Iterates over every
+/// visplane in the pool up to [`lastvisplane`].  Sky flats are drawn as
+/// vertical columns via [`colfunc`]; regular flats are drawn as horizontal
+/// spans via [`R_MakeSpans`] / [`R_MapPlane`] / [`spanfunc`].
+///
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+///
+/// Reads and writes numerous `static mut` renderer globals.  All function
+/// pointers (`colfunc`, `spanfunc`) and data pointers (`fixedcolormap`,
+/// `planezlight`, `zlight`) must be valid.  The `W_CacheLumpNum` /
+/// `W_ReleaseLumpNum` calls must have access to a properly initialised WAD
+/// lump directory.
 #[no_mangle]
 pub extern "C" fn R_DrawPlanes() {
     unsafe {
