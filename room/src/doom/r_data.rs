@@ -1286,6 +1286,11 @@ pub unsafe extern "C" fn R_PrecacheLevel() {
 /// Rust's dead-code elimination would otherwise strip `#[no_mangle]` functions
 /// that are called only from C.  This anchor function references every exported
 /// function by address so the linker keeps them in the final binary.
+///
+/// # Safety
+///
+/// Must only be called from the C side during startup. Taking function
+/// addresses is safe; no pointers are dereferenced.
 #[no_mangle]
 pub unsafe extern "C" fn R_Data_Link_Anchor() {
     let _ = R_GenerateComposite as *const () as usize;
