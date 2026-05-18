@@ -3322,6 +3322,12 @@ mod tests {
 
 /// Pure implementation of the demo ticcmd read, parameterised over the
 /// demo-pointer and longtics flag so unit tests can call it without globals.
+///
+/// # Safety
+///
+/// `*p` must point into a valid, sufficiently-long demo buffer: at least 4 bytes
+/// remaining for non-longtics demos, or 5 bytes for longtics. The pointer is advanced
+/// past the bytes consumed. `cmd` must be a valid, writable `TiccmdT`.
 #[inline]
 unsafe fn read_demo_ticcmd_inner(p: &mut *mut u8, cmd: &mut TiccmdT, is_longtics: bool) {
     cmd.forwardmove = (**p) as i8;
