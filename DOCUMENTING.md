@@ -39,12 +39,12 @@ conflicts resolve trivially.
 ## Renderer (`r_*`)
 
 - [ ] doom/r_bsp.rs (927 lines, 0 docs)
-- [~] doom/r_data.rs (834 lines, 0 docs)
+- [x] doom/r_data.rs (834 lines, 0 docs)
 - [ ] doom/r_draw.rs (1360 lines, 4 docs)
 - [ ] doom/r_main.rs (864 lines, 12 docs)
 - [ ] doom/r_plane.rs (584 lines, 1 doc)
 - [ ] doom/r_segs.rs (672 lines, 0 docs)
-- [~] doom/r_sky.rs (65 lines, 7 docs)
+- [x] doom/r_sky.rs (65 lines, 7 docs)
 - [ ] doom/r_things.rs (991 lines, 14 docs)
 
 ## Map / Physics (`p_*`)
