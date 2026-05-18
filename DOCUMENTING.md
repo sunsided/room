@@ -34,7 +34,7 @@ conflicts resolve trivially.
 - [x] doom/doomstat.rs (48 lines, 0 docs)
 - [x] doom/dstrings.rs (131 lines, 3 docs)
 - [x] doom/dummy.rs (52 lines, 0 docs)
-- [~] doom/g_game.rs (2583 lines, 35 docs)
+- [x] doom/g_game.rs (2583 lines, 35 docs)
 
 ## Renderer (`r_*`)
 

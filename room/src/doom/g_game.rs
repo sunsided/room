@@ -1,6 +1,38 @@
-//! Rust port of vendor/doomgeneric/g_game.c.
+//! Rust port of `vendor/doomgeneric/g_game.c`.
 //!
-//! Core game loop, demo recording/playback, player management, save/load.
+//! This module is the gameplay controller - the central dispatcher between
+//! input, demo recording/playback, map loading, player command building, and
+//! game-tick advancement. It owns the deferred-action state machine
+//! ([`gameaction`]) that `G_Ticker` drains every tic, the [`gamestate`]
+//! enumeration (`GS_LEVEL`, `GS_INTERMISSION`, `GS_FINALE`, `GS_DEMOSCREEN`),
+//! and the per-player slot tables consumed throughout the engine.
+//!
+//! Key responsibilities exposed by this module:
+//!
+//! * `G_BuildTiccmd` - converts raw input events into a [`TiccmdT`] for one
+//!   tic (1/35 second). Performs mouse/joystick scaling, two-stage
+//!   accelerative turning, weapon cycling and low-resolution turn rounding.
+//! * `G_Ticker` - the per-tic dispatcher. Drains pending `gameaction` work
+//!   first, then routes per-player ticcmds, applies special buttons
+//!   (pause/save), and advances the active sub-state via `P_Ticker`,
+//!   `WI_Ticker`, `F_Ticker` or `D_PageTicker`.
+//! * `G_Responder` - handles `event_t` input (key/mouse/joystick) during
+//!   gameplay and demo screens. Owns the spy-mode toggle, weapon cycling
+//!   hotkeys, pause request and menu pop-up logic.
+//! * Demo I/O - `G_RecordDemo`, `G_BeginRecording`, `G_WriteDemoTiccmd`,
+//!   `G_ReadDemoTiccmd`, `G_PlayDemo`, `G_DeferedPlayDemo`, `G_DoPlayDemo`,
+//!   `G_TimeDemo` and `G_CheckDemoStatus` - record and play back `.lmp` demo
+//!   files. The byte layout matches vanilla Doom exactly (4 bytes per tic
+//!   non-longtics, 5 bytes per tic longtics) so demos remain bit-compatible
+//!   with the original DOS engine.
+//! * Save/Load - `G_SaveGame`, `G_LoadGame`, `G_DoSaveGame`, `G_DoLoadGame`
+//!   serialise the entire game state through `p_saveg`.
+//! * Game initialisation - `G_DeferedInitNew`, `G_DoNewGame`, `G_InitNew` and
+//!   `G_DoLoadLevel` configure skill, episode, map and sky texture, then
+//!   trigger map setup.
+//!
+//! Net/demo consistency is maintained via the `consistancy[]` table and the
+//! [`rndindex`] cookie tracked by `m_random`; a mismatch raises `I_Error`.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -28,107 +60,169 @@ use crate::doom::wi_stuff::{wbplayerstruct_t, wbstartstruct_t};
 // Types
 // ---------------------------------------------------------------------------
 
+/// Vanilla Doom `boolean`, matching the C `int` truthy/falsy convention.
 type boolean = c_int;
+/// Vanilla Doom `byte` (unsigned 8-bit).
 type byte = u8;
+/// Vanilla Doom `skill_t` enum stored as `int` (sk_baby=0 .. sk_nightmare=4).
 type skill_t = c_int;
+/// Vanilla Doom 16.16 fixed-point type (`int`, with 16 fractional bits).
 type fixed_t = c_int;
+/// Platform `long`, used here for the savegame size limit.
 type c_long = libc::c_long;
 
 // ---------------------------------------------------------------------------
 // Game-state constants (from doomstat.h)
 // ---------------------------------------------------------------------------
 
+/// `GS_LEVEL` - actively playing a map; `P_Ticker` advances world simulation.
 const GS_LEVEL: c_int = 0;
+/// `GS_INTERMISSION` - between-level statistics screen driven by `WI_Ticker`.
 const GS_INTERMISSION: c_int = 1;
+/// `GS_FINALE` - end-of-episode text crawl / cast call, driven by `F_Ticker`.
 const GS_FINALE: c_int = 2;
+/// `GS_DEMOSCREEN` - title/credits/demo cycle, driven by `D_PageTicker`.
 const GS_DEMOSCREEN: c_int = 3;
 
 // ---------------------------------------------------------------------------
 // Game-action constants (from doomstat.h)
 // ---------------------------------------------------------------------------
 
+/// No deferred action pending; `G_Ticker` falls through to normal state.
 const ga_nothing: c_int = 0;
+/// Defer a level (re)load via `G_DoLoadLevel`.
 const ga_loadlevel: c_int = 1;
+/// Defer a new game start via `G_DoNewGame`.
 const ga_newgame: c_int = 2;
+/// Defer a savegame load via `G_DoLoadGame`.
 const ga_loadgame: c_int = 3;
+/// Defer a savegame write via `G_DoSaveGame`.
 const ga_savegame: c_int = 4;
+/// Defer demo playback via `G_DoPlayDemo`.
 const ga_playdemo: c_int = 5;
+/// Defer the end-of-level transition via `G_DoCompleted`.
 const ga_completed: c_int = 6;
+/// Defer the end-of-game finale via `F_StartFinale`.
 const ga_victory: c_int = 7;
+/// Defer the intermission-to-next-level transition via `G_DoWorldDone`.
 const ga_worlddone: c_int = 8;
+/// Defer a screenshot grab via `V_ScreenShot`.
 const ga_screenshot: c_int = 9;
 
 // ---------------------------------------------------------------------------
 // Player state constants (from d_player.h)
 // ---------------------------------------------------------------------------
 
+/// `PST_LIVE` - player is alive and active.
 const PST_LIVE: c_int = 0;
+/// `PST_DEAD` - player is dead, awaiting respawn input.
 const PST_DEAD: c_int = 1;
+/// `PST_REBORN` - player should be respawned on the next tick.
 const PST_REBORN: c_int = 2;
 
 // ---------------------------------------------------------------------------
 // Weapon constants (from doomdef.h)
 // ---------------------------------------------------------------------------
 
+/// `wp_fist` weapon index (slot 1).
 const wp_fist: c_int = 0;
+/// `wp_pistol` weapon index (slot 2).
 const wp_pistol: c_int = 1;
+/// `wp_chainsaw` weapon index (also slot 1).
 const wp_chainsaw: c_int = 7;
+/// `wp_supershotgun` weapon index (Doom II only, also slot 3).
 const wp_supershotgun: c_int = 8;
+/// `wp_plasma` weapon index (slot 6).
 const wp_plasma: c_int = 5;
+/// `wp_bfg` weapon index (slot 7).
 const wp_bfg: c_int = 6;
+/// `wp_nochange` sentinel - pending weapon means "keep current".
 const wp_nochange: c_int = 9;
 
 // ---------------------------------------------------------------------------
 // Power types (from doomdef.h)
 // ---------------------------------------------------------------------------
 
+/// `pw_strength` index into `players[].powers` - berserk pack timer.
 const pw_strength: usize = 1;
 
 // ---------------------------------------------------------------------------
 // Button constants (from d_event.h)
 // ---------------------------------------------------------------------------
 
+/// `BT_ATTACK` ticcmd button bit - fire weapon.
 const BT_ATTACK: u8 = 1;
+/// `BT_USE` ticcmd button bit - activate door / switch.
 const BT_USE: u8 = 2;
+/// `BT_CHANGE` ticcmd button bit - request weapon change.
 const BT_CHANGE: u8 = 4;
+/// Mask used to extract the weapon-change index encoded in `buttons`.
 const BT_WEAPONMASK: u8 = 8 + 16 + 32;
+/// Left shift for encoding the weapon-change index into `buttons`.
 const BT_WEAPONSHIFT: u8 = 3;
+/// `BT_SPECIAL` flag - the ticcmd carries a pause/save/load request.
 const BT_SPECIAL: u8 = 128;
+/// Mask used to decode the special-button kind after `BT_SPECIAL`.
 const BT_SPECIALMASK: u8 = 3;
+/// Special-button value for "pause toggle".
 const BTS_PAUSE: u8 = 1;
+/// Special-button value for "savegame".
 const BTS_SAVEGAME: u8 = 2;
+/// Mask for the savegame-slot field carried by a `BTS_SAVEGAME` request.
 const BTS_SAVEMASK: u8 = 4 + 8 + 16;
+/// Left shift for the savegame-slot field carried by `BTS_SAVEGAME`.
 const BTS_SAVESHIFT: u8 = 2;
 
 // ---------------------------------------------------------------------------
 // Miscellaneous constants
 // ---------------------------------------------------------------------------
 
+/// Size of the `gamekeydown` keystate array - maximum supported key codes.
 const NUMKEYS: usize = 256;
+/// Maximum number of mouse buttons recognised by the engine.
 const MAX_MOUSE_BUTTONS: usize = 8;
+/// Maximum number of joystick buttons recognised by the engine.
 const MAX_JOY_BUTTONS: usize = 20;
+/// Vanilla Doom savegame size cap (bytes); enforced when `vanilla_savegame_limit` is set.
 const SAVEGAMESIZE: c_long = 0x2c000;
+/// End-of-stream sentinel byte written at the tail of every demo `.lmp`.
 const DEMOMARKER: byte = 0x80;
+/// Size of the version-text field in some legacy savegame headers.
 const VERSIONSIZE: usize = 16;
+/// Ammo-type index for the clip (bullets) ammo class.
 const am_clip: usize = 0;
+/// `MT_TFOG` mobj type index - teleport fog spawned at player respawn spots.
 const MT_TFOG: c_int = 28;
 
-// Initial player values when no DEH patch is applied.
+/// Default starting health (100); patched by Dehacked in vanilla.
 const DEH_INITIAL_HEALTH: c_int = 100;
+/// Default starting bullet count (50); patched by Dehacked in vanilla.
 const DEH_INITIAL_BULLETS: c_int = 50;
 
-// event_t from d_event.rs
+/// Re-export of [`event_t`] from `d_event.rs` for input handling.
 use crate::doom::d_event::event_t;
 
 // ---------------------------------------------------------------------------
 // Weapon ordering table (for prev/next weapon cycling)
 // ---------------------------------------------------------------------------
 
+/// One entry of the prev/next weapon cycling table.
+///
+/// `weapon` is the concrete weapon checked for availability; `weapon_num` is
+/// the slot index ultimately emitted in the ticcmd (e.g. both fist and
+/// chainsaw cycle to slot 1, both shotgun and supershotgun to slot 3).
 struct WeaponOrder {
+    /// Concrete weapon identifier (`wp_*`) used for selectability tests.
     weapon: c_int,
+    /// Slot number (1-8) encoded into the `BT_CHANGE` ticcmd field.
     weapon_num: c_int,
 }
 
+/// Cyclic ordering of weapons used by next/previous-weapon hotkeys.
+///
+/// Mirrors `weapon_order_table[]` in `g_game.c`. The order determines the
+/// scan direction: indices 0..=8 are walked clockwise (forward direction)
+/// or counter-clockwise (back), skipping unavailable weapons.
 static WEAPON_ORDER_TABLE: [WeaponOrder; 9] = [
     WeaponOrder {
         weapon: wp_fist,
@@ -173,130 +267,212 @@ static WEAPON_ORDER_TABLE: [WeaponOrder; 9] = [
 // `extern "C"` declarations (the same pattern used throughout this codebase).
 // ---------------------------------------------------------------------------
 
-/// Gamestate the last time G_Ticker was called.
+/// Value of `gamestate` from the previous `G_Ticker` invocation, used to
+/// detect transitions (e.g. dismissing the intermission screen).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut oldgamestate: c_int = GS_DEMOSCREEN;
 
+/// Deferred game action queue (`ga_*`); drained at the top of `G_Ticker`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut gameaction: c_int = ga_nothing;
 
+/// Active gameplay state machine slot (`GS_LEVEL`/`GS_INTERMISSION`/...).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut gamestate: c_int = GS_DEMOSCREEN;
 
+/// Currently selected skill level (`sk_baby` .. `sk_nightmare`).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut gameskill: c_int = 0;
 
+/// Non-zero when monsters respawn (nightmare skill or `-respawn` parm).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut respawnmonsters: boolean = 0;
 
+/// Currently loaded episode number (1-based; 1-3 for Doom, up to 4 with Ultimate).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut gameepisode: c_int = 0;
 
+/// Currently loaded map number (1-based; 1-9 in Doom, 1-32 in Doom II).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut gamemap: c_int = 0;
 
 /// If non-zero, exit the level after this number of minutes.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut timelimit: c_int = 0;
 
+/// Non-zero while gameplay is paused (sound is paused, ticker suspended).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut paused: boolean = 0;
 
+/// One-tic flag requesting a pause-toggle ticcmd from `G_BuildTiccmd`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut sendpause: boolean = 0;
 
+/// One-tic flag requesting a savegame ticcmd from `G_BuildTiccmd`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut sendsave: boolean = 0;
 
+/// Non-zero while a user-controlled game is in progress (vs demo / title).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut usergame: boolean = 0;
 
+/// Set by `-timedemo`; on demo end prints fps stats via `I_Error`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut timingdemo: boolean = 0;
 
+/// Set by `-nodraw`; disables rendering for benchmarking purposes.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut nodrawers: boolean = 0;
 
+/// `I_GetTime()` value captured when a timed demo started.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut starttime: c_int = 0;
 
+/// Non-zero while the 3D view is being rendered (false during intermission).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut viewactive: boolean = 0;
 
+/// Deathmatch mode (`0`=co-op, `1`=DM, `2`=DM2 / altdeath).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut deathmatch: c_int = 0;
 
+/// Non-zero in a networked game (changes consistency-check behaviour).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut netgame: boolean = 0;
 
+/// Per-slot presence flag for the four player slots (`MAXPLAYERS = 4`).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut playeringame: [boolean; MAXPLAYERS] = [0; MAXPLAYERS];
 
+/// Player state slots (inventory, position, view angle, etc.).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut players: [PlayerT; MAXPLAYERS] = unsafe { std::mem::zeroed() };
 
+/// Per-player "turbo" detection latch consumed by `G_Ticker`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut turbodetected: [boolean; MAXPLAYERS] = [0; MAXPLAYERS];
 
+/// Index of the local player receiving input events.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut consoleplayer: c_int = 0;
 
+/// Index of the player whose first-person view is being drawn (spy mode).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut displayplayer: c_int = 0;
 
+/// `gametic` value captured when the current level was loaded.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut levelstarttic: c_int = 0;
 
+/// Sum of monster kills across all players for the current level.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut totalkills: c_int = 0;
 
+/// Sum of item pickups across all players for the current level.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut totalitems: c_int = 0;
 
+/// Sum of secret-sector finds across all players for the current level.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut totalsecret: c_int = 0;
 
+/// File name of the demo currently being recorded (Z_Malloc'd).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut demoname: *mut c_char = ptr::null_mut();
 
+/// Non-zero while a `.lmp` demo is being written from input.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut demorecording: boolean = 0;
 
-/// cph's doom 1.91 longtics hack
+/// cph's Doom 1.91 longtics hack - encodes angleturn in 2 bytes per tic
+/// instead of 1, enabling smooth high-res turning in demos.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut longtics: boolean = 0;
 
-/// low resolution turning for longtics
+/// Round per-tic angleturn to the nearest 256 BAM when recording vanilla
+/// (non-longtics) demos so the 1-byte demo angleturn replays accurately.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut lowres_turn: boolean = 0;
 
+/// Non-zero while a `.lmp` demo is being played back.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut demoplayback: boolean = 0;
 
+/// Non-zero when the active demo was recorded in a networked session.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut netdemo: boolean = 0;
 
+/// Base pointer to the current demo I/O buffer (Z_Malloc'd).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut demobuffer: *mut byte = ptr::null_mut();
 
+/// Read/write cursor within `demobuffer`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut demo_p: *mut byte = ptr::null_mut();
 
+/// One-past-the-end pointer for `demobuffer`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut demoend: *mut byte = ptr::null_mut();
 
+/// Non-zero when launched with `-playdemo`; quits after the demo ends.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut singledemo: boolean = 0;
 
+/// Non-zero (default) to precache all level graphics during map load.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut precache: boolean = 1; // true by default
 
+/// Non-zero while invoked from the setup utility's "test controls" mode.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut testcontrols: boolean = 0;
 
+/// Low-pass-filtered mouse speed displayed by the test-controls thermometer.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut testcontrols_mousespeed: c_int = 0;
 
+/// Parameters for the world-map / intermission screen, populated by
+/// `G_DoCompleted` before transitioning to `GS_INTERMISSION`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut wminfo: wbstartstruct_t = wbstartstruct_t {
     epsd: 0,
@@ -320,48 +496,76 @@ pub static mut wminfo: wbstartstruct_t = wbstartstruct_t {
     }; MAXPLAYERS],
 };
 
+/// Net consistency check ring: `consistancy[player][gametic/ticdup % BACKUPTICS]`.
+/// A mismatch on a remote command triggers `I_Error("consistency failure ...")`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut consistancy: [[byte; 128]; MAXPLAYERS] = [[0; 128]; MAXPLAYERS];
 
+/// Index into `bodyque` for the next corpse to add (modulo 32).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut bodyqueslot: c_int = 0;
 
+/// Non-zero enforces the vanilla `SAVEGAMESIZE` cap (`I_Error` on overrun).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut vanilla_savegame_limit: c_int = 1;
 
+/// Non-zero enforces the vanilla demo buffer cap; zero auto-grows it.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut vanilla_demo_limit: c_int = 1;
 
-/// Forward-movement speed table: [slow=0x19, fast=0x32] (fixed_t per tic).
+/// Forward-movement speed table: `[slow=0x19, fast=0x32]` (`fixed_t` per tic).
+/// Indexed by the `speed` flag computed in `G_BuildTiccmd`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut forwardmove: [fixed_t; 2] = [0x19, 0x32];
 
-/// Lateral strafe speed table: [slow=0x18, fast=0x28] (fixed_t per tic).
+/// Lateral strafe speed table: `[slow=0x18, fast=0x28]` (`fixed_t` per tic).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut sidemove: [fixed_t; 2] = [0x18, 0x28];
 
-/// Turn-speed table: [normal=640, fast=1280, slow=320] (BAM units per tic).
+/// Turn-speed table: `[normal=640, fast=1280, slow=320]` (BAM units per tic).
+/// The "slow" entry is selected for the first `SLOWTURNTICS` (6) of held input.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut angleturn: [fixed_t; 3] = [640, 1280, 320];
 
+/// Non-zero when the next level transition should route through the secret
+/// exit (set by `G_SecretExitLevel`).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut secretexit: boolean = 0;
 
+/// File name of the demo deferred for playback (set by `G_DeferedPlayDemo`).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut defdemoname: *mut c_char = ptr::null_mut();
 
+/// File name buffer for the savegame currently being loaded.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut savename: [c_char; 256] = [0; 256];
 
-/// Deferred G_DeferedInitNew parameters.
+/// Deferred `G_DeferedInitNew` parameter: skill level.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut d_skill: skill_t = 0;
+/// Deferred `G_DeferedInitNew` parameter: episode.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut d_episode: c_int = 0;
+/// Deferred `G_DeferedInitNew` parameter: map number.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut d_map: c_int = 0;
 
-/// Doom episode par times (episodes 1-3, maps 1-9).
+/// Doom episode par times (episodes 1-3, maps 1-9), in seconds.
+/// Index `[0]` and `[*][0]` are dummies to keep the table 1-based.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut pars: [[c_int; 10]; 4] = [
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -370,14 +574,17 @@ pub static mut pars: [[c_int; 10]; 4] = [
     [0, 90, 45, 90, 150, 90, 90, 165, 30, 135],
 ];
 
-/// Doom II par times (maps 1-32).
+/// Doom II par times (maps 1-32), in seconds. Index `[0]` is map 1.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut cpars: [c_int; 32] = [
     30, 90, 120, 120, 90, 150, 120, 120, 270, 90, 210, 150, 150, 150, 210, 150, 420, 150, 210, 150,
     240, 150, 180, 150, 150, 300, 330, 420, 300, 180, 120, 30,
 ];
 
-/// Circular queue of player corpse pointers.
+/// Circular queue of `BODYQUESIZE=32` recent player corpses; the oldest is
+/// removed when the queue wraps (see `G_CheckSpot`).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut bodyque: [*mut mobj_t; 32] = [ptr::null_mut(); 32];
 
@@ -385,39 +592,57 @@ pub static mut bodyque: [*mut mobj_t; 32] = [ptr::null_mut(); 32];
 // Module-private statics
 // ---------------------------------------------------------------------------
 
+/// Per-key "is held down" flags, indexed by Doom key code.
 static mut GAMEKEYDOWN: [boolean; NUMKEYS] = [0; NUMKEYS];
+/// Tics that turn input has been held; drives two-stage accelerative turning.
 static mut TURNHELD: c_int = 0;
 
+/// Mouse button held-down flags (slot 0 unused to allow `[-1]` indexing).
 static mut MOUSEARRAY: [boolean; MAX_MOUSE_BUTTONS + 1] = [0; MAX_MOUSE_BUTTONS + 1];
 // mousebuttons is &mousearray[1] in C — negative indexing; access via MOUSEARRAY[1+n]
+/// Most recent raw mouse delta on the X axis (cleared each tic by `G_BuildTiccmd`).
 static mut MOUSEX: c_int = 0;
+/// Most recent raw mouse delta on the Y axis (cleared each tic by `G_BuildTiccmd`).
 static mut MOUSEY: c_int = 0;
 
+/// Tics since the last forward-mouse click for double-click-as-use detection.
 static mut DCLICKTIME: c_int = 0;
+/// Last sampled state of the mousebforward button for double-click detection.
 static mut DCLICKSTATE: boolean = 0;
+/// Click count toward a forward-mouse double-click (2 triggers `BT_USE`).
 static mut DCLICKS: c_int = 0;
+/// Tics since the last strafe-button click for double-click detection.
 static mut DCLICKTIME2: c_int = 0;
+/// Last sampled state of the strafe button for double-click detection.
 static mut DCLICKSTATE2: boolean = 0;
+/// Click count toward a strafe-button double-click (2 triggers `BT_USE`).
 static mut DCLICKS2: c_int = 0;
 
+/// Most recent joystick X (turn / strafe) axis value.
 static mut JOYXMOVE: c_int = 0;
+/// Most recent joystick Y (forward / back) axis value.
 static mut JOYYMOVE: c_int = 0;
+/// Most recent joystick strafe axis value.
 static mut JOYSTRAFEMOVE: c_int = 0;
+/// Joystick button held-down flags (slot 0 unused to allow `[-1]` indexing).
 static mut JOYARRAY: [boolean; MAX_JOY_BUTTONS + 1] = [0; MAX_JOY_BUTTONS + 1];
 // joybuttons is &joyarray[1] in C — negative indexing; access via JOYARRAY[1+n]
 
+/// Selected savegame slot for the next save (set by `G_SaveGame`).
 static mut SAVEGAMESLOT: c_int = 0;
+/// Description text for the next savegame (set by `G_SaveGame`).
 static mut SAVEDESCRIPTION: [c_char; 32] = [0; 32];
 
+/// Pending weapon-cycle direction: `-1` previous, `+1` next, `0` none.
 static mut NEXT_WEAPON: c_int = 0;
 
-/// Carry for low-resolution turn rounding (static local in G_BuildTiccmd).
+/// Carry for low-resolution turn rounding (static local in `G_BuildTiccmd`).
 static mut LOWRES_TURN_CARRY: i16 = 0;
 
-/// Buffer for turbo-cheat message (static local in G_Ticker).
+/// Buffer for turbo-cheat message (static local in `G_Ticker`).
 static mut TURBOMESSAGE: [c_char; 80] = [0; 80];
 
-/// Buffer for DemoVersionDescription (static local in G_DoPlayDemo).
+/// Buffer for `DemoVersionDescription` (static local in `G_DoPlayDemo`).
 static mut DEMOVERSIONBUF: [c_char; 16] = [0; 16];
 
 // ---------------------------------------------------------------------------
@@ -425,29 +650,35 @@ static mut DEMOVERSIONBUF: [c_char; 16] = [0; 16];
 // ---------------------------------------------------------------------------
 
 extern "C" {
-    // libc
+    /// libc `snprintf` - variadic; only the buffer-pointer / length form is
+    /// actually invoked from this module (turbo banner and demo-version text).
     fn snprintf(buf: *mut c_char, len: usize, fmt: *const c_char, ...) -> c_int;
 
-    // i_system.rs — keep as variadic extern because call sites pass format args
+    /// Engine-wide fatal error from `i_system.c`. Kept variadic because call
+    /// sites pass `printf`-style format arguments.
     fn I_Error(format: *const c_char, ...) -> !;
+    /// Engine-wide clean shutdown from `i_system.c` (used by single demos).
     fn I_Quit() -> !;
 }
 
-// d_loop.rs
+/// `gametic` is the global engine tic counter; `ticdup` is the demo dup factor.
+/// Both originate from `d_loop.c`.
 use crate::doom::d_loop::{gametic, ticdup};
 
-// d_main.rs
+/// Command-line `-fast`, `-nomonsters`, `-respawn` toggles, the wipe-state
+/// latch, demo advancement, and the title-screen page ticker from `d_main.c`.
 use crate::doom::d_main::{
     fastparm, nomonsters, respawnparm, wipegamestate, D_AdvanceDemo, D_PageTicker,
 };
 
-// am_map.rs
+/// Automap toggle, responder, stop hook and ticker from `am_map.c`.
 use crate::doom::am_map::{automapactive, AM_Responder, AM_Stop, AM_Ticker};
 
-// d_net.rs
+/// Per-player command buffer ring from `d_net.c`.
 use crate::doom::d_net::netcmds;
 
-// p_saveg.rs
+/// Savegame I/O primitives (header read/write, world/thinker/specials
+/// archive/unarchive, file-path helpers) from `p_saveg.c`.
 use crate::doom::p_saveg::{
     save_stream, savegame_error, P_ArchivePlayers, P_ArchiveSpecials, P_ArchiveThinkers,
     P_ArchiveWorld, P_ReadSaveGameEOF, P_ReadSaveGameHeader, P_SaveGameFile, P_TempSaveGameFile,
@@ -455,73 +686,76 @@ use crate::doom::p_saveg::{
     P_WriteSaveGameEOF, P_WriteSaveGameHeader,
 };
 
-// p_setup.rs
+/// Top-level map loader from `p_setup.c`.
 use crate::doom::p_setup::P_SetupLevel;
 
-// p_mobj.rs
+/// Mobj lifecycle and spawn helpers from `p_mobj.c`.
 use crate::doom::p_mobj::{P_RemoveMobj, P_SpawnMobj, P_SpawnPlayer};
 
-// p_map.rs
+/// Movement collision check used to validate respawn spots from `p_map.c`.
 use crate::doom::p_map::P_CheckPosition;
 
-// r_main.rs
+/// 3D view sizing helpers and point-to-subsector lookup from `r_main.c`.
 use crate::doom::r_main::{setsizeneeded, R_ExecuteSetViewSize, R_PointInSubsector};
 
-// r_data.rs
+/// Texture/flat name resolution from `r_data.c`.
 use crate::doom::r_data::{R_FlatNumForName, R_TextureNumForName};
 
-// r_sky.rs
+/// Sky-flat index and active sky texture id from `r_sky.c`.
 use crate::doom::r_sky::{skyflatnum, skytexture};
 
-// r_draw.rs
+/// Status-bar back-screen painter from `r_draw.c`.
 use crate::doom::r_draw::R_FillBackScreen;
 
-// z_zone.rs
+/// Zone-allocator heap check and (de)allocation primitives from `z_zone.c`.
 use crate::doom::z_zone::{Z_CheckHeap, Z_Free, Z_Malloc};
 
-// p_tick.rs
+/// `leveltime` counter (tics since level start) and thinker tick driver from
+/// `p_tick.c`.
 use crate::doom::p_tick::{leveltime, P_Ticker};
 
-// st_stuff.rs
+/// Status-bar event responder and ticker from `st_stuff.c`.
 use crate::doom::st_stuff::{ST_Responder, ST_Ticker};
 
-// hu_stuff.rs
+/// HUD chat / message primitives and player-name table from `hu_stuff.c`.
 use crate::doom::hu_stuff::{player_names, HU_Responder, HU_Ticker, HU_dequeueChatChar};
 
-// wi_stuff.rs
+/// Intermission start/end/tick hooks from `wi_stuff.c`.
 use crate::doom::wi_stuff::{WI_End, WI_Start, WI_Ticker};
 
-// f_finale.rs
+/// Finale (text crawl / cast call) responder, starter and ticker from `f_finale.c`.
 use crate::doom::f_finale::{F_Responder, F_StartFinale, F_Ticker};
 
-// s_sound.rs
+/// Sound channel pause/resume and one-shot sfx start from `s_sound.c`.
 use crate::doom::s_sound::{S_PauseSound, S_ResumeSound, S_StartSound};
 
-// m_menu.rs
+/// Mouse-sensitivity slider and main-menu opener from `m_menu.c`.
 use crate::doom::m_menu::{mouseSensitivity, M_StartControlPanel};
 
-// m_misc.rs
+/// String / file / formatted-print utilities from `m_misc.c`.
 use crate::doom::m_misc::{M_StringCopy, M_TempFile, M_WriteFile, M_snprintf_clamp};
 
-// m_argv.rs
+/// Command-line argument table and lookup helpers from `m_argv.c`.
 use crate::doom::m_argv::{myargv, M_CheckParm, M_CheckParmWithArgs};
 
-// m_random.rs
+/// `rndindex` consistency-check cookie and seed reset from `m_random.c`.
 use crate::doom::m_random::{rndindex, M_ClearRandom};
 
-// statdump.rs
+/// Statistics-dump hook used after a level completes, from `statdump.c`.
 use crate::doom::statdump::StatCopy;
 
-// v_video.rs
+/// Screenshot grabber from `v_video.c`.
 use crate::doom::v_video::V_ScreenShot;
 
-// i_timer.rs
+/// Realtime tick counter from `i_timer.c`.
 use crate::doom::i_timer::I_GetTime;
 
-// w_wad.rs
+/// WAD lump cache / release / lookup primitives from `w_wad.c`.
 use crate::doom::w_wad::{W_CacheLumpName, W_CheckNumForName, W_ReleaseLumpName};
 
-// m_controls.rs
+/// Configurable key, joystick and mouse button bindings from `m_controls.c`.
+/// Imported in bulk because `G_BuildTiccmd` and `G_Responder` interrogate
+/// almost every binding to assemble each tic's command.
 use crate::doom::m_controls::{
     dclick_use, joybfire, joybnextweapon, joybprevweapon, joybspeed, joybstrafe, joybstrafeleft,
     joybstraferight, joybuse, key_demo_quit, key_down, key_fire, key_left, key_nextweapon,
@@ -532,12 +766,23 @@ use crate::doom::m_controls::{
     mousebuse,
 };
 
+/// `PU_STATIC` Z_Malloc purge tag used for the demo buffer and demo filename.
 use crate::doom::z_zone::PU_STATIC;
 
 // ---------------------------------------------------------------------------
 // DEH_String identity (no dehacked support)
 // ---------------------------------------------------------------------------
 
+/// Stand-in for the Dehacked string-substitution macro from `deh_str.h`.
+///
+/// This port does not implement Dehacked patches, so the lookup is the
+/// identity function. Kept as a wrapper to make the original C call sites
+/// translate cleanly and to leave a single seam where Dehacked support could
+/// later be added.
+///
+/// # Safety
+/// Caller must ensure `s` is a valid NUL-terminated C string for the
+/// lifetime of the returned pointer.
 #[inline]
 unsafe fn DEH_String(s: *const c_char) -> *const c_char {
     s
@@ -547,6 +792,15 @@ unsafe fn DEH_String(s: *const c_char) -> *const c_char {
 // logical_gamemission helper (mirrors doomstat.h macro)
 // ---------------------------------------------------------------------------
 
+/// Mirror of the `logical_gamemission` macro from `doomstat.h`.
+///
+/// Collapses the TNT/Plutonia mission types onto plain `doom2`, since they
+/// share the Doom II ruleset; called by `weapon_selectable` to avoid
+/// branching on every Doom II variant individually.
+///
+/// # Safety
+/// Reads the `gamemission` global; safe as long as the caller respects the
+/// single-threaded engine convention.
 #[inline]
 unsafe fn logical_gamemission() -> c_int {
     use crate::doom::d_mode::{doom2, pack_plut, pack_tnt};
@@ -563,6 +817,18 @@ unsafe fn logical_gamemission() -> c_int {
 //  allowing negative index -1 meaning "no button".)
 // ---------------------------------------------------------------------------
 
+/// Read a mouse button state by C-style "may be `-1`" index.
+///
+/// Vanilla Doom stores mouse buttons in `mousearray[MAX_MOUSE_BUTTONS+1]`
+/// with `mousebuttons = &mousearray[1]`, so `mousebuttons[-1]` is a legal
+/// "no button bound" sentinel that always reads false. This helper restores
+/// the same behaviour without aliasing.
+///
+/// Returns `0` for `n < 0` or `n >= MAX_MOUSE_BUTTONS`, otherwise the
+/// currently latched state of mouse button `n`.
+///
+/// # Safety
+/// Reads the `MOUSEARRAY` global; safe under the single-threaded contract.
 #[inline]
 unsafe fn mousebutton(n: c_int) -> boolean {
     if n < 0 || n >= MAX_MOUSE_BUTTONS as c_int {
@@ -571,6 +837,10 @@ unsafe fn mousebutton(n: c_int) -> boolean {
     MOUSEARRAY[(n + 1) as usize]
 }
 
+/// Joystick equivalent of [`mousebutton`]; same `-1`-as-unbound semantics.
+///
+/// # Safety
+/// Reads the `JOYARRAY` global; safe under the single-threaded contract.
 #[inline]
 unsafe fn joybutton(n: c_int) -> boolean {
     if n < 0 || n >= MAX_JOY_BUTTONS as c_int {
@@ -583,6 +853,17 @@ unsafe fn joybutton(n: c_int) -> boolean {
 // G_CmdChecksum
 // ---------------------------------------------------------------------------
 
+/// Compute a checksum over the first `sizeof(ticcmd_t)/4 - 1` 4-byte words
+/// of `cmd` using wrapping integer addition.
+///
+/// Vanilla Doom uses this checksum for netgame and demo-validation purposes.
+/// The final word is excluded so that fields stored at the tail of the
+/// struct (e.g. inventory padding) do not affect compatibility.
+///
+/// # Safety
+/// `cmd` must point to a fully-initialised `TiccmdT` with at least
+/// `sizeof::<TiccmdT>()` valid bytes; reads through the pointer as a raw
+/// `c_int` array. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_CmdChecksum(cmd: *const TiccmdT) -> c_int {
     let n = std::mem::size_of::<TiccmdT>() / 4 - 1;
@@ -598,6 +879,18 @@ pub unsafe extern "C" fn G_CmdChecksum(cmd: *const TiccmdT) -> c_int {
 // WeaponSelectable (static)
 // ---------------------------------------------------------------------------
 
+/// Decide whether `weapon` is eligible for selection by the prev/next
+/// weapon cycler.
+///
+/// Mirrors `WeaponSelectable` in `g_game.c`. Returns `false` when the
+/// weapon is unavailable in the current `gamemission` / `gamemode` (e.g.
+/// supershotgun in Doom 1, plasma/BFG in shareware), when the console
+/// player does not own it, or when it is the fist while the chainsaw is
+/// owned without an active berserk power.
+///
+/// # Safety
+/// Reads several engine globals (`gamemission`, `gamemode`, `players`,
+/// `consoleplayer`); safe under the single-threaded engine convention.
 unsafe fn weapon_selectable(weapon: c_int) -> bool {
     // Can't select supershotgun in Doom 1.
     if weapon == wp_supershotgun && logical_gamemission() == doom {
@@ -625,6 +918,19 @@ unsafe fn weapon_selectable(weapon: c_int) -> bool {
 // G_NextWeapon (static)
 // ---------------------------------------------------------------------------
 
+/// Walk [`WEAPON_ORDER_TABLE`] from the player's current weapon and return
+/// the slot number to switch to.
+///
+/// `direction` is `+1` for "next weapon" or `-1` for "previous weapon". The
+/// search wraps and stops on the first selectable entry; if none are
+/// selectable it returns the slot for the player's current weapon (the
+/// `i == start_i` guard prevents an infinite loop).
+///
+/// Mirrors `G_NextWeapon` in `g_game.c`.
+///
+/// # Safety
+/// Reads `players[consoleplayer]` and `WEAPON_ORDER_TABLE`; safe under the
+/// single-threaded engine convention.
 unsafe fn g_next_weapon(direction: c_int) -> c_int {
     let cp = consoleplayer as usize;
     let weapon = if players[cp].pendingweapon == wp_nochange {
@@ -657,6 +963,30 @@ unsafe fn g_next_weapon(direction: c_int) -> c_int {
 // G_BuildTiccmd
 // ---------------------------------------------------------------------------
 
+/// Assemble one tic's `TiccmdT` for the local console player from the latest
+/// input snapshot, and apply low-resolution turn rounding when recording a
+/// vanilla demo.
+///
+/// `maketic` is the tic number being built; it indexes the consistency-check
+/// ring buffer for the local player. Behaviour mirrors `G_BuildTiccmd` in
+/// `g_game.c` exactly:
+///
+/// * Forward / strafe / turn input from keys, joystick and mouse is summed
+///   with two-stage accelerative turning (first 6 tics use the "slow" turn
+///   table, beyond that the regular table or the speed-button "fast" table).
+/// * Mouse movement is added to `forward` directly and to either `side`
+///   (when strafing) or `angleturn` (otherwise) scaled by `mouseSensitivity`.
+/// * Weapon-cycle hotkeys are encoded into the `BT_CHANGE` field.
+/// * Mouse forward/strafe double-clicks synthesise `BT_USE` when
+///   `dclick_use` is on.
+/// * Pause and savegame requests are encoded into the `BT_SPECIAL` field.
+/// * When `lowres_turn` is set, `angleturn` is rounded to a 256-BAM boundary
+///   and the residual carried into the next tic (so successive small turns
+///   accumulate accurately in 1-byte-per-tic demos).
+///
+/// # Safety
+/// `cmd` must point to a writable `TiccmdT`; the entire struct is zeroed
+/// before assembly. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_BuildTiccmd(cmd: *mut TiccmdT, maketic: c_int) {
     use crate::doom::c_ffi::BACKUPTICS;
@@ -889,6 +1219,20 @@ pub unsafe extern "C" fn G_BuildTiccmd(cmd: *mut TiccmdT, maketic: c_int) {
 // G_DoLoadLevel
 // ---------------------------------------------------------------------------
 
+/// Execute the deferred `ga_loadlevel` action: load the current
+/// `gameepisode`/`gamemap`, reset per-player input state, force a wipe and
+/// transition into `GS_LEVEL`.
+///
+/// Also fixes up the Doom II / Final Doom / Chex sky textures (`SKY1`/`SKY2`
+/// /`SKY3` based on `gamemap`) and resets the input latches so movement
+/// keys held across the load do not produce phantom input.
+///
+/// Players in `PST_DEAD` are flipped to `PST_REBORN` so the per-player
+/// reborn loop in `G_Ticker` will respawn them.
+///
+/// # Safety
+/// Mutates many engine globals (`gamestate`, `wipegamestate`, `levelstarttic`,
+/// the input rings, the players array). Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_DoLoadLevel() {
     skyflatnum = R_FlatNumForName(DEH_String(c"F_SKY1".as_ptr()) as *mut c_char);
@@ -948,6 +1292,13 @@ pub unsafe extern "C" fn G_DoLoadLevel() {
 // SetJoyButtons / SetMouseButtons (static helpers)
 // ---------------------------------------------------------------------------
 
+/// Update the joystick button latch from a packed bitmask and detect
+/// rising edges of the prev/next weapon buttons, scheduling a weapon cycle
+/// in `NEXT_WEAPON` for the next `G_BuildTiccmd`.
+///
+/// # Safety
+/// Mutates `JOYARRAY` and `NEXT_WEAPON`; safe under the single-threaded
+/// engine convention.
 unsafe fn set_joy_buttons(buttons_mask: c_uint) {
     for i in 0..MAX_JOY_BUTTONS {
         let button_on = ((buttons_mask >> i) & 1) != 0;
@@ -962,6 +1313,12 @@ unsafe fn set_joy_buttons(buttons_mask: c_uint) {
     }
 }
 
+/// Mouse-button equivalent of [`set_joy_buttons`]: latches per-button state
+/// and arms a weapon-cycle on the rising edge of the bound mouse buttons.
+///
+/// # Safety
+/// Mutates `MOUSEARRAY` and `NEXT_WEAPON`; safe under the single-threaded
+/// engine convention.
 unsafe fn set_mouse_buttons(buttons_mask: c_uint) {
     for i in 0..MAX_MOUSE_BUTTONS {
         let button_on = ((buttons_mask >> i) & 1) != 0;
@@ -980,6 +1337,24 @@ unsafe fn set_mouse_buttons(buttons_mask: c_uint) {
 // G_Responder
 // ---------------------------------------------------------------------------
 
+/// Handle one input event during gameplay or the demo loop.
+///
+/// Returns non-zero ("event consumed") when the event was handled here and
+/// should not propagate further; zero lets later responders (menu, console)
+/// see it. Mirrors `G_Responder` in `g_game.c`:
+///
+/// * Spy-mode (`key_spy`) cycles `displayplayer` even during demo playback.
+/// * During the demo loop / playback, any key, mouse-click or joystick
+///   button press pops the main menu.
+/// * In `GS_LEVEL`, defers to HU / ST / AM responders in order.
+/// * In `GS_FINALE`, defers to `F_Responder`.
+/// * Otherwise routes by `event_t::type_`: keydown updates `GAMEKEYDOWN`
+///   (with `key_pause` setting `sendpause`), keyup clears it, mouse and
+///   joystick events latch axes and buttons.
+///
+/// # Safety
+/// Dereferences `ev` and mutates many static input globals; safe under the
+/// single-threaded engine convention. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_Responder(ev: *mut event_t) -> boolean {
     let ev = &*ev;
@@ -1087,6 +1462,29 @@ pub unsafe extern "C" fn G_Responder(ev: *mut event_t) -> boolean {
 // G_Ticker
 // ---------------------------------------------------------------------------
 
+/// Advance the gameplay state machine by exactly one tic (1/35 s).
+///
+/// The tic dispatches in three phases, in order:
+///
+/// 1. **Reborn pass** - every player in `PST_REBORN` is respawned via
+///    `G_DoReborn`.
+/// 2. **Gameaction drain** - the `gameaction` queue is processed until empty,
+///    dispatching to `G_DoLoadLevel`, `G_DoNewGame`, `G_DoLoadGame`,
+///    `G_DoSaveGame`, `G_DoPlayDemo`, `G_DoCompleted`, `F_StartFinale`,
+///    `G_DoWorldDone` or a screenshot grab.
+/// 3. **Per-player ticcmd pass** - net commands are copied into each player
+///    slot, demo I/O runs, turbo banners are emitted (every ~4 seconds,
+///    offset per player), and the consistency-check ring is updated when
+///    netgame / non-netdemo / `gametic % ticdup == 0`.
+///
+/// Special buttons (pause toggle, savegame request) are then decoded; finally
+/// the active state ticker runs - `P_Ticker` / `ST_Ticker` / `AM_Ticker` /
+/// `HU_Ticker` for `GS_LEVEL`, `WI_Ticker` for `GS_INTERMISSION`,
+/// `F_Ticker` for `GS_FINALE`, `D_PageTicker` for `GS_DEMOSCREEN`.
+///
+/// # Safety
+/// Mutates virtually every game-loop global; intended to be called at most
+/// once per tic from the engine main loop. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_Ticker() {
     use crate::doom::c_ffi::BACKUPTICS;
@@ -1239,6 +1637,15 @@ pub unsafe extern "C" fn G_Ticker() {
 // G_InitPlayer
 // ---------------------------------------------------------------------------
 
+/// Initialise a player slot to its default state at game start.
+///
+/// Currently a thin wrapper around [`G_PlayerReborn`] (which clears the
+/// slot and seeds it with starting health, weapons and ammo); kept as a
+/// distinct entry point because vanilla C code invokes it at startup time.
+///
+/// # Safety
+/// `player` must be a valid index into `players[]` (0..`MAXPLAYERS`).
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_InitPlayer(player: c_int) {
     G_PlayerReborn(player);
@@ -1248,6 +1655,17 @@ pub unsafe extern "C" fn G_InitPlayer(player: c_int) {
 // G_PlayerFinishLevel
 // ---------------------------------------------------------------------------
 
+/// Strip transient powerups, key cards and HUD effects from `player` when
+/// a level completes; keeps weapons, ammo and frags intact.
+///
+/// Clears `powers[]`, `cards[]`, the invisibility (`MF_SHADOW`) flag on the
+/// player's mobj, extra-light, fixed colormap, damage-flash and bonus-flash
+/// counters.
+///
+/// # Safety
+/// `player` must index a valid slot whose `mo` pointer is non-null (the
+/// caller is `G_DoCompleted`, which guarantees this). Exported as
+/// `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_PlayerFinishLevel(player: c_int) {
     let p = &mut players[player as usize];
@@ -1264,6 +1682,16 @@ pub unsafe extern "C" fn G_PlayerFinishLevel(player: c_int) {
 // G_PlayerReborn
 // ---------------------------------------------------------------------------
 
+/// Reset a player slot after death, preserving frags and kill/item/secret
+/// counters; everything else is zeroed and re-seeded with the vanilla
+/// starting inventory (fist + pistol, 50 bullets, `DEH_INITIAL_HEALTH`).
+///
+/// The `usedown`/`attackdown` latches are set so the player cannot
+/// immediately fire or activate switches on the first tic after respawn.
+///
+/// # Safety
+/// `player` must be a valid index into `players[]`. Exported as
+/// `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_PlayerReborn(player: c_int) {
     let idx = player as usize;
@@ -1299,6 +1727,23 @@ pub unsafe extern "C" fn G_PlayerReborn(player: c_int) {
 // G_CheckSpot
 // ---------------------------------------------------------------------------
 
+/// Test whether `playernum` can respawn at `mthing` (a `mapthing_t` spawn
+/// spot) and, if so, evict the oldest corpse and spawn a teleport-fog mobj.
+///
+/// Returns non-zero when the spot is usable. On the very first spawn of a
+/// level (before any player has a mobj) this only checks against earlier
+/// player spawn positions. Otherwise it calls `P_CheckPosition` to verify
+/// the spot is clear of monsters / players.
+///
+/// The teleport-fog placement mirrors the vanilla Doom bug carried in PrBoom+
+/// where the `an` angle index overflows into `finetangent[]` for spawns
+/// facing certain compass directions; the four special-case `an` values
+/// (4096, 5120, 6144, 7168) reproduce that table lookup exactly to keep
+/// demos compatible.
+///
+/// # Safety
+/// Dereferences `mthing`; reads and mutates the players / bodyque / corpse
+/// queue globals. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_CheckSpot(playernum: c_int, mthing: *mut mapthing_t) -> boolean {
     if players[playernum as usize].mo.is_null() {
@@ -1379,6 +1824,18 @@ pub unsafe extern "C" fn G_CheckSpot(playernum: c_int, mthing: *mut mapthing_t) 
 // G_DeathMatchSpawnPlayer
 // ---------------------------------------------------------------------------
 
+/// Spawn `playernum` at a random deathmatch start; falls back to the
+/// player's normal start spot after 20 failed attempts.
+///
+/// Requires at least 4 deathmatch starts on the map (vanilla limit); raises
+/// `I_Error` otherwise. The chosen start has its `type` temporarily
+/// rewritten to `playernum + 1` so `P_SpawnPlayer` treats it as the player's
+/// own spawn.
+///
+/// # Safety
+/// `playernum` must be in `0..MAXPLAYERS` and the level's deathmatch start
+/// table must already be populated by `P_SetupLevel`. Exported as
+/// `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_DeathMatchSpawnPlayer(playernum: c_int) {
     let selections = deathmatch_p.offset_from(std::ptr::addr_of!(deathmatchstarts[0])) as c_int;
@@ -1405,6 +1862,18 @@ pub unsafe extern "C" fn G_DeathMatchSpawnPlayer(playernum: c_int) {
 // G_DoReborn
 // ---------------------------------------------------------------------------
 
+/// Respawn `playernum` either by reloading the level (single-player) or
+/// by selecting a fresh spawn point (netgame).
+///
+/// In netgames the player's existing corpse is detached (`mo->player =
+/// NULL`), then deathmatch routes through `G_DeathMatchSpawnPlayer` and
+/// co-op tries the player's own start first before falling through to other
+/// players' starts (temporarily faking the `type` field so `P_SpawnPlayer`
+/// accepts them).
+///
+/// # Safety
+/// `playernum` must be a valid player index. Exported as `#[no_mangle]` for
+/// C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_DoReborn(playernum: c_int) {
     if netgame == 0 {
@@ -1455,6 +1924,11 @@ pub unsafe extern "C" fn G_DoReborn(playernum: c_int) {
 // G_ScreenShot
 // ---------------------------------------------------------------------------
 
+/// Defer a screenshot to the next `G_Ticker` pass via `gameaction =
+/// ga_screenshot`.
+///
+/// # Safety
+/// Writes the `gameaction` global. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_ScreenShot() {
     gameaction = ga_screenshot;
@@ -1464,12 +1938,27 @@ pub unsafe extern "C" fn G_ScreenShot() {
 // G_ExitLevel / G_SecretExitLevel
 // ---------------------------------------------------------------------------
 
+/// Request a normal end-of-level transition; clears `secretexit` so the
+/// next intermission picks the standard "next map" target.
+///
+/// # Safety
+/// Writes the `secretexit` and `gameaction` globals. Exported as
+/// `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_ExitLevel() {
     secretexit = 0;
     gameaction = ga_completed;
 }
 
+/// Request a secret-exit end-of-level transition.
+///
+/// On Doom II the secret exit only applies when MAP31 is actually present
+/// in the loaded WAD ("if no Wolf3D levels, no secret exit" - the German
+/// edition retail patch removed those maps).
+///
+/// # Safety
+/// Writes the `secretexit` and `gameaction` globals. Exported as
+/// `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_SecretExitLevel() {
     if gamemode == commercial && W_CheckNumForName(c"map31".as_ptr()) < 0 {
@@ -1484,6 +1973,24 @@ pub unsafe extern "C" fn G_SecretExitLevel() {
 // G_DoCompleted
 // ---------------------------------------------------------------------------
 
+/// Process the deferred `ga_completed` action: tear down level state, set up
+/// the intermission `wbstartstruct_t`, hand off to the WI subsystem and stop
+/// the automap if it was active.
+///
+/// Map-routing rules (mirroring vanilla):
+///
+/// * Chex ends after MAP05 (instead of MAP08).
+/// * Doom 1: MAP08 of any episode triggers `ga_victory`; MAP09 sets
+///   `didsecret` on every player.
+/// * Doom II: secret-exit on MAP15 -> MAP31, on MAP31 -> MAP32; normal-exit
+///   on MAP31 or MAP32 -> MAP16.
+/// * Doom 1 episode-4 par-time deliberately reads off the end of `pars[]`
+///   into `cpars[]` to reproduce the vanilla overflow bug used by statcheck
+///   regression tests.
+///
+/// # Safety
+/// Mutates `wminfo`, `gamestate`, `viewactive`, `automapactive` and the
+/// `players` array. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_DoCompleted() {
     gameaction = ga_nothing;
@@ -1599,6 +2106,14 @@ pub unsafe extern "C" fn G_DoCompleted() {
 // G_WorldDone / G_DoWorldDone
 // ---------------------------------------------------------------------------
 
+/// Called by WI when the intermission screen finishes: schedule a
+/// `ga_worlddone` action and, on Doom II, kick off the per-cluster finale at
+/// the appropriate "end of segment" maps (6, 11, 20, 30 - and 15/31 only via
+/// the secret exit).
+///
+/// # Safety
+/// Writes `gameaction`, `players[consoleplayer].didsecret`. Exported as
+/// `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_WorldDone() {
     gameaction = ga_worlddone;
@@ -1623,6 +2138,12 @@ pub unsafe extern "C" fn G_WorldDone() {
     }
 }
 
+/// Process the deferred `ga_worlddone`: enter `GS_LEVEL`, advance `gamemap`
+/// to `wminfo.next + 1`, load the new level and re-enable the 3D view.
+///
+/// # Safety
+/// Mutates `gamestate`, `gamemap`, `viewactive`, `gameaction`. Exported as
+/// `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_DoWorldDone() {
     gamestate = GS_LEVEL;
@@ -1636,12 +2157,30 @@ pub unsafe extern "C" fn G_DoWorldDone() {
 // G_LoadGame / G_DoLoadGame
 // ---------------------------------------------------------------------------
 
+/// Defer a savegame load: copy `name` into the `savename` buffer and queue
+/// `ga_loadgame` for the next `G_Ticker`.
+///
+/// # Safety
+/// `name` must be a valid NUL-terminated C string. Exported as
+/// `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_LoadGame(name: *mut c_char) {
     M_StringCopy(std::ptr::addr_of_mut!(savename[0]), name, 256);
     gameaction = ga_loadgame;
 }
 
+/// Execute the deferred `ga_loadgame` action: open `savename`, validate the
+/// header, set up the level via `G_InitNew`, then unarchive players, world
+/// geometry, thinkers and specials from `p_saveg`.
+///
+/// On a missing or corrupt file the function returns silently after the
+/// `fopen`; on a bad EOF marker it raises `I_Error("Bad savegame")`.
+/// `leveltime` is preserved across the `G_InitNew` call so the unarchived
+/// state continues from the saved tic.
+///
+/// # Safety
+/// Mutates a large amount of game state and performs raw file I/O. Exported
+/// as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_DoLoadGame() {
     gameaction = ga_nothing;
@@ -1689,6 +2228,14 @@ pub unsafe extern "C" fn G_DoLoadGame() {
 // G_SaveGame / G_DoSaveGame
 // ---------------------------------------------------------------------------
 
+/// Defer a savegame write: latch the slot index and 24-byte description,
+/// then set `sendsave` so the next `G_BuildTiccmd` emits a
+/// `BT_SPECIAL | BTS_SAVEGAME` ticcmd. `G_Ticker` decodes that and triggers
+/// `ga_savegame` -> `G_DoSaveGame`.
+///
+/// # Safety
+/// `description` must be a valid NUL-terminated C string. Exported as
+/// `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_SaveGame(slot: c_int, description: *const c_char) {
     SAVEGAMESLOT = slot;
@@ -1696,6 +2243,21 @@ pub unsafe extern "C" fn G_SaveGame(slot: c_int, description: *const c_char) {
     sendsave = 1;
 }
 
+/// Execute the deferred `ga_savegame` action.
+///
+/// Writes to a temporary file first, then renames it over the real savegame
+/// path so a crash mid-save cannot destroy an older save. On
+/// `fopen`-failure, a recovery file in the temp directory is opened instead;
+/// if both fail, `I_Error` aborts the engine.
+///
+/// When `vanilla_savegame_limit` is set, exceeding `SAVEGAMESIZE` raises
+/// `I_Error("Savegame buffer overrun")` to match the DOS limit; otherwise
+/// the save is allowed to grow.
+///
+/// # Safety
+/// Performs raw `libc` file I/O (`fopen`/`ftell`/`fclose`/`remove`/`rename`)
+/// and writes through the global `save_stream`. Exported as `#[no_mangle]`
+/// for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_DoSaveGame() {
     let recovery_savegame_file: *mut c_char;
@@ -1757,6 +2319,12 @@ pub unsafe extern "C" fn G_DoSaveGame() {
 // G_DeferedInitNew / G_DoNewGame / G_InitNew
 // ---------------------------------------------------------------------------
 
+/// Defer a new-game start: latch `(skill, episode, map)` into `d_*` and
+/// queue `ga_newgame`. `G_Ticker` will then call `G_DoNewGame` -> `G_InitNew`.
+///
+/// # Safety
+/// Writes the `d_skill`, `d_episode`, `d_map` and `gameaction` globals.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_DeferedInitNew(skill: skill_t, episode: c_int, map: c_int) {
     d_skill = skill;
@@ -1765,6 +2333,12 @@ pub unsafe extern "C" fn G_DeferedInitNew(skill: skill_t, episode: c_int, map: c
     gameaction = ga_newgame;
 }
 
+/// Process `ga_newgame`: clear network / demo state, reset extra players
+/// out of the game, then call `G_InitNew` with the deferred `(skill, episode,
+/// map)`.
+///
+/// # Safety
+/// Mutates many engine globals. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_DoNewGame() {
     demoplayback = 0;
@@ -1782,6 +2356,24 @@ pub unsafe extern "C" fn G_DoNewGame() {
     gameaction = ga_nothing;
 }
 
+/// Initialise a new game with the given skill, episode and map.
+///
+/// Clamps `skill` to `sk_nightmare`, normalises `episode`/`map` for the
+/// active `gamemode` (shareware caps at episode 1; pre-Ultimate caps at 3),
+/// reseeds the random number generator, flips fast-monster bookkeeping for
+/// nightmare or `-fast`, marks every player `PST_REBORN`, then selects the
+/// sky texture.
+///
+/// The sky-texture selection preserves the vanilla "sky never changes in
+/// Doom II" behaviour: the sky is bound here at game start rather than per
+/// level, which causes Doom II's sky to be wrong on later maps unless a
+/// savegame is loaded. This is intentional for demo compatibility.
+///
+/// Finally dispatches into `G_DoLoadLevel` to actually load the chosen map.
+///
+/// # Safety
+/// Mutates virtually every game-loop global. Exported as `#[no_mangle]` for
+/// C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_InitNew(skill: skill_t, episode: c_int, map: c_int) {
     let mut skill = skill;
@@ -1876,6 +2468,15 @@ pub unsafe extern "C" fn G_InitNew(skill: skill_t, episode: c_int, map: c_int) {
 // Fast-monster helper for G_InitNew
 // ---------------------------------------------------------------------------
 
+/// Convenience wrapper around [`G_SetFastMonsters`] that takes a `bool`.
+///
+/// Exists to keep the `G_InitNew` call sites readable; the state-tic and
+/// `mobjinfo.speed` patches themselves live in `G_SetFastMonsters` so the
+/// arithmetic appears once.
+///
+/// # Safety
+/// Calls into `G_SetFastMonsters`, which mutates the global `states` and
+/// `mobjinfo` tables.
 unsafe fn set_fast_monsters(fast: bool) {
     // S_SARG_RUN1 .. S_SARG_PAIN2 state range (states 134..160 in vanilla Doom)
     // mobjinfo adjustments for MT_BRUISERSHOT, MT_HEADSHOT, MT_TROOPSHOT
@@ -1892,6 +2493,21 @@ unsafe fn set_fast_monsters(fast: bool) {
 // G_SetFastMonsters — adjusts state tics and monster shot speeds
 // ---------------------------------------------------------------------------
 
+/// Toggle the "fast monsters" rule used by nightmare skill and `-fast`.
+///
+/// When `fast` is non-zero, halves the per-tic duration of the demon "run"
+/// and "pain" states (`S_SARG_RUN1`..`S_SARG_PAIN2`) and raises Baron of Hell,
+/// Cacodemon and Imp projectile speeds to 20 `FRACUNIT` per tic; when zero,
+/// restores the original durations and the slower projectile speeds
+/// (15/10/10).
+///
+/// This change is global to the `states` and `mobjinfo` tables and persists
+/// across maps until inverted again - it is `G_InitNew`'s responsibility to
+/// only call this when the skill flips into or out of nightmare.
+///
+/// # Safety
+/// Mutates the shared `states` and `mobjinfo` arrays. Exported as
+/// `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_SetFastMonsters(fast: c_int) {
     use crate::doom::info::{
@@ -1918,21 +2534,30 @@ pub unsafe extern "C" fn G_SetFastMonsters(fast: c_int) {
 }
 
 // ---------------------------------------------------------------------------
-// G_PlayerMo accessor (reads .player field of mobj_t)
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // G_ReadDemoTiccmd  ← CRITICAL for demo accuracy
 // ---------------------------------------------------------------------------
 
 /// Read one tic command from the demo buffer into `cmd`.
 ///
-/// Non-longtics: 4 bytes (forwardmove, sidemove, angleturn-hi, buttons).
-/// Longtics:     5 bytes (forwardmove, sidemove, angleturn-lo, angleturn-hi, buttons).
+/// * Non-longtics: 4 bytes (`forwardmove`, `sidemove`, `angleturn-hi`,
+///   `buttons`).
+/// * Longtics: 5 bytes (`forwardmove`, `sidemove`, `angleturn-lo`,
+///   `angleturn-hi`, `buttons`).
 ///
-/// The angleturn encoding matches vanilla exactly:
-///   non-longtics: byte is read as UNSIGNED, then shifted left 8 → fits [-32768, 32512]
-///   longtics:     two bytes little-endian, no sign extension at individual bytes
+/// The `angleturn` encoding matches vanilla exactly:
+///
+/// * Non-longtics: the byte is read as **unsigned**, then shifted left 8 -
+///   fits `[-32768, 32512]`.
+/// * Longtics: two bytes little-endian, with each byte read unsigned (no
+///   sign extension on the individual bytes).
+///
+/// If the next byte is `DEMOMARKER` (0x80), the read instead calls
+/// `G_CheckDemoStatus` to wrap up the demo and returns without touching
+/// `cmd`.
+///
+/// # Safety
+/// Reads through `demo_p` and writes through `cmd`. Both must be valid.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_ReadDemoTiccmd(cmd: *mut TiccmdT) {
     if *demo_p == DEMOMARKER {
@@ -1975,6 +2600,16 @@ pub unsafe extern "C" fn G_ReadDemoTiccmd(cmd: *mut TiccmdT) {
 // IncreaseDemoBuffer (static)
 // ---------------------------------------------------------------------------
 
+/// Double the size of the demo buffer (used only when `vanilla_demo_limit`
+/// is off, to allow recording arbitrarily long demos).
+///
+/// Allocates a new `Z_Malloc` block of twice the current size, copies the
+/// existing demo data over, frees the old buffer and rebases `demobuffer`,
+/// `demo_p` and `demoend` onto the new allocation.
+///
+/// # Safety
+/// All three demo pointer globals must be in a consistent state pointing
+/// into the same allocation before the call.
 unsafe fn increase_demo_buffer() {
     let current_length = demoend.offset_from(demobuffer) as c_int;
     let new_length = current_length * 2;
@@ -1991,6 +2626,23 @@ unsafe fn increase_demo_buffer() {
 // G_WriteDemoTiccmd
 // ---------------------------------------------------------------------------
 
+/// Append `cmd` to the demo buffer using the same byte layout as
+/// [`G_ReadDemoTiccmd`] (4 bytes vanilla, 5 bytes longtics).
+///
+/// Pressing the `key_demo_quit` ends recording immediately via
+/// `G_CheckDemoStatus`. After writing, the demo cursor is rewound and the
+/// just-written record is read back through `G_ReadDemoTiccmd` so the
+/// recorded value is exactly what playback will see (round-trip
+/// consistency).
+///
+/// If the cursor approaches `demoend - 16`, either `G_CheckDemoStatus` ends
+/// recording (vanilla limit on) or `increase_demo_buffer` grows the buffer
+/// (vanilla limit off).
+///
+/// # Safety
+/// Writes through `demo_p` and reads back through it; requires the demo
+/// buffer to have at least 16 bytes of headroom or `vanilla_demo_limit == 0`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_WriteDemoTiccmd(cmd: *mut TiccmdT) {
     if GAMEKEYDOWN[key_demo_quit as usize] != 0 {
@@ -2037,6 +2689,16 @@ pub unsafe extern "C" fn G_WriteDemoTiccmd(cmd: *mut TiccmdT) {
 // G_RecordDemo / G_VanillaVersionCode / G_BeginRecording
 // ---------------------------------------------------------------------------
 
+/// Start recording a demo to `name.lmp`.
+///
+/// Allocates the demo buffer (default 128 KiB, overridable via the
+/// `-maxdemo <kib>` command-line argument), constructs the output filename
+/// by appending `.lmp`, and sets `demorecording = 1`. `usergame` is cleared
+/// so save/load menus are disabled during recording.
+///
+/// # Safety
+/// `name` must be a valid NUL-terminated C string. Exported as
+/// `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_RecordDemo(name: *mut c_char) {
     usergame = 0;
@@ -2059,13 +2721,21 @@ pub unsafe extern "C" fn G_RecordDemo(name: *mut c_char) {
     demorecording = 1;
 }
 
-/// Returns the version code byte for the current gameversion.
+/// Return the single-byte demo version code corresponding to the active
+/// [`gameversion`] (e.g. 109 for v1.9 and every later vanilla variant).
+///
+/// Raises `I_Error` for v1.2, which never had a demo version code.
+///
+/// # Safety
+/// Reads the `gameversion` global. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_VanillaVersionCode() -> c_int {
     g_vanilla_version_code_for(gameversion)
 }
 
-/// Pure helper for G_VanillaVersionCode, testable without globals.
+/// Pure helper for [`G_VanillaVersionCode`]: maps a `gameversion` value to
+/// its 1-byte demo header code without touching globals, so unit tests can
+/// exercise the table directly.
 fn g_vanilla_version_code_for(gv: c_int) -> c_int {
     match gv {
         v if v == exe_doom_1_2 => unsafe {
@@ -2078,6 +2748,17 @@ fn g_vanilla_version_code_for(gv: c_int) -> c_int {
     }
 }
 
+/// Write the demo file header (version byte, skill, episode, map,
+/// deathmatch / respawn / fast / nomonsters flags, console player and
+/// per-slot playeringame bytes) at the start of the demo buffer.
+///
+/// Honours the `-longtics` command-line flag: when set, writes the special
+/// `DOOM_191_VERSION` marker and disables [`lowres_turn`], so each tic
+/// stores `angleturn` in 2 bytes instead of 1.
+///
+/// # Safety
+/// Mutates `longtics`, `lowres_turn`, the demo cursor and the demo buffer.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_BeginRecording() {
     use crate::doom::c_ffi::DOOM_191_VERSION;
@@ -2121,12 +2802,30 @@ pub unsafe extern "C" fn G_BeginRecording() {
 // G_DeferedPlayDemo / DemoVersionDescription / G_DoPlayDemo
 // ---------------------------------------------------------------------------
 
+/// Defer demo playback for `name`: latch `defdemoname` and queue
+/// `ga_playdemo` for the next `G_Ticker` pass.
+///
+/// # Safety
+/// `name` must point to a NUL-terminated C string that lives at least until
+/// `G_DoPlayDemo` runs. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_DeferedPlayDemo(name: *const c_char) {
     defdemoname = name as *mut c_char;
     gameaction = ga_playdemo;
 }
 
+/// Map a demo version byte to a human-readable engine identifier
+/// (`"v1.9"`, `"v1.6/v1.666"`, etc.).
+///
+/// Unknown values in the range 0..=4 are treated as pre-v1.4 IWAD demos and
+/// labelled `"v1.0/v1.1/v1.2"`. Anything else is formatted into the
+/// `DEMOVERSIONBUF` static as `"major.minor (unknown)"` and a pointer into
+/// that buffer is returned (mirroring the C function's use of a static
+/// `resultbuf`).
+///
+/// # Safety
+/// Writes the `DEMOVERSIONBUF` static; the returned pointer is invalidated
+/// by the next call.
 unsafe fn demo_version_description(version: c_int) -> *const c_char {
     match version {
         104 => c"v1.4".as_ptr(),
@@ -2156,6 +2855,25 @@ unsafe fn demo_version_description(version: c_int) -> *const c_char {
     }
 }
 
+/// Execute the deferred `ga_playdemo` action: cache the demo lump, parse
+/// its header, configure netgame / netdemo / game parameters, then call
+/// `G_InitNew` and flip `demoplayback = 1`.
+///
+/// The version handling matches vanilla exactly:
+///
+/// * If the version byte matches the current engine's vanilla code, clears
+///   `longtics`.
+/// * If it equals `DOOM_191_VERSION`, sets `longtics`.
+/// * Otherwise prints a warning via `printf` (not `I_Error`) and continues
+///   playback - this matches the C source, which deliberately allowed
+///   wrong-version demos to attempt playback rather than aborting.
+///
+/// `precache` is temporarily cleared around `G_InitNew` so map loading
+/// during timing demos does not skew the fps measurement.
+///
+/// # Safety
+/// Mutates global engine state extensively. Exported as `#[no_mangle]` for
+/// C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_DoPlayDemo() {
     use crate::doom::c_ffi::DOOM_191_VERSION;
@@ -2235,6 +2953,16 @@ pub unsafe extern "C" fn G_DoPlayDemo() {
 // G_TimeDemo
 // ---------------------------------------------------------------------------
 
+/// Start a benchmark playback of demo `name`.
+///
+/// Honours `-nodraw` to suppress rendering, sets `singletics` so the engine
+/// runs every tic immediately (no `I_GetTime`-pacing), then defers playback
+/// the usual way through `ga_playdemo`. On demo end, `G_CheckDemoStatus`
+/// prints the result via `I_Error("timed ... fps")`.
+///
+/// # Safety
+/// Mutates `nodrawers`, `timingdemo`, `singletics`, `defdemoname`, `gameaction`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_TimeDemo(name: *mut c_char) {
     nodrawers = M_CheckParm(c"-nodraw".as_ptr().cast_mut());
@@ -2249,6 +2977,23 @@ pub unsafe extern "C" fn G_TimeDemo(name: *mut c_char) {
 // G_CheckDemoStatus
 // ---------------------------------------------------------------------------
 
+/// End-of-demo cleanup; called by both reader and writer paths.
+///
+/// Three mutually-exclusive paths:
+///
+/// * **Timing demo**: compute fps, clear the timing/playback flags and
+///   raise `I_Error("timed ... fps")` (which prints and exits).
+/// * **Playback**: release the demo lump, clear demo / netgame / dm flags
+///   and either `I_Quit()` (singledemo) or `D_AdvanceDemo()` (loop). Returns
+///   `1`.
+/// * **Recording**: append `DEMOMARKER`, flush the buffer to `demoname` via
+///   `M_WriteFile`, free the buffer and raise `I_Error("Demo %s recorded")`.
+///
+/// Returns `0` when the call was a no-op (none of the conditions matched).
+///
+/// # Safety
+/// Mutates demo / playback globals and performs file I/O. Exported as
+/// `#[no_mangle]` for C callers.
 #[no_mangle]
 pub unsafe extern "C" fn G_CheckDemoStatus() -> boolean {
     if timingdemo != 0 {
@@ -2307,18 +3052,24 @@ pub unsafe extern "C" fn G_CheckDemoStatus() -> boolean {
 // Unit tests
 // ---------------------------------------------------------------------------
 
+/// Unit-test suite covering ticcmd checksumming, demo I/O byte layout and
+/// version-code lookup. The demo tests exercise `read_demo_ticcmd_inner`
+/// directly so they avoid mutating the global `demo_p` cursor and the
+/// `DEMOMARKER` end-of-stream shortcut.
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::doom::d_mode::exe_doom_1_9;
     use crate::doom::d_player::TiccmdT;
 
+    /// Helper returning a freshly zeroed [`TiccmdT`] for test assembly.
     fn zeroed_cmd() -> TiccmdT {
         unsafe { std::mem::zeroed() }
     }
 
     // --- G_CmdChecksum ---
 
+    /// A fully-zero ticcmd checksums to zero.
     #[test]
     fn cmdchecksum_all_zeros_is_zero() {
         let cmd = zeroed_cmd();
@@ -2327,6 +3078,7 @@ mod tests {
         }
     }
 
+    /// `forwardmove = 1` produces a single bit in the first 4-byte word.
     #[test]
     fn cmdchecksum_forwardmove_one() {
         // sizeof(TiccmdT) = 16 bytes = 4 ints; loop runs for 3 ints.
@@ -2339,6 +3091,7 @@ mod tests {
         }
     }
 
+    /// The tail-word `lookfly` / `arti` / `_pad` fields are excluded from the sum.
     #[test]
     fn cmdchecksum_excludes_last_int() {
         // G_CmdChecksum sums sizeof(ticcmd_t)/4 - 1 = 3 words (bytes 0-11).
@@ -2351,6 +3104,7 @@ mod tests {
         }
     }
 
+    /// `inventory` sits in word 2 and is included in the checksum.
     #[test]
     fn cmdchecksum_includes_inventory() {
         // inventory is at bytes 8-11 (word 2), which IS included in the sum.
@@ -2466,32 +3220,38 @@ mod tests {
 
     // --- G_VanillaVersionCode ---
 
+    /// Doom v1.6/v1.666 maps to demo version code 106.
     #[test]
     fn vanilla_version_exe_doom_1_666_is_106() {
         assert_eq!(g_vanilla_version_code_for(exe_doom_1_666), 106);
     }
 
+    /// Doom v1.7/v1.7a maps to demo version code 107.
     #[test]
     fn vanilla_version_exe_doom_1_7_is_107() {
         assert_eq!(g_vanilla_version_code_for(exe_doom_1_7), 107);
     }
 
+    /// Doom v1.8 maps to demo version code 108.
     #[test]
     fn vanilla_version_exe_doom_1_8_is_108() {
         assert_eq!(g_vanilla_version_code_for(exe_doom_1_8), 108);
     }
 
+    /// Doom v1.9 maps to demo version code 109.
     #[test]
     fn vanilla_version_exe_doom_1_9_is_109() {
         assert_eq!(g_vanilla_version_code_for(exe_doom_1_9), 109);
     }
 
+    /// Ultimate Doom and later variants share v1.9's demo code (109).
     #[test]
     fn vanilla_version_ultimate_is_109() {
         // exe_ultimate and all later variants map to 109
         assert_eq!(g_vanilla_version_code_for(exe_ultimate), 109);
     }
 
+    /// Final Doom (`exe_final2`) shares v1.9's demo code (109).
     #[test]
     fn vanilla_version_exe_final2_is_109() {
         assert_eq!(g_vanilla_version_code_for(exe_final2), 109);
@@ -2499,6 +3259,7 @@ mod tests {
 
     // --- Movement table values (regression baseline) ---
 
+    /// `forwardmove[0]` (slow) baseline of 0x19 - guards against accidental edits.
     #[test]
     fn forwardmove_slow_is_0x19() {
         unsafe {
@@ -2506,6 +3267,7 @@ mod tests {
         }
     }
 
+    /// `forwardmove[1]` (fast) baseline of 0x32 - also the turbo threshold.
     #[test]
     fn forwardmove_fast_is_0x32() {
         unsafe {
@@ -2513,6 +3275,7 @@ mod tests {
         }
     }
 
+    /// `sidemove[0]` (slow) baseline of 0x18.
     #[test]
     fn sidemove_slow_is_0x18() {
         unsafe {
@@ -2520,6 +3283,7 @@ mod tests {
         }
     }
 
+    /// `sidemove[1]` (fast) baseline of 0x28.
     #[test]
     fn sidemove_fast_is_0x28() {
         unsafe {
@@ -2527,6 +3291,7 @@ mod tests {
         }
     }
 
+    /// `angleturn[]` baseline values (normal / fast / slow).
     #[test]
     fn angleturn_values() {
         unsafe {
@@ -2536,6 +3301,7 @@ mod tests {
         }
     }
 
+    /// `BT_*` / `BTS_*` button-bit constants match `d_event.h`.
     #[test]
     fn button_constants_match_d_event_h() {
         assert_eq!(BT_ATTACK, 1);
