@@ -20,7 +20,9 @@ use crate::doom::v_video::{patch_t, V_DrawPatch, V_MarkRect, V_RestoreBuffer, V_
 // Constants
 // ---------------------------------------------------------------------------
 
+/// Maximum framebuffer width supported by the lookup tables.
 const MAXWIDTH: usize = 1120;
+/// Maximum framebuffer height supported by the lookup tables.
 const MAXHEIGHT: usize = 832;
 
 // ---------------------------------------------------------------------------
@@ -28,13 +30,20 @@ const MAXHEIGHT: usize = 832;
 // ---------------------------------------------------------------------------
 
 extern "C" {
+    /// Prints a formatted error message and terminates the program.
     fn I_Error(format: *const c_char, ...);
+    /// Returns a pointer to the cached lump with the given name, using the given zone tag.
     fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void;
+    /// Allocates `size` bytes from the zone heap with the given tag; returns a pointer to the block.
     fn Z_Malloc(size: c_int, tag: c_int, user: *mut c_void) -> *mut c_void;
+    /// Frees a block previously allocated from the zone heap.
     fn Z_Free(ptr: *mut c_void);
 
+    /// Raw linear framebuffer written to the display; `screens[0]` in C terms.
     static mut I_VideoBuffer: *mut u8;
+    /// Flat array of all 32 light-level colormaps (32 * 256 bytes); index 0 is fullbright.
     static mut colormaps: *mut u8;
+    /// Screen-space Y coordinate of the view center, used to compute texture fractions.
     static mut centery: c_int;
 }
 
@@ -42,30 +51,42 @@ extern "C" {
 // View-buffer globals
 // ---------------------------------------------------------------------------
 
+/// Base address of the view image written by the renderer (typically points into `I_VideoBuffer`).
 #[no_mangle]
 pub static mut viewimage: *mut u8 = ptr::null_mut();
 
+/// Width of the current render viewport in pixels.
 #[no_mangle]
 pub static mut viewwidth: c_int = 0;
 
+/// Width of the viewport scaled for the current detail mode (equals `viewwidth` in high-detail).
 #[no_mangle]
 pub static mut scaledviewwidth: c_int = 0;
 
+/// Height of the current render viewport in pixels.
 #[no_mangle]
 pub static mut viewheight: c_int = 0;
 
+/// X pixel offset from the left edge of the framebuffer to the left edge of the viewport.
 #[no_mangle]
 pub static mut viewwindowx: c_int = 0;
 
+/// Y pixel offset from the top of the framebuffer to the top of the viewport.
 #[no_mangle]
 pub static mut viewwindowy: c_int = 0;
 
+/// Per-row pointer LUT: `ylookup[y]` points to the first byte of row `y` in the framebuffer.
+/// Avoids a multiply by `SCREENWIDTH` in the inner rendering loops.
 #[no_mangle]
 pub static mut ylookup: [*mut u8; MAXHEIGHT] = [ptr::null_mut(); MAXHEIGHT];
 
+/// Per-column byte offset LUT: `columnofs[x]` is the byte offset within a row for column `x`.
+/// Accounts for `viewwindowx` so that sub-window rendering works without extra arithmetic.
 #[no_mangle]
 pub static mut columnofs: [c_int; MAXWIDTH] = [0; MAXWIDTH];
 
+/// Color-translation tables for the three non-green player colors (gray, brown, red).
+/// Each table remaps the 16-entry green palette ramp (indices `0x70`-`0x7f`) to another ramp.
 #[no_mangle]
 pub static mut translations: [[u8; 256]; 3] = [[0; 256]; 3];
 
@@ -73,27 +94,38 @@ pub static mut translations: [[u8; 256]; 3] = [[0; 256]; 3];
 // Background buffer (module-local)
 // ---------------------------------------------------------------------------
 
+/// Backing buffer for the bezel drawn around the viewport when the window is smaller than
+/// the full screen. Allocated on demand; freed when switching to full-screen mode.
 static mut background_buffer: *mut u8 = ptr::null_mut();
 
 // ---------------------------------------------------------------------------
 // Column-drawing globals
 // ---------------------------------------------------------------------------
 
+/// Current colormap (light-level lookup table) used by the column renderer.
+/// Points into `colormaps`; index `colormap[p]` converts a palette index to a lit palette index.
 #[no_mangle]
 pub static mut dc_colormap: *mut u8 = ptr::null_mut();
 
+/// Screen-space X coordinate of the column being drawn (0 = left edge of viewport).
 #[no_mangle]
 pub static mut dc_x: c_int = 0;
 
+/// Topmost screen-space Y coordinate of the column segment to draw (inclusive).
 #[no_mangle]
 pub static mut dc_yl: c_int = 0;
 
+/// Bottommost screen-space Y coordinate of the column segment to draw (inclusive).
 #[no_mangle]
 pub static mut dc_yh: c_int = 0;
 
+/// Inverse texture scale in 16.16 fixed-point: the amount added to the texture fraction
+/// per screen row, equal to `textureheight / columnheight`.
 #[no_mangle]
 pub static mut dc_iscale: c_int = 0;
 
+/// Texture mid-point fraction in 16.16 fixed-point, corresponding to the true center of
+/// the wall post; used together with `dc_iscale` to compute the starting texture row.
 #[no_mangle]
 pub static mut dc_texturemid: c_int = 0;
 
@@ -109,6 +141,9 @@ pub static mut dccount: c_int = 0;
 // Fuzz / spectre effect
 // ---------------------------------------------------------------------------
 
+/// Pre-computed table of per-pixel row offsets (in bytes) used by the fuzz/spectre effect.
+/// Each entry is either `+FUZZOFF` (one row down) or `-FUZZOFF` (one row up), giving the
+/// smeared, semi-transparent look of partial-invisibility.
 #[no_mangle]
 pub static mut fuzzoffset: [c_int; FUZZTABLE] = [
     FUZZOFF, -FUZZOFF, FUZZOFF, -FUZZOFF, FUZZOFF, FUZZOFF, -FUZZOFF, FUZZOFF, FUZZOFF, -FUZZOFF,
@@ -118,6 +153,7 @@ pub static mut fuzzoffset: [c_int; FUZZTABLE] = [
     -FUZZOFF, FUZZOFF, FUZZOFF, FUZZOFF, FUZZOFF, -FUZZOFF, FUZZOFF, FUZZOFF, -FUZZOFF, FUZZOFF,
 ];
 
+/// Current position within `fuzzoffset`; wraps back to 0 when it reaches `FUZZTABLE`.
 #[no_mangle]
 pub static mut fuzzpos: c_int = 0;
 
@@ -125,9 +161,13 @@ pub static mut fuzzpos: c_int = 0;
 // Translation tables
 // ---------------------------------------------------------------------------
 
+/// Pointer to the 256-byte color-translation table currently active for `R_DrawTranslatedColumn`.
+/// Used to remap the player-sprite green ramp to another color set.
 #[no_mangle]
 pub static mut dc_translation: *mut u8 = ptr::null_mut();
 
+/// Heap-allocated block of 3 × 256 bytes holding the gray, brown, and red translation tables
+/// built by `R_InitTranslationTables`.
 #[no_mangle]
 pub static mut translationtables: *mut u8 = ptr::null_mut();
 
@@ -135,27 +175,35 @@ pub static mut translationtables: *mut u8 = ptr::null_mut();
 // Span-drawing globals
 // ---------------------------------------------------------------------------
 
+/// Screen-space Y row of the span being drawn.
 #[no_mangle]
 pub static mut ds_y: c_int = 0;
 
+/// Leftmost screen-space X coordinate of the span (inclusive).
 #[no_mangle]
 pub static mut ds_x1: c_int = 0;
 
+/// Rightmost screen-space X coordinate of the span (inclusive).
 #[no_mangle]
 pub static mut ds_x2: c_int = 0;
 
+/// Colormap used by the span renderer; points into `colormaps` for the appropriate light level.
 #[no_mangle]
 pub static mut ds_colormap: *mut u8 = ptr::null_mut();
 
+/// Starting texture U (X) fraction in 16.16 fixed-point for the leftmost pixel of the span.
 #[no_mangle]
 pub static mut ds_xfrac: c_int = 0;
 
+/// Starting texture V (Y) fraction in 16.16 fixed-point for the leftmost pixel of the span.
 #[no_mangle]
 pub static mut ds_yfrac: c_int = 0;
 
+/// Per-pixel increment of `ds_xfrac` in 16.16 fixed-point along the span.
 #[no_mangle]
 pub static mut ds_xstep: c_int = 0;
 
+/// Per-pixel increment of `ds_yfrac` in 16.16 fixed-point along the span.
 #[no_mangle]
 pub static mut ds_ystep: c_int = 0;
 
@@ -171,6 +219,14 @@ pub static mut dscount: c_int = 0;
 // R_DrawColumn
 // ---------------------------------------------------------------------------
 
+/// Draws a single vertical column of opaque wall texture into the framebuffer.
+///
+/// Reads the column context from the `dc_*` globals and writes `dc_yh - dc_yl + 1`
+/// pixels into `screens[0]`, applying `dc_colormap` for lighting. The texture is
+/// sampled at a 128-texel-high virtual column; `dc_iscale` steps through it in
+/// 16.16 fixed-point per screen row.
+///
+/// Does nothing if `dc_yh < dc_yl` (empty column segment).
 #[no_mangle]
 pub extern "C" fn R_DrawColumn() {
     unsafe {
@@ -214,6 +270,13 @@ pub extern "C" fn R_DrawColumn() {
 // R_DrawColumnLow
 // ---------------------------------------------------------------------------
 
+/// Low-detail variant of `R_DrawColumn` that writes each pixel to two adjacent
+/// screen columns, producing blocky 2x-wide columns for the low-resolution detail mode.
+///
+/// Uses `dc_x * 2` and `dc_x * 2 + 1` as the destination columns. All other
+/// column-context globals (`dc_*`) have the same meaning as in `R_DrawColumn`.
+///
+/// Does nothing if `dc_yh < dc_yl`.
 #[no_mangle]
 pub extern "C" fn R_DrawColumnLow() {
     unsafe {
@@ -262,6 +325,16 @@ pub extern "C" fn R_DrawColumnLow() {
 // R_DrawFuzzColumn
 // ---------------------------------------------------------------------------
 
+/// Draws a partial-invisibility (spectre/fuzz) column using the fuzz effect.
+///
+/// For each row the function reads a neighboring pixel from the framebuffer
+/// (offset by `fuzzoffset[fuzzpos]` bytes) and re-indexes it through colormap 6,
+/// producing a smeared dark image. `fuzzpos` advances and wraps modulo `FUZZTABLE`.
+///
+/// The top and bottom rows are clamped: `dc_yl` is raised to 1 and `dc_yh` is
+/// lowered to `viewheight - 2` to avoid reading outside the viewport.
+///
+/// Does nothing if the clamped range is empty (`dc_yh < dc_yl`).
 #[no_mangle]
 pub extern "C" fn R_DrawFuzzColumn() {
     unsafe {
@@ -320,6 +393,12 @@ pub extern "C" fn R_DrawFuzzColumn() {
 // R_DrawFuzzColumnLow
 // ---------------------------------------------------------------------------
 
+/// Low-detail variant of `R_DrawFuzzColumn` that writes each fuzz pixel to
+/// two adjacent screen columns (`dc_x * 2` and `dc_x * 2 + 1`).
+///
+/// Both pixels receive the same fuzz-sampled value derived from column `dc_x * 2`'s
+/// neighbor; the fuzz table position advances once per row pair.
+/// Border clamping and early-exit behavior are identical to `R_DrawFuzzColumn`.
 #[no_mangle]
 pub extern "C" fn R_DrawFuzzColumnLow() {
     unsafe {
@@ -382,6 +461,13 @@ pub extern "C" fn R_DrawFuzzColumnLow() {
 // R_DrawTranslatedColumn
 // ---------------------------------------------------------------------------
 
+/// Draws a color-translated column; used for player sprites rendered in non-green colors.
+///
+/// The pixel pipeline is: `dc_colormap[ dc_translation[ dc_source[frac] ] ]`.
+/// `dc_translation` maps the green palette ramp to another color ramp, allowing one
+/// set of player sprites to appear in multiple colors (gray, brown, red).
+///
+/// Does nothing if `dc_yh < dc_yl`.
 #[no_mangle]
 pub extern "C" fn R_DrawTranslatedColumn() {
     unsafe {
@@ -422,6 +508,11 @@ pub extern "C" fn R_DrawTranslatedColumn() {
 // R_DrawTranslatedColumnLow
 // ---------------------------------------------------------------------------
 
+/// Low-detail variant of `R_DrawTranslatedColumn` that writes each translated
+/// pixel to two adjacent screen columns (`dc_x * 2` and `dc_x * 2 + 1`).
+///
+/// The pixel pipeline and border behavior are identical to `R_DrawTranslatedColumn`.
+/// Does nothing if `dc_yh < dc_yl`.
 #[no_mangle]
 pub extern "C" fn R_DrawTranslatedColumnLow() {
     unsafe {
@@ -469,6 +560,13 @@ pub extern "C" fn R_DrawTranslatedColumnLow() {
 // R_InitTranslationTables
 // ---------------------------------------------------------------------------
 
+/// Allocates and initialises the three color-translation tables used for player colors.
+///
+/// Builds a 3 × 256 byte block (gray / brown / red) in the zone heap (tag `PU_STATIC`).
+/// The green palette ramp (`0x70`-`0x7f`) is remapped to the gray ramp (`0x60`),
+/// brown ramp (`0x40`), and red ramp (`0x20`). All other palette entries are identity-mapped.
+///
+/// Sets the `translationtables` global to the allocated block.
 #[no_mangle]
 pub extern "C" fn R_InitTranslationTables() {
     unsafe {
@@ -495,6 +593,15 @@ pub extern "C" fn R_InitTranslationTables() {
 // R_DrawSpan
 // ---------------------------------------------------------------------------
 
+/// Draws a single horizontal floor or ceiling span into the framebuffer.
+///
+/// Samples a 64×64 flat texture tile stored at `ds_source`, walking through it
+/// in u/v (x/y) texture space with `ds_xstep` / `ds_ystep` increments. Position
+/// and step are packed into 32-bit words (upper 16 bits = X, lower 16 bits = Y)
+/// to avoid separate fixed-point additions.
+///
+/// Writes pixels to `screens[0]` from column `ds_x1` to `ds_x2` inclusive on row `ds_y`.
+/// Does not check for zero-length spans; the caller must ensure `ds_x2 >= ds_x1`.
 #[no_mangle]
 pub extern "C" fn R_DrawSpan() {
     unsafe {
@@ -547,6 +654,18 @@ pub extern "C" fn R_DrawSpan() {
 // R_DrawSpanLow
 // ---------------------------------------------------------------------------
 
+/// Low-detail variant of `R_DrawSpan` that writes each sampled texel to two
+/// consecutive framebuffer bytes, producing blocky 2x-wide pixels.
+///
+/// The logical span coordinates (`ds_x1`, `ds_x2`) are doubled to address the
+/// correct pixels; the texture-space walk is unchanged.
+///
+/// # FIXME
+/// In the original C (`r_draw.c`) `ds_x1` and `ds_x2` are mutated in-place
+/// (`ds_x1 <<= 1; ds_x2 <<= 1`), leaving the globals modified after the call.
+/// This Rust port uses a local `ds_x1_low` and leaves the globals unchanged,
+/// so callers that read `ds_x1`/`ds_x2` after `R_DrawSpanLow` see different
+/// values than they would after the C version.
 #[no_mangle]
 pub extern "C" fn R_DrawSpanLow() {
     unsafe {
@@ -600,6 +719,15 @@ pub extern "C" fn R_DrawSpanLow() {
 // R_InitBuffer
 // ---------------------------------------------------------------------------
 
+/// Initialises the `ylookup` and `columnofs` lookup tables for a viewport of the given size.
+///
+/// Computes `viewwindowx` (horizontal centering offset) and `viewwindowy` (vertical offset,
+/// accounting for the status-bar height when the viewport is not full-screen). Then fills
+/// `columnofs[0..width]` and `ylookup[0..height]` so that each inner rendering loop can
+/// locate any pixel without a multiply.
+///
+/// Must be called whenever the viewport dimensions change (e.g. when the player resizes
+/// the view window).
 #[no_mangle]
 pub extern "C" fn R_InitBuffer(width: c_int, height: c_int) {
     unsafe {
@@ -629,12 +757,24 @@ pub extern "C" fn R_InitBuffer(width: c_int, height: c_int) {
 // DEH_String shim — identity in this build
 // ---------------------------------------------------------------------------
 
+/// Converts a string literal to a null-terminated `*mut c_char` pointer suitable for C FFI.
+///
+/// Appends a NUL byte at compile time and casts the resulting byte slice to a C string pointer.
 macro_rules! cstr {
     ($s:literal) => {
         concat!($s, "\0").as_ptr() as *mut c_char
     };
 }
 
+/// Identity shim for the DeHackEd string-replacement function.
+///
+/// In the original C codebase `DEH_String` allows patch files to substitute string constants
+/// at runtime. This Rust build does not support DeHackEd patches, so the function simply
+/// returns its argument unchanged.
+///
+/// # Safety
+/// `s` must be a valid, non-null pointer to a NUL-terminated C string for the duration of
+/// any downstream C FFI call that receives the returned pointer.
 unsafe fn DEH_String(s: *const c_char) -> *const c_char {
     s
 }
@@ -643,6 +783,15 @@ unsafe fn DEH_String(s: *const c_char) -> *const c_char {
 // R_FillBackScreen
 // ---------------------------------------------------------------------------
 
+/// Fills the background buffer with a tiled flat texture and draws the beveled viewport border.
+///
+/// When the viewport is smaller than the full screen, the area outside it is filled with a
+/// repeating 64×64 flat: `FLOOR7_2` for Doom 1 / Ultimate Doom, `GRNROCK` for Doom II.
+/// Border patches (`brdr_t`, `brdr_b`, `brdr_l`, `brdr_r`, and the four corner patches)
+/// are then drawn into the same `background_buffer` using `V_UseBuffer`.
+///
+/// If the viewport covers the full screen (`scaledviewwidth == SCREENWIDTH`) the background
+/// buffer is freed and the function returns immediately.
 #[no_mangle]
 pub extern "C" fn R_FillBackScreen() {
     unsafe {
@@ -740,6 +889,10 @@ pub extern "C" fn R_FillBackScreen() {
 // R_VideoErase
 // ---------------------------------------------------------------------------
 
+/// Copies `count` bytes from the background buffer to the video buffer at byte offset `ofs`.
+///
+/// Used by `R_DrawViewBorder` to blit the pre-rendered bezel regions from `background_buffer`
+/// into `I_VideoBuffer`. Does nothing if `background_buffer` is null (full-screen mode).
 #[no_mangle]
 pub extern "C" fn R_VideoErase(ofs: u32, count: c_int) {
     unsafe {
@@ -757,6 +910,14 @@ pub extern "C" fn R_VideoErase(ofs: u32, count: c_int) {
 // R_DrawViewBorder
 // ---------------------------------------------------------------------------
 
+/// Copies the border regions from the background buffer into the video buffer each frame.
+///
+/// Blits four rectangular areas (top strip, bottom strip, and the two side strips) using
+/// `R_VideoErase`, then calls `V_MarkRect` to tell the video subsystem that the full
+/// non-status-bar area needs to be presented.
+///
+/// Returns immediately without doing anything if `scaledviewwidth == SCREENWIDTH`
+/// (full-screen viewport, no border to draw).
 #[no_mangle]
 pub extern "C" fn R_DrawViewBorder() {
     unsafe {
@@ -796,12 +957,15 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
+    /// Serialises all tests that touch the shared mutable renderer globals.
     static LOCK: Mutex<()> = Mutex::new(());
 
     // -----------------------------------------------------------------------
     // R_InitBuffer
     // -----------------------------------------------------------------------
 
+    /// Verifies that a full-screen `R_InitBuffer` call sets `viewwindowx` and `viewwindowy`
+    /// to zero and fills `columnofs` and `ylookup` with identity-offset values.
     #[test]
     fn init_buffer_fullscreen() {
         let _g = LOCK.lock().unwrap();
@@ -830,6 +994,7 @@ mod tests {
         }
     }
 
+    /// Verifies centering offsets and `columnofs` values for a 256×168 windowed viewport.
     #[test]
     fn init_buffer_windowed_256x168() {
         let _g = LOCK.lock().unwrap();
@@ -850,6 +1015,7 @@ mod tests {
         }
     }
 
+    /// Verifies centering offsets, `columnofs`, and `ylookup` for a 200×100 windowed viewport.
     #[test]
     fn init_buffer_windowed_200x100() {
         let _g = LOCK.lock().unwrap();
@@ -878,6 +1044,8 @@ mod tests {
     // R_InitTranslationTables
     // -----------------------------------------------------------------------
 
+    /// Verifies that `R_InitTranslationTables` maps the green ramp to gray/brown/red and
+    /// leaves all other palette entries as identity mappings.
     #[test]
     fn init_translation_tables() {
         let _g = LOCK.lock().unwrap();
@@ -923,6 +1091,8 @@ mod tests {
     // R_DrawColumn
     // -----------------------------------------------------------------------
 
+    /// Verifies that `R_DrawColumn` writes the correct colormap-indexed texture samples
+    /// for each row in a small column segment.
     #[test]
     fn draw_column_basic() {
         let _g = LOCK.lock().unwrap();
@@ -966,6 +1136,7 @@ mod tests {
         }
     }
 
+    /// Verifies that `R_DrawColumn` leaves the framebuffer untouched when `dc_yh < dc_yl`.
     #[test]
     fn draw_column_negative_count_returns_early() {
         let _g = LOCK.lock().unwrap();
@@ -997,6 +1168,8 @@ mod tests {
     // R_DrawColumnLow
     // -----------------------------------------------------------------------
 
+    /// Verifies that `R_DrawColumnLow` writes the same pixel value to both adjacent
+    /// screen columns (`dc_x * 2` and `dc_x * 2 + 1`).
     #[test]
     fn draw_column_low_doubles() {
         let _g = LOCK.lock().unwrap();
@@ -1035,6 +1208,8 @@ mod tests {
     // R_DrawSpan
     // -----------------------------------------------------------------------
 
+    /// Verifies that `R_DrawSpan` samples and colormap-indexes five consecutive texels
+    /// across a short horizontal span.
     #[test]
     fn draw_span_basic() {
         let _g = LOCK.lock().unwrap();
@@ -1087,6 +1262,7 @@ mod tests {
     // R_DrawSpanLow
     // -----------------------------------------------------------------------
 
+    /// Verifies that `R_DrawSpanLow` writes the same texel to two consecutive framebuffer bytes.
     #[test]
     fn draw_span_low_doubles() {
         let _g = LOCK.lock().unwrap();
@@ -1128,6 +1304,8 @@ mod tests {
     // R_VideoErase
     // -----------------------------------------------------------------------
 
+    /// Verifies that `R_VideoErase` copies the specified bytes from `background_buffer`
+    /// into `I_VideoBuffer` at the correct offset.
     #[test]
     fn video_erase_copies_from_background() {
         let _g = LOCK.lock().unwrap();
@@ -1156,6 +1334,7 @@ mod tests {
         }
     }
 
+    /// Verifies that `R_VideoErase` is a no-op when `background_buffer` is null.
     #[test]
     fn video_erase_null_background_does_nothing() {
         let _g = LOCK.lock().unwrap();
@@ -1179,6 +1358,8 @@ mod tests {
     // R_DrawViewBorder
     // -----------------------------------------------------------------------
 
+    /// Verifies that `R_DrawViewBorder` exits immediately without panicking when the
+    /// viewport is full-screen (`scaledviewwidth == SCREENWIDTH`).
     #[test]
     fn draw_view_border_fullscreen_returns_early() {
         let _g = LOCK.lock().unwrap();
@@ -1189,6 +1370,8 @@ mod tests {
         }
     }
 
+    /// Verifies the `top` and `side` geometry values computed inside `R_DrawViewBorder`
+    /// for a representative windowed viewport.
     #[test]
     fn draw_view_border_sets_correct_offsets() {
         let _g = LOCK.lock().unwrap();
@@ -1208,6 +1391,8 @@ mod tests {
     // R_DrawTranslatedColumn
     // -----------------------------------------------------------------------
 
+    /// Verifies that `R_DrawTranslatedColumn` applies `dc_translation` then `dc_colormap`
+    /// to produce the expected output pixel.
     #[test]
     fn draw_translated_column_maps_colors() {
         let _g = LOCK.lock().unwrap();
@@ -1247,6 +1432,8 @@ mod tests {
     // R_DrawFuzzColumn
     // -----------------------------------------------------------------------
 
+    /// Verifies that `R_DrawFuzzColumn` reads a neighboring framebuffer pixel via `fuzzoffset`,
+    /// indexes it through colormap 6, and advances `fuzzpos`.
     #[test]
     fn draw_fuzz_column_reads_adjacent() {
         let _g = LOCK.lock().unwrap();
@@ -1286,6 +1473,8 @@ mod tests {
         }
     }
 
+    /// Verifies that `R_DrawFuzzColumn` clamps `dc_yl` to 1 and `dc_yh` to `viewheight - 2`
+    /// to avoid reading outside the viewport.
     #[test]
     fn draw_fuzz_column_clamps_borders() {
         let _g = LOCK.lock().unwrap();
@@ -1322,6 +1511,7 @@ mod tests {
     // Fuzz offset table
     // -----------------------------------------------------------------------
 
+    /// Checks that `fuzzoffset` exactly matches the table from the C source (`r_draw.c`).
     #[test]
     fn fuzzoffset_exact_values() {
         let expected: [c_int; FUZZTABLE] = [
@@ -1342,6 +1532,7 @@ mod tests {
         }
     }
 
+    /// Checks that the `fuzzoffset` table contains exactly 29 positive and 21 negative entries.
     #[test]
     fn fuzzoffset_positive_count() {
         unsafe {

@@ -40,7 +40,7 @@ conflicts resolve trivially.
 
 - [x] doom/r_bsp.rs (927 lines, 0 docs)
 - [x] doom/r_data.rs (834 lines, 0 docs)
-- [ ] doom/r_draw.rs (1360 lines, 4 docs)
+- [x] doom/r_draw.rs (1360 lines, 4 docs)
 - [x] doom/r_main.rs (864 lines, 12 docs)
 - [x] doom/r_plane.rs (584 lines, 1 doc)
 - [x] doom/r_segs.rs (672 lines, 0 docs)
