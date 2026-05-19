@@ -1,7 +1,9 @@
-//! Rust port of vendor/doomgeneric/r_things.c.
+//! Sprite rendering for the Doom software renderer, ported from `vendor/doomgeneric/r_things.c`.
 //!
-//! Sprite rendering: projection of things onto the screen, visible sprite
-//! sorting, masked column drawing, and player weapon (psprite) rendering.
+//! Handles projection of map objects (things) into screen-space `vissprite_t` records,
+//! depth-sorting them back-to-front (painter's algorithm), clipping each sprite against
+//! floor/ceiling silhouettes from the BSP drawseg list, and drawing masked columns for
+//! both world sprites and player weapon (psprite) overlays.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -21,46 +23,90 @@ use crate::doom::tables::ANG45;
 // Constants
 // ---------------------------------------------------------------------------
 
+/// Screen width in pixels; mirrors `SCREENWIDTH` from `i_video`.
 const SCREENWIDTH: usize = crate::doom::i_video::SCREENWIDTH as usize;
+
+/// Maximum number of visible sprites that can be projected in a single frame.
+/// Sprites beyond this limit are silently dropped into `overflowsprite`.
 const MAXVISSPRITES: usize = 128;
 
+/// Number of distinct light level bands used by the scale-light table.
 const LIGHTLEVELS: usize = 16;
+
+/// Right-shift applied to a sector's light level to obtain a band index.
 const LIGHTSEGSHIFT: u32 = 4;
+
+/// Maximum scale-light index; caps the luminosity lookup so the table is not
+/// over-indexed for very close sprites.
 const MAXLIGHTSCALE: usize = 48;
+
+/// Right-shift applied to a sprite's screen scale to produce a `scalelight` index.
 const LIGHTSCALESHIFT: u32 = 12;
 
+/// Bitmask that isolates the frame index bits from a state frame field.
+/// The upper bit (`FF_FULLBRIGHT`) is stripped so that only the 0-based
+/// animation frame number remains.
 const FF_FRAMEMASK: c_int = 0x7fff;
+
+/// Flag bit in a state frame field indicating the sprite should be drawn
+/// at full brightness regardless of sector lighting.
 const FF_FULLBRIGHT: c_int = 0x8000;
 
+/// Index into the player `powers` array for the partial-invisibility power-up.
+/// Used when deciding whether to draw the player weapon with a fuzz (shadow)
+/// column function.
 const pw_invisibility: usize = 2;
 
+/// Silhouette flag: the drawseg has a valid bottom silhouette that can clip
+/// sprites from below.
 const SIL_BOTTOM: c_int = 1;
+
+/// Silhouette flag: the drawseg has a valid top silhouette that can clip
+/// sprites from above.
 const SIL_TOP: c_int = 2;
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
+/// Sprite definition table entry for one sprite name (e.g., "TROO").
+/// Points to an array of `spriteframe_t` records, one per animation frame.
+/// Mirrors `spritedef_t` from `r_local.h`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct spritedef_t {
+    /// Number of animation frames defined for this sprite.
     numframes: c_int,
+    /// Pointer to the heap-allocated array of frame descriptors.
     spriteframes: *mut spriteframe_t,
 }
 
+/// On-disk / in-memory header of a `patch_t` graphic lump.
+/// The column offset array immediately follows in the lump data (not part of
+/// this struct), accessed via pointer arithmetic in `R_DrawVisSprite`.
+/// Packed to match the WAD lump layout exactly.
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 struct patch_t {
+    /// Total width of the patch in pixels.
     width: i16,
+    /// Total height of the patch in pixels.
     height: i16,
+    /// Horizontal draw offset from the patch origin to column 0.
     leftoffset: i16,
+    /// Vertical draw offset from the patch origin to row 0.
     topoffset: i16,
 }
 
+/// Header of a single vertical post (run of opaque pixels) within a `patch_t`
+/// column. The actual pixel bytes follow immediately after this struct in memory.
+/// A `topdelta` value of `0xff` signals the end of the column.
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 struct column_t {
+    /// Y offset of the top of this post relative to the patch top.
     topdelta: u8,
+    /// Number of pixel rows in this post.
     length: u8,
 }
 
@@ -69,6 +115,8 @@ struct column_t {
 // ---------------------------------------------------------------------------
 
 extern "C" {
+    /// Case-insensitive string comparison of at most `n` bytes.
+    /// Used to match 4-character sprite names from WAD lump headers.
     fn strncasecmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int;
 }
 
@@ -142,15 +190,22 @@ pub static mut spritename: *mut c_char = ptr::null_mut();
 // Module-local state
 // ---------------------------------------------------------------------------
 
+/// Fixed-size pool of projected sprite records for the current frame.
+/// Accessed sequentially via `vissprite_p`; up to `MAXVISSPRITES` entries.
 static mut vissprites: [vissprite_t; MAXVISSPRITES] = unsafe { std::mem::zeroed() };
 
 // ---------------------------------------------------------------------------
 // Module-local state (also referenced by r_segs.rs via extern "C")
 // ---------------------------------------------------------------------------
 
+/// Pointer to the next free slot in `vissprites`; advanced by `R_NewVisSprite`.
 static mut vissprite_p: *mut vissprite_t = ptr::null_mut();
+
+/// Unused counter retained for ABI compatibility with the C original.
 static mut newvissprite: c_int = 0;
 
+/// Sentinel vissprite returned when the pool is exhausted so callers always
+/// receive a valid (though discarded) write target.
 static mut overflowsprite: vissprite_t = unsafe { std::mem::zeroed() };
 
 /// Mutable pointers used by masked column drawing (read by r_segs.rs).
@@ -169,12 +224,25 @@ pub static mut spryscale: fixed_t = 0;
 #[no_mangle]
 pub static mut sprtopscreen: fixed_t = 0;
 
+/// Dummy head node of the doubly-linked sorted vissprite list built by
+/// `R_SortVisSprites`; iterated by `R_DrawMasked`.
 static mut vsprsortedhead: vissprite_t = unsafe { std::mem::zeroed() };
 
 // ---------------------------------------------------------------------------
 // R_InstallSpriteLump
 // ---------------------------------------------------------------------------
 
+/// Record one WAD lump as a rotation of a sprite frame in `sprtemp`.
+///
+/// Called exclusively from `R_InitSpriteDefs` for each lump whose name
+/// matches the current sprite being processed. If `rotation == 0` the lump
+/// is installed for all eight rotations; otherwise it fills exactly one slot.
+/// Calls `i_error!` on duplicate or inconsistent assignments.
+///
+/// # Safety
+/// `spritename` must be a valid, null-terminated C string pointer.
+/// `lump`, `frame`, and `rotation` must be within the ranges enforced by
+/// the guards at the top of the function.
 unsafe fn R_InstallSpriteLump(lump: c_int, frame: u32, rotation: u32, flipped: c_int) {
     if frame >= 29 || rotation > 8 {
         i_error!("R_InstallSpriteLump: Bad frame characters in lump {}", lump);
@@ -238,6 +306,22 @@ unsafe fn R_InstallSpriteLump(lump: c_int, frame: u32, rotation: u32, flipped: c
 // R_InitSpriteDefs
 // ---------------------------------------------------------------------------
 
+/// Build the `sprites` lookup table from a null-terminated list of 4-character
+/// sprite names.
+///
+/// Scans every sprite-range WAD lump, decodes frame letter and rotation digit
+/// from the lump name, and calls `R_InstallSpriteLump` to populate `sprtemp`.
+/// After processing all lumps for a sprite, validates that every referenced
+/// frame has a complete rotation set, then allocates a permanent `spriteframe_t`
+/// array and copies `sprtemp` into it.
+///
+/// In a modified game (`modifiedgame` true) lump numbers are resolved through
+/// `W_GetNumForName` to respect WAD replacement ordering.
+///
+/// # Safety
+/// `namelist` must be a null-terminated array of valid C string pointers.
+/// `firstspritelump` and `lastspritelump` from `r_data` must already be
+/// initialised before this function is called.
 unsafe fn R_InitSpriteDefs(namelist: *mut *mut c_char) {
     let mut check = namelist;
     while !(*check).is_null() {
@@ -349,6 +433,16 @@ unsafe fn R_InitSpriteDefs(namelist: *mut *mut c_char) {
 // R_InitSprites
 // ---------------------------------------------------------------------------
 
+/// Initialise the sprite system at program start.
+///
+/// Fills `negonearray` with `-1` (used as the ceiling clip sentinel for psprites),
+/// then delegates to `R_InitSpriteDefs` to build the sprite frame lookup table.
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+/// `namelist` must be a null-terminated array of valid C string pointers, each
+/// pointing to a 4-character sprite name. Must be called after WAD loading
+/// (`W_InitMultipleFiles`) has set up `firstspritelump` and `lastspritelump`.
 #[no_mangle]
 pub unsafe extern "C" fn R_InitSprites(namelist: *mut *mut c_char) {
     for i in 0..SCREENWIDTH {
@@ -361,6 +455,15 @@ pub unsafe extern "C" fn R_InitSprites(namelist: *mut *mut c_char) {
 // R_ClearSprites
 // ---------------------------------------------------------------------------
 
+/// Reset the vissprite pool to empty at the start of each frame.
+///
+/// Resets `vissprite_p` to the beginning of the `vissprites` array so that
+/// the next frame can overwrite all previous entries.
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+/// Must be called once per frame before any call to `R_AddSprites` or
+/// `R_ProjectSprite`. No other thread may access `vissprites` concurrently.
 #[no_mangle]
 pub unsafe extern "C" fn R_ClearSprites() {
     vissprite_p = std::ptr::addr_of_mut!(vissprites[0]);
@@ -370,6 +473,16 @@ pub unsafe extern "C" fn R_ClearSprites() {
 // R_NewVisSprite
 // ---------------------------------------------------------------------------
 
+/// Allocate the next vissprite slot from the pool and return a pointer to it.
+///
+/// If the pool is full (`MAXVISSPRITES` entries already allocated this frame)
+/// returns a pointer to `overflowsprite` so the caller can write without
+/// crashing; the overflow record is silently discarded.
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+/// Must only be called after `R_ClearSprites` has been called this frame.
+/// The returned pointer is valid until the next `R_ClearSprites` call.
 #[no_mangle]
 pub unsafe extern "C" fn R_NewVisSprite() -> *mut vissprite_t {
     if vissprite_p == std::ptr::addr_of_mut!(vissprites[0]).add(MAXVISSPRITES) {
@@ -383,6 +496,21 @@ pub unsafe extern "C" fn R_NewVisSprite() -> *mut vissprite_t {
 // R_DrawMaskedColumn
 // ---------------------------------------------------------------------------
 
+/// Draw one vertical column of a masked (partly transparent) sprite or
+/// mid-texture using the current `colfunc`.
+///
+/// Iterates over the post list stored in `column`, clipping each post against
+/// `mfloorclip` and `mceilingclip` before invoking `colfunc`. Used for both
+/// world sprites (via `R_DrawVisSprite`) and masked mid-textures
+/// (via `R_RenderMaskedSegRange`).
+/// Exported as `#[no_mangle]` for C callers (called from `r_segs.rs`).
+///
+/// # Safety
+/// - `column` must point to a valid `column_t` sequence terminated by
+///   `topdelta == 0xff`.
+/// - `mfloorclip`, `mceilingclip`, `dc_x`, `sprtopscreen`, and `spryscale`
+///   must all be valid for the current column being drawn.
+/// - `colfunc` must be set to a valid column renderer before calling.
 #[no_mangle]
 pub unsafe extern "C" fn R_DrawMaskedColumn(column: *mut c_void) {
     let mut column = column as *mut column_t;
@@ -421,6 +549,28 @@ pub unsafe extern "C" fn R_DrawMaskedColumn(column: *mut c_void) {
 // R_DrawVisSprite
 // ---------------------------------------------------------------------------
 
+/// Draw a fully projected vissprite to the screen.
+///
+/// Sets up the column renderer state (`dc_colormap`, `dc_iscale`,
+/// `dc_texturemid`, `spryscale`, `sprtopscreen`) from the vissprite fields,
+/// then iterates over each screen column from `vis.x1` to `vis.x2`, locating
+/// the corresponding patch column and calling `R_DrawMaskedColumn`.
+///
+/// The column function (`colfunc`) is temporarily overridden to `fuzzcolfunc`
+/// for shadow-drawn sprites (null colormap) or `transcolfunc` for translated
+/// sprites, and restored to `basecolfunc` afterwards.
+///
+/// `mfloorclip` and `mceilingclip` must be set by the caller before this
+/// function is invoked.
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+/// - `vis` must point to a fully initialised `vissprite_t` as produced by
+///   `R_ProjectSprite` or `R_DrawPSprite`.
+/// - The patch lump referenced by `vis.patch + firstspritelump` must be loaded
+///   in the WAD cache.
+/// - `mfloorclip` and `mceilingclip` must be valid arrays of at least
+///   `SCREENWIDTH` elements.
 #[no_mangle]
 pub unsafe extern "C" fn R_DrawVisSprite(vis: *mut vissprite_t, _x1: c_int, _x2: c_int) {
     let patch = W_CacheLumpNum((*vis).patch + firstspritelump, 8) as *mut patch_t; // PU_CACHE = 8
@@ -470,6 +620,24 @@ pub unsafe extern "C" fn R_DrawVisSprite(vis: *mut vissprite_t, _x1: c_int, _x2:
 // R_ProjectSprite
 // ---------------------------------------------------------------------------
 
+/// Project a map object (thing) into screen space and, if visible, fill a
+/// vissprite record for later drawing.
+///
+/// Transforms the thing's world position relative to the viewpoint, rejects
+/// it if behind the view plane or too far off-axis, selects the correct sprite
+/// lump based on the player's viewing angle and the thing's rotation set,
+/// computes screen-space left/right column bounds, and writes all drawing
+/// parameters (scale, light, texture offsets) into a new `vissprite_t`.
+/// Exported as `#[no_mangle]` for C callers (called from `R_AddSprites`).
+///
+/// # Safety
+/// - `thing` must be a valid, non-null `mobj_t` pointer.
+/// - `sprites`, `numsprites`, `spriteoffset`, `spritewidth`, and
+///   `spritetopoffset` must all be initialised by `R_InitSprites` before this
+///   function is called.
+/// - `viewx`, `viewy`, `viewz`, `viewcos`, `viewsin`, `projection`,
+///   `centerxfrac`, `viewwidth`, and `spritelights` must be valid for the
+///   current frame.
 #[no_mangle]
 pub unsafe extern "C" fn R_ProjectSprite(thing: *mut c_void) {
     let thing = thing as *mut crate::doom::c_ffi::mobj_t;
@@ -608,6 +776,19 @@ pub unsafe extern "C" fn R_ProjectSprite(thing: *mut c_void) {
 // R_AddSprites
 // ---------------------------------------------------------------------------
 
+/// Add all things in a sector to the vissprite list during BSP traversal.
+///
+/// Called once per unique sector encountered while traversing the BSP tree.
+/// Uses `sec.validcount` to skip sectors that were already processed this
+/// frame (a sector can appear in multiple subsectors). Sets `spritelights`
+/// from the sector's light level, then calls `R_ProjectSprite` for every
+/// thing in the sector's thing list.
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+/// - `sec` must be a valid, non-null `sector_t` pointer.
+/// - `validcount`, `scalelight`, `extralight` must be initialised for the
+///   current frame before this function is called.
 #[no_mangle]
 pub unsafe extern "C" fn R_AddSprites(sec: *mut sector_t) {
     let sec = &*sec;
@@ -644,6 +825,24 @@ pub unsafe extern "C" fn R_AddSprites(sec: *mut sector_t) {
 // R_DrawPSprite
 // ---------------------------------------------------------------------------
 
+/// Draw one player weapon sprite (psprite) onto the screen.
+///
+/// Psprites are rendered in screen (HUD) space rather than world space:
+/// the horizontal position is based on `psp.sx` offset from the screen
+/// centre and the vertical position on `psp.sy` relative to `BASEYCENTER`.
+/// A temporary stack-allocated `vissprite_t` (`avis`) is filled and passed
+/// directly to `R_DrawVisSprite`; it is never inserted into the vissprite pool.
+///
+/// If the player carries the partial-invisibility power-up at a sufficient
+/// level the weapon is drawn with `fuzzcolfunc` (shadow effect).
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+/// - `psp` must be a valid, non-null `PspdefT` pointer whose `state` field
+///   points to a valid `State`.
+/// - `sprites`, `pspritescale`, `pspriteiscale`, `spritelights`,
+///   `mfloorclip`, and `mceilingclip` must all be valid for the current frame.
+/// - `viewplayer` must point to a fully initialised player structure.
 #[no_mangle]
 pub unsafe extern "C" fn R_DrawPSprite(psp: *mut PspdefT) {
     let psp = &*psp;
@@ -745,6 +944,23 @@ pub unsafe extern "C" fn R_DrawPSprite(psp: *mut PspdefT) {
 // R_DrawPlayerSprites
 // ---------------------------------------------------------------------------
 
+/// Draw all active player weapon sprites (psprites) for the current frame.
+///
+/// Determines the lighting level from the sector the player is standing in,
+/// sets `mfloorclip` and `mceilingclip` to their full-screen defaults
+/// (`screenheightarray` and `negonearray` respectively), then iterates over
+/// `viewplayer.psprites` calling `R_DrawPSprite` for each slot with a
+/// non-null state.
+///
+/// Only called from `R_DrawMasked` when `viewangleoffset == 0` (i.e., the
+/// player is not looking through a camera or mirror).
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+/// - `viewplayer` must point to a fully initialised player structure with a
+///   valid `mo -> subsector -> sector` chain.
+/// - `scalelight`, `extralight`, `screenheightarray`, and `negonearray` must
+///   all be valid before this function is called.
 #[no_mangle]
 pub unsafe extern "C" fn R_DrawPlayerSprites() {
     let mo = (*viewplayer).mo as *mut crate::doom::c_ffi::mobj_t;
@@ -778,6 +994,23 @@ pub unsafe extern "C" fn R_DrawPlayerSprites() {
 // R_SortVisSprites
 // ---------------------------------------------------------------------------
 
+/// Sort the vissprite pool into a back-to-front doubly-linked list for the
+/// painter's algorithm.
+///
+/// Builds an `unsorted` circular list from the pool entries, then repeatedly
+/// extracts the entry with the smallest `scale` value (farthest away) and
+/// appends it to `vsprsortedhead`. This is an O(n^2) selection sort, matching
+/// the original C implementation exactly.
+///
+/// After this call, `vsprsortedhead.next` is the farthest sprite and
+/// `vsprsortedhead.prev` is the closest; traversing `next` links draws
+/// sprites back-to-front.
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+/// Must be called after all `R_ProjectSprite` calls for the frame and before
+/// `R_DrawMasked` iterates `vsprsortedhead`. Modifies the `next`/`prev`
+/// pointers of every vissprite in the pool.
 #[no_mangle]
 pub unsafe extern "C" fn R_SortVisSprites() {
     let count = vissprite_p.offset_from(std::ptr::addr_of_mut!(vissprites[0]));
@@ -831,6 +1064,27 @@ pub unsafe extern "C" fn R_SortVisSprites() {
 // R_DrawSprite
 // ---------------------------------------------------------------------------
 
+/// Clip and draw one sorted vissprite against the drawseg silhouette list.
+///
+/// Scans drawsegs from back to front to build per-column floor (`CLIPBOT`) and
+/// ceiling (`CLIPTOP`) clip arrays. For each drawseg that overlaps the sprite's
+/// horizontal span:
+/// - If the seg is behind the sprite and has a masked mid-texture,
+///   `R_RenderMaskedSegRange` is called immediately (mid-textures must be
+///   drawn in depth order relative to sprites).
+/// - If the seg is in front of the sprite, its silhouette (`SIL_BOTTOM`,
+///   `SIL_TOP`, or both) is used to tighten `CLIPBOT`/`CLIPTOP` for those
+///   columns not yet set.
+///
+/// After all drawsegs are processed, unset clip values default to `viewheight`
+/// (bottom) and `-1` (top), then `R_DrawVisSprite` is called.
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+/// - `spr` must be a valid `vissprite_t` pointer from the sorted list.
+/// - `ds_p` and `drawsegs` must be valid for the current frame.
+/// - `R_SortVisSprites` must have been called this frame before any calls to
+///   this function.
 #[no_mangle]
 pub unsafe extern "C" fn R_DrawSprite(spr: *mut vissprite_t) {
     let spr = &*spr;
@@ -941,6 +1195,22 @@ pub unsafe extern "C" fn R_DrawSprite(spr: *mut vissprite_t) {
 // R_DrawMasked
 // ---------------------------------------------------------------------------
 
+/// Top-level masked rendering pass called at the end of each frame.
+///
+/// Performs three steps in order:
+/// 1. Sorts the vissprite pool back-to-front via `R_SortVisSprites`.
+/// 2. Draws each sorted vissprite with `R_DrawSprite` (which also interleaves
+///    any masked mid-textures that are depth-behind the sprite).
+/// 3. Draws any remaining masked mid-textures that were not rendered in step 2.
+/// 4. Draws the player weapon overlay via `R_DrawPlayerSprites` (skipped when
+///    `viewangleoffset != 0`, i.e., in demo playback camera modes).
+///
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+/// Must be called after `R_RenderBSPNode` has filled the drawseg list and
+/// the vissprite pool for the current frame. All renderer globals (`ds_p`,
+/// `drawsegs`, `viewangleoffset`, etc.) must be valid.
 #[no_mangle]
 pub unsafe extern "C" fn R_DrawMasked() {
     R_SortVisSprites();
@@ -974,6 +1244,16 @@ pub unsafe extern "C" fn R_DrawMasked() {
 // Anchor
 // ---------------------------------------------------------------------------
 
+/// Prevents the linker from dead-stripping the `#[no_mangle]` functions in
+/// this module by taking their addresses.
+///
+/// The Rust linker may eliminate `pub unsafe extern "C"` functions that are
+/// never called from Rust code; this anchor ensures all exported symbols
+/// remain present for C callers.
+///
+/// # Safety
+/// This function has no preconditions and performs no operations; it only
+/// takes function addresses.
 #[no_mangle]
 pub unsafe extern "C" fn R_Things_Link_Anchor() {
     let _ = R_InitSprites as *const () as usize;

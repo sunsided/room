@@ -45,7 +45,7 @@ conflicts resolve trivially.
 - [x] doom/r_plane.rs (584 lines, 1 doc)
 - [x] doom/r_segs.rs (672 lines, 0 docs)
 - [x] doom/r_sky.rs (65 lines, 7 docs)
-- [ ] doom/r_things.rs (991 lines, 14 docs)
+- [x] doom/r_things.rs (991 lines, 14 docs)
 
 ## Map / Physics (`p_*`)
 
