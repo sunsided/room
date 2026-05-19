@@ -548,10 +548,13 @@ static mut newend: *mut cliprange_t = ptr::null_mut();
 // checkcoord — 12 rows, only 11 initialised in C (rows 3 and 7 are {0})
 /// Lookup table that selects the two diagonal corners of a bounding box to
 /// use for angle computation in [`R_CheckBBox`], indexed by the 4-bit
-/// combined viewer-position code `(boxy << 2) | boxx`. Rows 3, 7, and 11
-/// are the `boxpos == 5` case (viewer inside the box) and are never reached
-/// through the table; they are zero-filled. Each entry is four
-/// `BBox::{TOP,BOTTOM,LEFT,RIGHT}` indices.
+/// combined viewer-position code `(boxy << 2) | boxx`. Four rows are
+/// zero-filled and never meaningfully indexed: row 5 is the `boxpos == 5`
+/// case (viewer inside the box) where `R_CheckBBox` returns early before
+/// reaching the table; rows 3 and 7 correspond to `boxx == 3`, which is
+/// impossible because `boxx` can only be 0, 1, or 2; row 11 is padding
+/// added by Rust to complete the array (the C original has only 11 entries,
+/// indices 0-10). Each entry is four `BBox::{TOP,BOTTOM,LEFT,RIGHT}` indices.
 /// Mirrors the `checkcoord` table from `r_bsp.c`.
 static CHECKCOORD: [[c_int; 4]; 12] = [
     [3, 0, 2, 1],
