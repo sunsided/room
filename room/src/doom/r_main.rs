@@ -1,7 +1,8 @@
-//! Rust port of vendor/doomgeneric/r_main.c.
+//! Renderer main loop, view setup, and BSP/geometry/trigonometry utilities.
 //!
-//! Renderer main loop, view setup, and utility functions (BSP geometry,
-//! trigonometry). Also hosts the bulk of renderer global state.
+//! Rust port of `vendor/doomgeneric/r_main.c`. Hosts all renderer global state
+//! (viewport dimensions, view position/angle, light tables, column/span function
+//! pointers) and the per-frame entry point [`R_RenderPlayerView`].
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -23,135 +24,297 @@ use crate::types::Boolean;
 // Constants
 // ---------------------------------------------------------------------------
 
+/// Number of fine-angle steps spanning the horizontal field of view (90 degrees
+/// expressed in fine-angle units; `FINEANGLES / 4 = 2048`).
 const FIELDOFVIEW: c_int = 2048;
+
+/// Screen pixel width, mirrored from `i_video` as a `usize` for array sizing.
 const SCREENWIDTH: usize = SCREENWIDTH_IV as usize;
+
+/// Screen pixel height, mirrored from `i_video` as a `usize` for array sizing.
 const SCREENHEIGHT: usize = SCREENHEIGHT_IV as usize;
+
+/// Number of distinct light levels used in the `scalelight` / `zlight` tables.
 const LIGHTLEVELS: usize = 16;
+
+/// Shift used to convert a wall scale value into a light-level index (unused in
+/// this module but exported for sibling renderer modules).
 #[allow(dead_code)]
 const LIGHTSEGSHIFT: u32 = 4;
+
+/// Maximum number of scale steps in the `scalelight` table (one entry per
+/// screen-pixel column-scale bucket).
 const MAXLIGHTSCALE: usize = 48;
+
+/// Shift applied to a column scale value before indexing `scalelight`.
 const LIGHTSCALESHIFT: u32 = 12;
+
+/// Maximum number of Z-distance steps in the `zlight` table.
 const MAXLIGHTZ: usize = 128;
+
+/// Shift applied to a Z-distance value before indexing `zlight`.
 const LIGHTZSHIFT: u32 = 20;
+
+/// Number of colormap entries (palette remapping tables); each is 256 bytes.
 const NUMCOLORMAPS: usize = 32;
+
+/// Divisor applied to the raw scale/distance value when mapping to a light
+/// level, controlling how quickly lighting falls off with distance.
 const DISTMAP: usize = 2;
+
+/// `FRACBITS - SLOPEBITS = 16 - 11 = 5`.
+///
+/// Used to right-shift a fixed-point fraction before indexing `tantoangle[]`
+/// in [`R_PointToDist`]. Matches `DBITS` in `vendor/doomgeneric/tables.h`.
 // DBITS = FRACBITS - SLOPEBITS = 16 - 11 = 5 (matches vendor/doomgeneric/tables.h).
 const DBITS: u32 = 5;
 
+/// Raw colormap byte type; a palette index remap table entry.
 type lighttable_t = u8;
 
 // ---------------------------------------------------------------------------
 // Globals defined by this module
 // ---------------------------------------------------------------------------
 
+/// Additive angle offset applied to the player's map angle before rendering,
+/// used by the automap and demo-playback angle overrides. Zero during normal
+/// gameplay.
 #[no_mangle]
 pub static mut viewangleoffset: c_int = 0;
 
+/// Monotonically incrementing counter; bumped once per frame in
+/// [`R_SetupFrame`]. Sectors and linedefs tag themselves with `validcount`
+/// when first visited in a frame so they are not processed twice.
 #[no_mangle]
 pub static mut validcount: c_int = 1;
 
+/// Active fixed colormap pointer, or null when no override is in effect.
+///
+/// Set to a non-null colormap when the player has an invulnerability or
+/// light-amp powerup active (`player.fixedcolormap != 0`). When non-null,
+/// all walls, floors, and sprites use this single colormap instead of the
+/// distance-based `scalelight`/`zlight` entries.
 #[no_mangle]
 pub static mut fixedcolormap: *mut lighttable_t = ptr::null_mut();
 
+/// X coordinate of the viewport centre in screen pixels.
+///
+/// Recomputed by [`R_ExecuteSetViewSize`] whenever the view size changes.
 #[no_mangle]
 pub static mut centerx: c_int = 0;
 
+/// Y coordinate of the viewport centre in screen pixels.
+///
+/// Recomputed by [`R_ExecuteSetViewSize`] whenever the view size changes.
 #[no_mangle]
 pub static mut centery: c_int = 0;
 
+/// [`centerx`] expressed as a 16.16 fixed-point value (`centerx << FRACBITS`).
+///
+/// Used by [`R_InitTextureMapping`] and projection arithmetic in
+/// [`R_ExecuteSetViewSize`].
 #[no_mangle]
 pub static mut centerxfrac: fixed_t = 0;
 
+/// [`centery`] expressed as a 16.16 fixed-point value (`centery << FRACBITS`).
+///
+/// Used in floor/ceiling plane slope calculations inside
+/// [`R_ExecuteSetViewSize`].
 #[no_mangle]
 pub static mut centeryfrac: fixed_t = 0;
 
+/// Fixed-point focal length (horizontal projection constant).
+///
+/// Equal to `centerxfrac`; used by [`R_ScaleFromGlobalAngle`] and the
+/// texture mapping setup in [`R_InitTextureMapping`]. Represents the
+/// distance from the eye to the projection plane in fixed-point units.
 #[no_mangle]
 pub static mut projection: fixed_t = 0;
 
+/// Number of frames rendered since [`R_Init`] was called.
+///
+/// Incremented once per frame in [`R_SetupFrame`]. Used for profiling.
 #[no_mangle]
 pub static mut framecount: c_int = 0;
 
+/// Number of subsectors drawn in the current frame.
+///
+/// Reset to zero in [`R_SetupFrame`]; incremented in `r_bsp`. Used for
+/// profiling.
 #[no_mangle]
 pub static mut sscount: c_int = 0;
 
+/// Number of linedefs processed in the current frame (profiling counter).
 #[no_mangle]
 pub static mut linecount: c_int = 0;
 
+/// Number of BSP traversal iterations in the current frame (profiling
+/// counter).
 #[no_mangle]
 pub static mut loopcount: c_int = 0;
 
+/// View position X in map fixed-point units. Set each frame by
+/// [`R_SetupFrame`] from the player mobj's `x` field.
 #[no_mangle]
 pub static mut viewx: fixed_t = 0;
 
+/// View position Y in map fixed-point units. Set each frame by
+/// [`R_SetupFrame`] from the player mobj's `y` field.
 #[no_mangle]
 pub static mut viewy: fixed_t = 0;
 
+/// View height Z in map fixed-point units (player eye height). Set each
+/// frame by [`R_SetupFrame`] from `player.viewz`.
 #[no_mangle]
 pub static mut viewz: fixed_t = 0;
 
+/// Current view angle as a Binary Angle Measurement (BAM) `u32`.
+///
+/// Set each frame in [`R_SetupFrame`] from the player mobj angle plus
+/// [`viewangleoffset`]. Used throughout the BSP traversal and texture
+/// mapping pipeline.
 #[no_mangle]
 pub static mut viewangle: angle_t = 0;
 
+/// `cos(viewangle)` in 16.16 fixed-point. Precomputed each frame in
+/// [`R_SetupFrame`] for fast world-space projection.
 #[no_mangle]
 pub static mut viewcos: fixed_t = 0;
 
+/// `sin(viewangle)` in 16.16 fixed-point. Precomputed each frame in
+/// [`R_SetupFrame`] for fast world-space projection.
 #[no_mangle]
 pub static mut viewsin: fixed_t = 0;
 
+/// Pointer to the player struct whose view is currently being rendered.
+///
+/// Set at the start of each frame by [`R_SetupFrame`]; read by several
+/// renderer subsystems that need player-specific state (e.g. weapon sprites).
 #[no_mangle]
 pub static mut viewplayer: *mut PlayerT = ptr::null_mut();
 
+/// Detail level shift: `0` = high detail, `1` = low detail (half-width
+/// columns doubled horizontally). Controls which column/span draw functions
+/// are active and affects several scaling calculations.
 #[no_mangle]
 pub static mut detailshift: c_int = 0;
 
+/// Half the horizontal field of view as a BAM angle.
+///
+/// Set by [`R_InitTextureMapping`] to `xtoviewangle[0]` - the largest view
+/// angle that still maps to screen column 0. Used by the BSP clipper in
+/// `r_bsp` to cull out-of-frustum segs.
 #[no_mangle]
 pub static mut clipangle: angle_t = 0;
 
+/// Maps fine-angle index to screen X column.
+///
+/// `viewangletox[i]` is the screen column (or sentinel `-1` /
+/// `viewwidth+1` for out-of-frustum angles) for fine-angle `i`. Indexed
+/// by `(viewangle >> ANGLETOFINESHIFT)`. Sized one element larger than
+/// strictly necessary (`FINEANGLES/2 + 1`) to match `r_bsp`'s defensive
+/// bounds.
 // r_bsp.rs originally declared this as [c_int; FINEANGLES/2 + 1] to guard
 // against a potential off-by-one in the original C code. Keep the same
 // size so the two modules agree.
 #[no_mangle]
 pub static mut viewangletox: [c_int; tables::FINEANGLES / 2 + 1] = [0; tables::FINEANGLES / 2 + 1];
 
+/// Maps screen X column to the smallest view angle that projects onto that
+/// column.
+///
+/// `xtoviewangle[x]` gives the left-edge angle of the frustum slice at
+/// column `x`. Sized `SCREENWIDTH + 1` to include the right-edge sentinel.
 #[no_mangle]
 pub static mut xtoviewangle: [angle_t; SCREENWIDTH + 1] = [0; SCREENWIDTH + 1];
 
+/// Distance-to-light lookup table indexed by `[light_level][scale]`.
+///
+/// `scalelight[i][j]` points into the master `colormaps` array. `i` is
+/// derived from the sector light level, `j` from the projected wall/sprite
+/// scale. Recomputed by [`R_ExecuteSetViewSize`] because it depends on
+/// `viewwidth`.
 #[no_mangle]
 pub static mut scalelight: [[*mut lighttable_t; MAXLIGHTSCALE]; LIGHTLEVELS] =
     [[ptr::null_mut(); MAXLIGHTSCALE]; LIGHTLEVELS];
 
+/// Fixed-scale colormap array used when [`fixedcolormap`] is active.
+///
+/// All `MAXLIGHTSCALE` entries are set to [`fixedcolormap`] in
+/// [`R_SetupFrame`], so that wall-light lookup code does not need a special
+/// case for fixed-colormap mode.
 #[no_mangle]
 pub static mut scalelightfixed: [*mut lighttable_t; MAXLIGHTSCALE] =
     [ptr::null_mut(); MAXLIGHTSCALE];
 
+/// Z-distance-to-light lookup table indexed by `[light_level][z_bucket]`.
+///
+/// `zlight[i][j]` points into `colormaps`. Used for flat (floor/ceiling)
+/// and sprite lighting. Computed once in [`R_InitLightTables`] (unlike
+/// `scalelight`, it does not depend on `viewwidth`).
 #[no_mangle]
 pub static mut zlight: [[*mut lighttable_t; MAXLIGHTZ]; LIGHTLEVELS] =
     [[ptr::null_mut(); MAXLIGHTZ]; LIGHTLEVELS];
 
+/// Additional light bonus added to the sector's base light level, produced
+/// by muzzle flashes and similar effects. Set each frame from
+/// `player.extralight` in [`R_SetupFrame`].
 #[no_mangle]
 pub static mut extralight: c_int = 0;
 
+/// Active column-drawing function pointer.
+///
+/// Points to either the normal or low-detail column renderer; may be
+/// temporarily overridden by `r_things` to a fuzz or translated variant.
+/// Reset to `basecolfunc` after each sprite.
 #[no_mangle]
 pub static mut colfunc: Option<unsafe extern "C" fn()> = None;
 
+/// Base (unmodified) column-drawing function pointer.
+///
+/// Always points to the standard solid-column renderer for the current
+/// detail level (`R_DrawColumn` or `R_DrawColumnLow`). Used to restore
+/// `colfunc` after drawing special-effect sprites.
 #[no_mangle]
 pub static mut basecolfunc: Option<unsafe extern "C" fn()> = None;
 
+/// Fuzz (partial-invisibility) column-drawing function pointer.
+///
+/// Points to `R_DrawFuzzColumn` or `R_DrawFuzzColumnLow` depending on the
+/// active detail level.
 #[no_mangle]
 pub static mut fuzzcolfunc: Option<unsafe extern "C" fn()> = None;
 
+/// Translated (palette-remapped) column-drawing function pointer.
+///
+/// Points to `R_DrawTranslatedColumn` or `R_DrawTranslatedColumnLow`.
+/// Used for colored player sprites in multiplayer.
 #[no_mangle]
 pub static mut transcolfunc: Option<unsafe extern "C" fn()> = None;
 
+/// Horizontal span (floor/ceiling) drawing function pointer.
+///
+/// Points to `R_DrawSpan` or `R_DrawSpanLow` depending on the active
+/// detail level.
 #[no_mangle]
 pub static mut spanfunc: Option<unsafe extern "C" fn()> = None;
 
+/// Flag set by [`R_SetViewSize`] when a view-size change is pending.
+///
+/// [`R_ExecuteSetViewSize`] checks this at the start of each frame and
+/// applies the pending change if set. The deferred approach avoids changing
+/// viewport dimensions mid-frame.
 #[no_mangle]
 pub static mut setsizeneeded: Boolean = Boolean::FALSE;
 
+/// Pending viewport block size (1-11). Set by [`R_SetViewSize`] and
+/// consumed by [`R_ExecuteSetViewSize`]. Value 11 selects full-screen
+/// rendering.
 #[no_mangle]
 pub static mut setblocks: c_int = 0;
 
+/// Pending detail level (0 = high, 1 = low). Set by [`R_SetViewSize`] and
+/// consumed by [`R_ExecuteSetViewSize`].
 #[no_mangle]
 pub static mut setdetail: c_int = 0;
 
@@ -179,6 +342,15 @@ use crate::doom::r_things::{
 // R_AddPointToBox
 // ---------------------------------------------------------------------------
 
+/// Expand a bounding box so that it encloses the given map-coordinate point.
+///
+/// Equivalent to `R_AddPointToBox` in `r_main.c`. Modifies the four
+/// fixed-point values at `box_` in the [`BBox`] layout (`LEFT`, `RIGHT`,
+/// `BOTTOM`, `TOP`).
+///
+/// # Safety
+/// `box_` must point to a valid, writable array of at least four `fixed_t`
+/// values laid out in [`BBox`] index order.
 #[no_mangle]
 pub unsafe extern "C" fn R_AddPointToBox(x: c_int, y: c_int, box_: *mut fixed_t) {
     if x < *box_.add(BBox::LEFT) {
@@ -199,6 +371,16 @@ pub unsafe extern "C" fn R_AddPointToBox(x: c_int, y: c_int, box_: *mut fixed_t)
 // R_PointOnSide
 // ---------------------------------------------------------------------------
 
+/// Determine which side of a BSP partition plane a map point lies on.
+///
+/// Returns `0` for the front (right) side and `1` for the back (left) side.
+/// Uses fast sign-bit shortcuts for axis-aligned partitions before falling
+/// back to a full cross-product test.
+///
+/// Equivalent to `R_PointOnSide` in `r_main.c`.
+///
+/// # Safety
+/// `node` must be a valid, non-null pointer to a [`node_t`].
 #[no_mangle]
 pub unsafe extern "C" fn R_PointOnSide(x: fixed_t, y: fixed_t, node: *const node_t) -> c_int {
     if (*node).dx == 0 {
@@ -239,6 +421,16 @@ pub unsafe extern "C" fn R_PointOnSide(x: fixed_t, y: fixed_t, node: *const node
 // R_PointOnSegSide
 // ---------------------------------------------------------------------------
 
+/// Determine which side of a seg (map line segment) a point lies on.
+///
+/// Returns `0` for the front side and `1` for the back side, using the same
+/// sign-bit shortcut as [`R_PointOnSide`].
+///
+/// Equivalent to `R_PointOnSegSide` in `r_main.c`.
+///
+/// # Safety
+/// `line` must be a valid, non-null pointer to a [`seg_t`] whose `v1` and
+/// `v2` vertex pointers are also valid.
 #[no_mangle]
 pub unsafe extern "C" fn R_PointOnSegSide(x: fixed_t, y: fixed_t, line: *const seg_t) -> c_int {
     let lx = (*(*line).v1).x;
@@ -285,6 +477,18 @@ pub unsafe extern "C" fn R_PointOnSegSide(x: fixed_t, y: fixed_t, line: *const s
 // R_PointToAngle
 // ---------------------------------------------------------------------------
 
+/// Convert an absolute map coordinate to a view angle (BAM `u32`).
+///
+/// Subtracts the current [`viewx`]/[`viewy`] to get a relative vector, then
+/// classifies the vector into one of eight octants and looks up the angle
+/// using the `tantoangle` table. Returns 0 for the view position itself.
+///
+/// Equivalent to `R_PointToAngle` in `r_main.c`.
+///
+/// # Safety
+/// Reads the global [`viewx`] and [`viewy`]; these must have been
+/// initialised by [`R_SetupFrame`] (or [`R_PointToAngle2`]) before this
+/// function is called.
 #[no_mangle]
 pub unsafe extern "C" fn R_PointToAngle(x: fixed_t, y: fixed_t) -> angle_t {
     let mut x = x - viewx;
@@ -346,6 +550,20 @@ pub unsafe extern "C" fn R_PointToAngle(x: fixed_t, y: fixed_t) -> angle_t {
 // R_PointToAngle2
 // ---------------------------------------------------------------------------
 
+/// Compute the BAM angle from map point `(x1, y1)` to map point `(x2, y2)`.
+///
+/// Temporarily sets the global [`viewx`]/[`viewy`] to `(x1, y1)` and
+/// delegates to [`R_PointToAngle`]. This matches the C implementation, which
+/// reuses the same globals.
+///
+/// Equivalent to `R_PointToAngle2` in `r_main.c`.
+///
+/// # Safety
+/// Writes the global [`viewx`] and [`viewy`]; callers must ensure no
+/// concurrent read of those globals occurs.
+// FIXME: R_PointToAngle2 temporarily clobbers the global viewx/viewy, which
+// is safe in the original single-threaded C engine but would be hazardous in
+// any multi-threaded context. The C source has the same design.
 #[no_mangle]
 pub unsafe extern "C" fn R_PointToAngle2(
     x1: fixed_t,
@@ -362,6 +580,17 @@ pub unsafe extern "C" fn R_PointToAngle2(
 // R_PointToDist
 // ---------------------------------------------------------------------------
 
+/// Compute the distance from the current view position to a map point.
+///
+/// Uses the `tantoangle` and `finesine` tables to compute the Euclidean
+/// distance via a cosine projection. Handles `dx == 0` to avoid division by
+/// zero (matches the udm1.wad crash fix present in the C source).
+///
+/// Equivalent to `R_PointToDist` in `r_main.c`.
+///
+/// # Safety
+/// Reads [`viewx`] and [`viewy`], which must have been set by
+/// [`R_SetupFrame`] before this is called in a rendering context.
 #[no_mangle]
 pub unsafe extern "C" fn R_PointToDist(x: fixed_t, y: fixed_t) -> fixed_t {
     let mut dx = (x - viewx).wrapping_abs();
@@ -382,6 +611,13 @@ pub unsafe extern "C" fn R_PointToDist(x: fixed_t, y: fixed_t) -> fixed_t {
 // R_InitPointToAngle
 // ---------------------------------------------------------------------------
 
+/// No-op initialiser kept for ABI compatibility.
+///
+/// In the original Doom source, `R_InitPointToAngle` built the `tantoangle`
+/// lookup table at runtime. The table is now precomputed in `tables.c` (and
+/// `tables.rs`), so this function has no work to do.
+///
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub extern "C" fn R_InitPointToAngle() {
     // UNUSED - now getting from tables.c
@@ -391,6 +627,23 @@ pub extern "C" fn R_InitPointToAngle() {
 // R_ScaleFromGlobalAngle
 // ---------------------------------------------------------------------------
 
+/// Compute the texture-mapping scale for a wall column at the given view
+/// angle.
+///
+/// Returns the fixed-point scale factor used to stretch or shrink a wall
+/// texture column. Clamps the result to `[256, 64 * FRACUNIT]` to avoid
+/// extreme near/far values.
+///
+/// `rw_distance` (distance from view to the wall normal) and
+/// `rw_normalangle` (angle of the wall's outward normal) must be set before
+/// calling this function; they are both globals in `r_segs`.
+///
+/// Equivalent to `R_ScaleFromGlobalAngle` in `r_main.c`.
+///
+/// # Safety
+/// Reads [`viewangle`], [`projection`], [`detailshift`], and the `r_segs`
+/// globals [`rw_distance`] and [`rw_normalangle`]. All must be initialised
+/// before calling.
 #[no_mangle]
 pub unsafe extern "C" fn R_ScaleFromGlobalAngle(visangle: angle_t) -> fixed_t {
     let anglea = ANG90.wrapping_add(visangle.wrapping_sub(viewangle));
@@ -414,6 +667,13 @@ pub unsafe extern "C" fn R_ScaleFromGlobalAngle(visangle: angle_t) -> fixed_t {
 // R_InitTables
 // ---------------------------------------------------------------------------
 
+/// No-op initialiser kept for ABI compatibility.
+///
+/// In the original source, `R_InitTables` computed `finetangent` and
+/// `finesine` at runtime. Both tables are now precomputed in `tables.c`
+/// (and `tables.rs`).
+///
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub extern "C" fn R_InitTables() {
     // UNUSED: now getting from tables.c
@@ -423,6 +683,20 @@ pub extern "C" fn R_InitTables() {
 // R_InitTextureMapping
 // ---------------------------------------------------------------------------
 
+/// Build the [`viewangletox`] and [`xtoviewangle`] lookup tables for the
+/// current viewport geometry, then set [`clipangle`].
+///
+/// The focal length is derived from [`centerxfrac`] and the `finetangent`
+/// table so that `FIELDOFVIEW` fine-angle steps span exactly [`viewwidth`]
+/// pixels. After building both tables the function removes the sentinel
+/// `-1`/`viewwidth+1` values from [`viewangletox`] (fencepost cleanup).
+///
+/// Called by [`R_ExecuteSetViewSize`] whenever the viewport is resized.
+///
+/// # Safety
+/// Reads and writes numerous renderer globals ([`viewwidth`],
+/// [`centerxfrac`], [`clipangle`], etc.). Must be called after [`viewwidth`]
+/// and [`centerxfrac`] have been set by [`R_ExecuteSetViewSize`].
 #[no_mangle]
 pub unsafe extern "C" fn R_InitTextureMapping() {
     // Use tangent table to generate viewangletox:
@@ -483,6 +757,19 @@ pub unsafe extern "C" fn R_InitTextureMapping() {
 // R_InitLightTables
 // ---------------------------------------------------------------------------
 
+/// Precompute the Z-distance-based light table [`zlight`].
+///
+/// For each combination of sector light level and Z-distance bucket, computes
+/// a pointer into the master `colormaps` array. The Z-distance buckets are
+/// shifted by `LIGHTZSHIFT` before lookup. Only the distance-based
+/// [`zlight`] table is built here; the scale-based [`scalelight`] table
+/// depends on `viewwidth` and is rebuilt in [`R_ExecuteSetViewSize`].
+///
+/// Equivalent to `R_InitLightTables` in `r_main.c`.
+///
+/// # Safety
+/// Reads `colormaps` from `r_data`; that pointer must be non-null and point
+/// to `NUMCOLORMAPS * 256` valid bytes. Called during startup by [`R_Init`].
 #[no_mangle]
 pub unsafe extern "C" fn R_InitLightTables() {
     for i in 0..LIGHTLEVELS {
@@ -511,6 +798,17 @@ pub unsafe extern "C" fn R_InitLightTables() {
 // R_SetViewSize
 // ---------------------------------------------------------------------------
 
+/// Schedule a viewport size change for the next frame.
+///
+/// Sets [`setsizeneeded`], [`setblocks`], and [`setdetail`] so that
+/// [`R_ExecuteSetViewSize`] will apply them at the start of the next rendered
+/// frame. Safe to call mid-frame because the actual resize is deferred.
+///
+/// Equivalent to `R_SetViewSize` in `r_main.c`.
+///
+/// # Safety
+/// Writes three renderer globals; safe to call from any context as long as
+/// no other thread reads those globals concurrently (single-threaded engine).
 #[no_mangle]
 pub unsafe extern "C" fn R_SetViewSize(blocks: c_int, detail: c_int) {
     setsizeneeded = Boolean::TRUE;
@@ -522,6 +820,23 @@ pub unsafe extern "C" fn R_SetViewSize(blocks: c_int, detail: c_int) {
 // R_ExecuteSetViewSize
 // ---------------------------------------------------------------------------
 
+/// Apply a pending viewport size change.
+///
+/// Computes all viewport dimension globals ([`viewwidth`], [`viewheight`],
+/// [`scaledviewwidth`], [`centerx`], [`centery`], [`centerxfrac`],
+/// [`centeryfrac`], [`projection`], [`detailshift`]), selects the appropriate
+/// column/span draw function pointers, rebuilds the texture-mapping tables,
+/// and recomputes both the `scalelight` and `yslope`/`distscale` plane
+/// tables.
+///
+/// Only called when [`setsizeneeded`] is `TRUE`; normally invoked once per
+/// frame from the game loop before rendering begins.
+///
+/// Equivalent to `R_ExecuteSetViewSize` in `r_main.c`.
+///
+/// # Safety
+/// Writes a large number of renderer globals and calls several initialisation
+/// helpers. Must not be called while a frame render is in progress.
 #[no_mangle]
 pub unsafe extern "C" fn R_ExecuteSetViewSize() {
     setsizeneeded = Boolean::FALSE;
@@ -609,6 +924,18 @@ pub unsafe extern "C" fn R_ExecuteSetViewSize() {
 // R_Init
 // ---------------------------------------------------------------------------
 
+/// One-time renderer initialisation called at engine startup.
+///
+/// Calls, in order: `R_InitData`, `R_InitPointToAngle`, `R_InitTables`,
+/// `R_SetViewSize`, `R_InitPlanes`, `R_InitLightTables`, `R_InitSkyMap`,
+/// `R_InitTranslationTables`. Prints a `.` to stdout after each step as a
+/// startup progress indicator.
+///
+/// Equivalent to `R_Init` in `r_main.c`.
+///
+/// # Safety
+/// Initialises global renderer state; must be called exactly once before any
+/// frame is rendered. Calls multiple unsafe initialisers internally.
 #[no_mangle]
 pub unsafe extern "C" fn R_Init() {
     R_InitData();
@@ -633,8 +960,23 @@ pub unsafe extern "C" fn R_Init() {
 // R_PointInSubsector
 // ---------------------------------------------------------------------------
 
+/// Node flag indicating the child index refers to a subsector, not another
+/// node. Matches `NF_SUBSECTOR` in `r_local.h`.
 const NF_SUBSECTOR: u32 = 0x8000;
 
+/// Walk the BSP tree to find the subsector that contains the given map point.
+///
+/// Starts at the root node (`numnodes - 1`) and descends by calling
+/// [`R_PointOnSide`] at each node until reaching a leaf (subsector) indicated
+/// by the `NF_SUBSECTOR` flag. Handles the degenerate case of a single
+/// subsector (no nodes).
+///
+/// Equivalent to `R_PointInSubsector` in `r_main.c`.
+///
+/// # Safety
+/// Reads the `nodes` and `subsectors` arrays from `p_setup`; both must be
+/// fully populated (i.e. the map must have been loaded) before this function
+/// is called.
 #[no_mangle]
 pub unsafe extern "C" fn R_PointInSubsector(x: fixed_t, y: fixed_t) -> *mut subsector_t {
     // single subsector is a special case
@@ -657,6 +999,21 @@ pub unsafe extern "C" fn R_PointInSubsector(x: fixed_t, y: fixed_t) -> *mut subs
 // R_SetupFrame
 // ---------------------------------------------------------------------------
 
+/// Prepare all per-frame view globals from the given player's current state.
+///
+/// Sets [`viewplayer`], [`viewx`], [`viewy`], [`viewz`], [`viewangle`],
+/// [`viewsin`], [`viewcos`], [`extralight`], and [`fixedcolormap`]. Also
+/// resets [`sscount`] and increments both [`framecount`] and [`validcount`].
+///
+/// When the player has a fixed colormap powerup, fills [`scalelightfixed`]
+/// with the fixed colormap pointer and redirects [`walllights`] to it so
+/// that wall-lighting lookup code requires no special-case handling.
+///
+/// Equivalent to `R_SetupFrame` in `r_main.c`.
+///
+/// # Safety
+/// `player` must be a valid, non-null pointer to a [`PlayerT`] whose `mo`
+/// mobj pointer is also valid. Reads and writes numerous renderer globals.
 #[no_mangle]
 pub unsafe extern "C" fn R_SetupFrame(player: *mut PlayerT) {
     viewplayer = player;
@@ -695,6 +1052,21 @@ pub unsafe extern "C" fn R_SetupFrame(player: *mut PlayerT) {
 // R_RenderPlayerView
 // ---------------------------------------------------------------------------
 
+/// Top-level per-frame render entry point.
+///
+/// Calls [`R_SetupFrame`] to prepare view globals, clears all renderer
+/// buffers (`R_ClearClipSegs`, `R_ClearDrawSegs`, `R_ClearPlanes`,
+/// `R_ClearSprites`), traverses the BSP tree via `R_RenderBSPNode`, then
+/// draws floors/ceilings (`R_DrawPlanes`) and masked objects
+/// (`R_DrawMasked`). `NetUpdate` is called between phases to keep network
+/// and demo state responsive on slow machines.
+///
+/// Equivalent to `R_RenderPlayerView` (`R_RenderView`) in `r_main.c`.
+///
+/// # Safety
+/// `player` must be a valid, non-null pointer to a fully-initialised
+/// [`PlayerT`]. All renderer globals and map data must have been loaded and
+/// initialised prior to this call.
 #[no_mangle]
 pub unsafe extern "C" fn R_RenderPlayerView(player: *mut PlayerT) {
     R_SetupFrame(player);
@@ -717,6 +1089,17 @@ pub unsafe extern "C" fn R_RenderPlayerView(player: *mut PlayerT) {
 // Anchor
 // ---------------------------------------------------------------------------
 
+/// Force-references all exported symbols so the linker does not strip them.
+///
+/// Each renderer function is referenced as a raw function pointer, preventing
+/// dead-code elimination when the crate is compiled as a library linked into
+/// the C engine.
+///
+/// Exported as `#[no_mangle]` for C callers.
+///
+/// # Safety
+/// This function only takes addresses of functions; no actual calls are made.
+/// Safe to call at any time.
 #[no_mangle]
 pub unsafe extern "C" fn R_Main_Link_Anchor() {
     let _ = R_AddPointToBox as *const () as usize;
