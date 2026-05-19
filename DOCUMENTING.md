@@ -38,7 +38,7 @@ conflicts resolve trivially.
 
 ## Renderer (`r_*`)
 
-- [ ] doom/r_bsp.rs (927 lines, 0 docs)
+- [x] doom/r_bsp.rs (927 lines, 0 docs)
 - [x] doom/r_data.rs (834 lines, 0 docs)
 - [ ] doom/r_draw.rs (1360 lines, 4 docs)
 - [ ] doom/r_main.rs (864 lines, 12 docs)

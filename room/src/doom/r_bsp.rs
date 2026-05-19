@@ -1,6 +1,9 @@
-//! Rust port of vendor/doomgeneric/r_bsp.c.
+//! BSP traversal and line-seg clipping for the Doom renderer.
 //!
-//! BSP traversal, handling of LineSegs for rendering.
+//! Corresponds to `vendor/doomgeneric/r_bsp.c`. Walks the BSP tree
+//! front-to-back from the player's viewpoint, renders each subsector leaf,
+//! and maintains the solid-column occlusion list (`solidsegs`) so that
+//! already-covered screen columns are never redrawn.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -15,8 +18,14 @@ use super::tables::{ANG90, ANGLETOFINESHIFT};
 // Constants
 // ---------------------------------------------------------------------------
 
+/// Maximum number of draw-segs that can be prepared in a single frame.
 const MAXDRAWSEGS: usize = 256;
+
+/// Maximum number of solid clip-ranges tracked by the occlusion list.
 const MAXSEGS: usize = 32;
+
+/// Flag bit in a BSP child index indicating the child is a subsector leaf,
+/// not an interior node. Matches `NF_SUBSECTOR` in `doomdef.h`.
 const NF_SUBSECTOR: u32 = 0x8000;
 
 // ---------------------------------------------------------------------------
@@ -26,8 +35,13 @@ const NF_SUBSECTOR: u32 = 0x8000;
 // Enable with `RUST_LOG=room::doom::r_bsp=trace`. These are gated at TRACE so
 // the existing debug log stays usable; terminate the app the moment the
 // glitch appears and we inspect the tail of the trace.
+
+/// Monotonically increasing frame counter used by diagnostic trace logging.
+/// Incremented once per frame in [`R_ClearClipSegs`].
 static mut PROBE_FRAME: u64 = 0;
 
+/// Returns the index of `line` within the global `segs` array, or -1 if
+/// either pointer is null. Used only for diagnostic trace logging.
 #[inline]
 unsafe fn seg_index(line: *const seg_t) -> isize {
     if segs.is_null() || line.is_null() {
@@ -41,24 +55,36 @@ unsafe fn seg_index(line: *const seg_t) -> isize {
 // Mirrored C structs (from r_defs.h) — only fields read by r_bsp.c
 // ---------------------------------------------------------------------------
 
+/// A map vertex holding a 2-D fixed-point position.
+/// Mirrors `vertex_t` from `r_defs.h`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct vertex_t {
+    /// X coordinate in fixed-point map units.
     pub x: fixed_t,
+    /// Y coordinate in fixed-point map units.
     pub y: fixed_t,
 }
 
+/// Opaque forward-declaration of a map object (monster, item, player, etc.).
+/// `r_bsp.rs` holds pointers to these but never dereferences them directly.
+/// Mirrors `mobj_t` / `mobj_s` from `p_mobj.h`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct mobj_s {
     _opaque: [u8; 0],
 }
+/// Type alias for [`mobj_s`], matching the C `mobj_t` typedef.
 pub type mobj_t = mobj_s;
 
 // thinker_t is 24 bytes in C (prev/next/function pointers).
 // r_bsp.rs never dereferences it, but it must have the correct size
 // so that sector_t (which contains degenmobj_t, which contains thinker_t)
 // matches the C layout of 128 bytes.
+
+/// Thinker linked-list node. Never dereferenced by this module; included
+/// only to maintain the correct `sector_t` layout (128 bytes on x86-64).
+/// Mirrors `thinker_t` / `thinker_s` from `p_tick.h`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct thinker_s {
@@ -66,107 +92,193 @@ pub struct thinker_s {
     _next: *mut c_void,
     _function: *mut c_void,
 }
+/// Type alias for [`thinker_s`], matching the C `thinker_t` typedef.
 pub type thinker_t = thinker_s;
 
+/// A degenerate map object used as a sound origin embedded inside `sector_t`.
+/// Contains a [`thinker_t`] prefix followed by map-unit coordinates.
+/// Mirrors `degenmobj_t` / `degenmobj_s` from `p_mobj.h`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct degenmobj_s {
+    /// Thinker header (required for correct sector_t layout).
     pub thinker: thinker_t,
+    /// X position of the sound origin in map units.
     pub x: fixed_t,
+    /// Y position of the sound origin in map units.
     pub y: fixed_t,
+    /// Z position of the sound origin in map units.
     pub z: fixed_t,
 }
 
+/// A map sector describing the floor/ceiling geometry and lighting of a
+/// convex region. Mirrors `sector_t` from `r_defs.h`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct sector_t {
+    /// Floor height in fixed-point map units.
     pub floorheight: fixed_t,
+    /// Ceiling height in fixed-point map units.
     pub ceilingheight: fixed_t,
+    /// Flat lump index for the floor texture.
     pub floorpic: c_short,
+    /// Flat lump index for the ceiling texture.
     pub ceilingpic: c_short,
+    /// Ambient light level (0-255).
     pub lightlevel: c_short,
+    /// Special effect number (damage, secret, etc.).
     pub special: c_short,
+    /// Sector tag used to link with linedef specials.
     pub tag: c_short,
+    /// Sound traversal counter (set during sound propagation).
     pub soundtraversed: c_int,
+    /// Last thing to make a sound in this sector.
     pub soundtarget: *mut mobj_t,
+    /// Bounding box used for blockmap queries (`BOXLEFT/BOXRIGHT/BOXTOP/BOXBOTTOM`).
     pub blockbox: [c_int; 4],
+    /// Degenerate mobj used as the sector's spatial sound origin.
     pub soundorg: degenmobj_s,
+    /// Validity counter for single-pass linedef and thing traversal.
     pub validcount: c_int,
+    /// Head of the linked list of things (mobjs) in this sector.
     pub thinglist: *mut mobj_t,
+    /// Pointer to sector-specific special state (e.g. moving floor/ceiling).
     pub specialdata: *mut c_void,
+    /// Number of linedefs bounding this sector.
     pub linecount: c_int,
+    /// Pointer to the array of linedef pointers bounding this sector.
     pub lines: *mut *mut line_s,
 }
 
+/// One side of a two-sided linedef, carrying texture and sector references.
+/// Mirrors `side_t` from `r_defs.h`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct side_t {
+    /// Horizontal texture offset in fixed-point units.
     pub textureoffset: fixed_t,
+    /// Vertical texture offset in fixed-point units.
     pub rowoffset: fixed_t,
+    /// Upper (above back sector ceiling) texture number; 0 = none.
     pub toptexture: c_short,
+    /// Lower (below back sector floor) texture number; 0 = none.
     pub bottomtexture: c_short,
+    /// Middle texture number; 0 = none.
     pub midtexture: c_short,
+    /// The sector this sidedef faces.
     pub sector: *mut sector_t,
 }
 
+/// Line slope type, used to select the correct axis-aligned bounding-box
+/// intersection test for a linedef. Mirrors `slopetype_t` from `r_defs.h`.
 #[repr(C)]
-#[derive(Clone, Copy)]
 pub enum slopetype_t {
+    /// Line is perfectly horizontal (dy == 0).
     ST_HORIZONTAL,
+    /// Line is perfectly vertical (dx == 0).
     ST_VERTICAL,
+    /// Line has positive slope (dy/dx > 0).
     ST_POSITIVE,
+    /// Line has negative slope (dy/dx < 0).
     ST_NEGATIVE,
 }
 
+/// A map linedef connecting two vertices and potentially separating two
+/// sectors. Mirrors `line_t` / `line_s` from `r_defs.h`.
 #[repr(C)]
 pub struct line_s {
+    /// First vertex (start of the line).
     pub v1: *mut vertex_t,
+    /// Second vertex (end of the line).
     pub v2: *mut vertex_t,
+    /// Horizontal delta `v2.x - v1.x` in fixed-point units.
     pub dx: fixed_t,
+    /// Vertical delta `v2.y - v1.y` in fixed-point units.
     pub dy: fixed_t,
+    /// Linedef flags (ML_* constants from `doomdef.h`).
     pub flags: c_short,
+    /// Special action number (door, platform, exit, etc.).
     pub special: c_short,
+    /// Tag linking this linedef to a sector for special activations.
     pub tag: c_short,
+    /// Side numbers: `sidenum[0]` = front, `sidenum[1]` = back (-1 = none).
     pub sidenum: [c_short; 2],
+    /// Axis-aligned bounding box of the linedef.
     pub bbox: [fixed_t; 4],
+    /// Pre-computed slope type for fast bbox intersection.
     pub slopetype: slopetype_t,
+    /// Sector on the front (right) side of the linedef.
     pub frontsector: *mut sector_t,
+    /// Sector on the back (left) side; null for single-sided lines.
     pub backsector: *mut sector_t,
+    /// Validity counter to avoid processing the same linedef twice per query.
     pub validcount: c_int,
+    /// Pointer to active special state (e.g. a triggered door thinker).
     pub specialdata: *mut c_void,
 }
+/// Type alias for [`line_s`], matching the C `line_t` typedef.
 pub type line_t = line_s;
 
+/// A BSP leaf convex region made up of one or more segs from the same sector.
+/// Mirrors `subsector_t` / `subsector_s` from `r_defs.h`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct subsector_s {
+    /// The sector this subsector belongs to.
     pub sector: *mut sector_t,
+    /// Number of segs in this subsector.
     pub numlines: c_short,
+    /// Index of the first seg in the global `segs` array.
     pub firstline: c_short,
 }
+/// Type alias for [`subsector_s`], matching the C `subsector_t` typedef.
 pub type subsector_t = subsector_s;
 
+/// A wall segment (part of a linedef's front side) used during rendering.
+/// Each seg carries pre-computed angle and texture-offset data.
+/// Mirrors `seg_t` from `r_defs.h`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct seg_t {
+    /// Start vertex of this seg.
     pub v1: *mut vertex_t,
+    /// End vertex of this seg.
     pub v2: *mut vertex_t,
+    /// Horizontal texture offset along the linedef in fixed-point units.
     pub offset: fixed_t,
+    /// Absolute BAM angle of this seg (v1 to v2).
     pub angle: angle_t,
+    /// The sidedef that provides texture information for this seg.
     pub sidedef: *mut side_t,
+    /// The linedef this seg belongs to.
     pub linedef: *mut line_t,
+    /// The sector on the front side of this seg.
     pub frontsector: *mut sector_t,
+    /// The sector on the back side of this seg; null for single-sided lines.
     pub backsector: *mut sector_t,
 }
 
+/// An interior BSP tree node with a splitting line and two child references.
+/// Children are either node indices or, when `NF_SUBSECTOR` is set, subsector
+/// leaf indices. Mirrors `node_t` from `r_defs.h`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct node_t {
+    /// X coordinate of the splitting line's origin in fixed-point map units.
     pub x: fixed_t,
+    /// Y coordinate of the splitting line's origin in fixed-point map units.
     pub y: fixed_t,
+    /// Horizontal delta of the splitting line vector.
     pub dx: fixed_t,
+    /// Vertical delta of the splitting line vector.
     pub dy: fixed_t,
+    /// Axis-aligned bounding boxes for the two child subtrees:
+    /// `bbox[0]` = right child, `bbox[1]` = left child, each encoded as
+    /// `[TOP, BOTTOM, LEFT, RIGHT]` in fixed-point map units.
     pub bbox: [[fixed_t; 4]; 2],
+    /// Child references: `children[0]` = right, `children[1]` = left.
+    /// If `NF_SUBSECTOR` is set in the value, the lower bits are a subsector
+    /// index; otherwise the value is a node index.
     pub children: [u16; 2],
 }
 
@@ -174,21 +286,38 @@ pub struct node_t {
 // visplane_t — already exported from r_plane.rs, mirror locally for field access
 // ---------------------------------------------------------------------------
 
+/// Screen width constant used for the local `visplane_t` mirror.
+/// Must match the value in `r_plane.rs`.
 const SCREENWIDTH_RP: usize = 320;
 
+/// A horizontal floor/ceiling span to be drawn at a fixed height and texture.
+/// Mirrored locally from `r_plane.rs` so that `r_plane` pointer fields can
+/// be written from this module. The struct must match the C `visplane_t` layout
+/// from `r_plane.h` exactly.
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct visplane_t {
+    /// Height of this plane in fixed-point map units.
     pub height: fixed_t,
+    /// Flat lump index for this plane's texture.
     pub picnum: c_int,
+    /// Light level for this plane (0-255).
     pub lightlevel: c_int,
+    /// Leftmost screen column covered by this plane.
     pub minx: c_int,
+    /// Rightmost screen column covered by this plane.
     pub maxx: c_int,
+    /// Padding byte before the `top` array (matches C struct layout).
     pub pad1: u8,
+    /// Per-column top clip (y coordinate); `0xff` means unset.
     pub top: [u8; SCREENWIDTH_RP],
+    /// Padding byte between `top` and `bottom` arrays.
     pub pad2: u8,
+    /// Padding byte before the `bottom` array.
     pub pad3: u8,
+    /// Per-column bottom clip (y coordinate); `0xff` means unset.
     pub bottom: [u8; SCREENWIDTH_RP],
+    /// Padding byte after the `bottom` array (matches C struct layout).
     pub pad4: u8,
 }
 
@@ -196,23 +325,42 @@ struct visplane_t {
 // drawseg_t — MUST match C layout exactly (r_segs.c writes every field)
 // ---------------------------------------------------------------------------
 
+/// A seg prepared for the column renderer, holding scale, silhouette, and
+/// sprite-clip arrays. Written by `R_StoreWallRange` and read back during
+/// sprite clipping in `R_DrawSprite`. Must match the C `drawseg_t` layout
+/// from `r_segs.h` exactly (verified by compile-time assertions in
+/// `layout_checks`).
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct drawseg_t {
+    /// The seg that generated this draw-seg.
     pub curline: *mut seg_t,
+    /// Leftmost screen column of this draw-seg (inclusive).
     pub x1: c_int,
+    /// Rightmost screen column of this draw-seg (inclusive).
     pub x2: c_int,
+    /// Projection scale at column `x1`.
     pub scale1: fixed_t,
+    /// Projection scale at column `x2`.
     pub scale2: fixed_t,
+    /// Per-column scale increment: `(scale2 - scale1) / (x2 - x1)`.
     pub scalestep: fixed_t,
+    /// Silhouette flags (`SIL_*`) indicating which edges clip sprites.
     pub silhouette: c_int,
+    /// Bottom silhouette height in fixed-point units (for lower-unpegged walls).
     pub bsilheight: fixed_t,
+    /// Top silhouette height in fixed-point units (for upper-unpegged walls).
     pub tsilheight: fixed_t,
+    /// Pointer into the sprite-top clip column array; null if not needed.
     pub sprtopclip: *mut c_short,
+    /// Pointer into the sprite-bottom clip column array; null if not needed.
     pub sprbottomclip: *mut c_short,
+    /// Pointer into the masked-texture column array; null for solid walls.
     pub maskedtexturecol: *mut c_short,
 }
 
+/// Compile-time zero initializer for [`drawseg_t`], used to fill the static
+/// `drawsegs` array before any rendering occurs.
 const ZERO_DRAWSEG: drawseg_t = drawseg_t {
     curline: ptr::null_mut(),
     x1: 0,
@@ -230,8 +378,13 @@ const ZERO_DRAWSEG: drawseg_t = drawseg_t {
 
 // Compile-time size and offset checks for structs that must match C layout
 // (values verified against vendor/doomgeneric C structs on x86_64 Linux)
+/// Compile-time layout assertions ensuring all mirrored C structs have the
+/// correct size and field offsets on x86-64 Linux. A compile error here means
+/// the Rust struct has diverged from the C layout and ABI compatibility is
+/// broken.
 #[cfg(target_pointer_width = "64")]
 mod layout_checks {
+    // This module is intentionally private; it exists only for compile-time assertions.
     use super::*;
     const _: () = assert!(std::mem::size_of::<vertex_t>() == 8);
     const _: () = assert!(std::mem::size_of::<sector_t>() == 128);
@@ -323,10 +476,16 @@ mod layout_checks {
 // cliprange_t (internal)
 // ---------------------------------------------------------------------------
 
+/// A solid horizontal screen-column range `[first, last]` that has been fully
+/// covered by a previously drawn wall. The `solidsegs` array is a sorted,
+/// non-overlapping list of these ranges, bounded by two sentinel entries.
+/// Mirrors the `cliprange_t` struct defined locally in `r_bsp.c`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct cliprange_t {
+    /// First (leftmost) solid column in this range, inclusive.
     first: c_int,
+    /// Last (rightmost) solid column in this range, inclusive.
     last: c_int,
 }
 
@@ -334,24 +493,41 @@ struct cliprange_t {
 // Globals exported with #[no_mangle]
 // ---------------------------------------------------------------------------
 
+/// The seg currently being processed by `R_AddLine` and passed down to
+/// [`R_StoreWallRange`]. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut curline: *mut seg_t = ptr::null_mut();
 
+/// The sidedef of the current seg (`curline->sidedef`). Set by `R_StoreWallRange`
+/// in `r_segs.c`. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut sidedef: *mut side_t = ptr::null_mut();
 
+/// The linedef of the current seg (`curline->linedef`). Set by `R_StoreWallRange`
+/// in `r_segs.c`. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut linedef: *mut line_t = ptr::null_mut();
 
+/// The sector on the front side of the current seg. Set by [`R_Subsector`]
+/// and read by `r_segs.c` and `r_plane.rs`. Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut frontsector: *mut sector_t = ptr::null_mut();
 
+/// The sector on the back side of the current seg, or null for single-sided
+/// lines. Set by `R_AddLine` and read by `r_segs.c`.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut backsector: *mut sector_t = ptr::null_mut();
 
+/// Fixed-size array of prepared draw-segs for the current frame. Filled
+/// sequentially via [`ds_p`]. Exported as `#[no_mangle]` for C callers
+/// (read during sprite clipping in `r_things.c`).
 #[no_mangle]
 pub static mut drawsegs: [drawseg_t; MAXDRAWSEGS] = [ZERO_DRAWSEG; MAXDRAWSEGS];
 
+/// Pointer to the next free slot in [`drawsegs`]. Advanced by
+/// `R_StoreWallRange` each time a new draw-seg is committed.
+/// Exported as `#[no_mangle]` for C callers.
 #[no_mangle]
 pub static mut ds_p: *mut drawseg_t = ptr::null_mut();
 
@@ -359,10 +535,24 @@ pub static mut ds_p: *mut drawseg_t = ptr::null_mut();
 // Module-local state
 // ---------------------------------------------------------------------------
 
+/// Sorted array of solid screen-column ranges (clip list). Entries
+/// `[0..newend)` are valid; the first and last entries are permanent
+/// sentinels initialized by [`R_ClearClipSegs`].
 static mut solidsegs: [cliprange_t; MAXSEGS] = [cliprange_t { first: 0, last: 0 }; MAXSEGS];
+
+/// One-past-the-end pointer into [`solidsegs`], tracking how many ranges are
+/// currently active. Maintained by [`R_ClipSolidWallSegment`] and reset by
+/// [`R_ClearClipSegs`].
 static mut newend: *mut cliprange_t = ptr::null_mut();
 
 // checkcoord — 12 rows, only 11 initialised in C (rows 3 and 7 are {0})
+/// Lookup table that selects the two diagonal corners of a bounding box to
+/// use for angle computation in [`R_CheckBBox`], indexed by the 4-bit
+/// combined viewer-position code `(boxy << 2) | boxx`. Rows 3, 7, and 11
+/// are the `boxpos == 5` case (viewer inside the box) and are never reached
+/// through the table; they are zero-filled. Each entry is four
+/// `BBox::{TOP,BOTTOM,LEFT,RIGHT}` indices.
+/// Mirrors the `checkcoord` table from `r_bsp.c`.
 static CHECKCOORD: [[c_int; 4]; 12] = [
     [3, 0, 2, 1],
     [3, 0, 2, 0],
@@ -396,6 +586,12 @@ use crate::doom::r_things::R_AddSprites;
 // R_ClearDrawSegs
 // ---------------------------------------------------------------------------
 
+/// Resets the draw-seg write pointer to the beginning of [`drawsegs`],
+/// discarding all draw-segs accumulated during the previous frame.
+/// Called once per frame by `R_RenderPlayerView` before BSP traversal begins.
+///
+/// # Safety
+/// Must be called from the render thread. Mutates the global [`ds_p`].
 #[no_mangle]
 pub unsafe extern "C" fn R_ClearDrawSegs() {
     ds_p = std::ptr::addr_of_mut!(drawsegs[0]);
@@ -405,6 +601,15 @@ pub unsafe extern "C" fn R_ClearDrawSegs() {
 // R_ClearClipSegs
 // ---------------------------------------------------------------------------
 
+/// Resets the solid-column occlusion list to the two permanent sentinel
+/// entries that cover the off-screen left (`-0x7fffffff..-1`) and right
+/// (`viewwidth..0x7fffffff`) regions. Also advances the per-frame diagnostic
+/// counter used by trace logging.
+/// Called once per frame by `R_RenderPlayerView` before BSP traversal begins.
+///
+/// # Safety
+/// Must be called from the render thread. Mutates `solidsegs`, `newend`,
+/// and `PROBE_FRAME`. Reads [`viewwidth`] and [`viewangle`].
 #[no_mangle]
 pub unsafe extern "C" fn R_ClearClipSegs() {
     solidsegs[0].first = -0x7fffffff;
@@ -430,6 +635,21 @@ pub unsafe extern "C" fn R_ClearClipSegs() {
 // R_ClipSolidWallSegment
 // ---------------------------------------------------------------------------
 
+/// Clips the screen-column range `[first, last]` against the solid occlusion
+/// list and renders every visible sub-range by calling [`R_StoreWallRange`].
+/// Inserts a new solid entry for any newly covered columns, merging or
+/// compacting adjacent/overlapping ranges in `solidsegs`.
+///
+/// Used for fully opaque walls (single-sided linedefs and closed doors) that
+/// completely block everything behind them.
+///
+/// Corresponds to `R_ClipSolidWallSegment` in `r_bsp.c`.
+///
+/// # Safety
+/// Caller must ensure `solidsegs` and `newend` have been initialized by
+/// [`R_ClearClipSegs`] before this frame. `first` must be <= `last` for a
+/// valid seg (a debug log is emitted if violated, but the function still runs
+/// to match C behavior). Mutates the global `solidsegs` array and `newend`.
 #[no_mangle]
 pub unsafe extern "C" fn R_ClipSolidWallSegment(first: c_int, last: c_int) {
     if first > last {
@@ -525,6 +745,21 @@ pub unsafe extern "C" fn R_ClipSolidWallSegment(first: c_int, last: c_int) {
 // R_ClipPassWallSegment
 // ---------------------------------------------------------------------------
 
+/// Clips the screen-column range `[first, last]` against the solid occlusion
+/// list and renders every visible sub-range by calling [`R_StoreWallRange`],
+/// but does **not** add any new solid entries to the occlusion list.
+///
+/// Used for transparent or partial walls (two-sided linedefs with height
+/// differences) that let the player see through to the sector behind.
+///
+/// Corresponds to `R_ClipPassWallSegment` in `r_bsp.c`.
+///
+/// # Safety
+/// Caller must ensure `solidsegs` and `newend` have been initialized by
+/// [`R_ClearClipSegs`] before this frame. `first` must be <= `last` for a
+/// valid seg (a debug log is emitted if violated, but the function still runs
+/// to match C behavior). Reads the global `solidsegs` array without
+/// modifying it.
 #[no_mangle]
 pub unsafe extern "C" fn R_ClipPassWallSegment(first: c_int, last: c_int) {
     if first > last {
@@ -575,6 +810,29 @@ pub unsafe extern "C" fn R_ClipPassWallSegment(first: c_int, last: c_int) {
 // R_AddLine
 // ---------------------------------------------------------------------------
 
+/// Clips and conditionally renders one seg from the current subsector.
+///
+/// 1. Computes view-relative angles for both seg endpoints.
+/// 2. Back-face culls if the angular span is >= 180 degrees (ANG180).
+/// 3. Clips the angular range to the view frustum (`±clipangle`).
+/// 4. Projects the clipped angles to screen columns via `viewangletox`.
+/// 5. Rejects degenerate single-column segs (`x1 == x2`).
+/// 6. Classifies the seg as solid (single-sided line or closed door) or
+///    pass-through (window, height delta, or mid-texture), and dispatches
+///    to [`R_ClipSolidWallSegment`] or [`R_ClipPassWallSegment`] accordingly.
+///
+/// Sets the global [`curline`] to `line` and [`backsector`] to the back
+/// sector pointer before calling the clip functions.
+///
+/// Corresponds to `R_AddLine` in `r_bsp.c`.
+///
+/// # Safety
+/// `line` must point to a valid, initialized [`seg_t`] whose `v1`, `v2`,
+/// `sidedef`, `linedef`, `frontsector`, and (if non-null) `backsector`
+/// pointers are all valid. Globals [`viewangle`], [`clipangle`],
+/// [`viewangletox`], [`frontsector`], and [`rw_angle1`] must have been
+/// initialized before the current frame. Must be called only during BSP
+/// traversal (i.e. within [`R_Subsector`]).
 unsafe fn R_AddLine(line: *mut seg_t) {
     curline = line;
 
@@ -733,6 +991,30 @@ unsafe fn R_AddLine(line: *mut seg_t) {
 // tests — far BSP subtrees were not pruned and rendering descended into the
 // wrong parts of the map, causing walls to "disappear" and a different room
 // to show through (classic Doom HOM variant).
+
+/// Tests whether a BSP node bounding box might contain any visible geometry
+/// from the player's current viewpoint.
+///
+/// Returns 1 if any part of the box could be visible, 0 if it is entirely
+/// hidden behind already-drawn solid walls.
+///
+/// The test works in three stages:
+/// 1. Classify the viewer's position relative to the box (left/inside/right
+///    on each axis) and look up the two "most extreme" diagonal corners in
+///    `CHECKCOORD`.
+/// 2. Compute view-relative BAM angles to those corners and clip against
+///    the horizontal frustum (`±clipangle`).
+/// 3. Project to screen columns and check whether the column range is fully
+///    covered by a single entry in `solidsegs`.
+///
+/// Corresponds to `R_CheckBBox` in `r_bsp.c`.
+///
+/// # Safety
+/// `bspcoord` must point to a valid 4-element `fixed_t` array laid out as
+/// `[TOP, BOTTOM, LEFT, RIGHT]` (matching `BBox::TOP` etc. from `m_bbox.rs`).
+/// Globals [`viewx`], [`viewy`], [`viewangle`], [`clipangle`],
+/// [`viewangletox`], and `solidsegs` must have been initialized for the
+/// current frame.
 #[no_mangle]
 pub unsafe extern "C" fn R_CheckBBox(bspcoord: *mut fixed_t) -> c_int {
     let boxx = if viewx <= *bspcoord.add(BBox::LEFT) {
@@ -816,6 +1098,23 @@ pub unsafe extern "C" fn R_CheckBBox(bspcoord: *mut fixed_t) -> c_int {
 // R_Subsector
 // ---------------------------------------------------------------------------
 
+/// Renders one BSP leaf subsector.
+///
+/// 1. Increments the subsector counter `sscount`.
+/// 2. Sets [`frontsector`] from the subsector's sector pointer.
+/// 3. Registers floor and ceiling visplanes with [`R_FindPlane`] if the
+///    viewer can see them (floor below eye, ceiling above eye or sky flat).
+/// 4. Adds sprites for all things in the sector via [`R_AddSprites`].
+/// 5. Iterates over all segs in the subsector and calls `R_AddLine` for
+///    each, which performs frustum clipping and dispatches wall rendering.
+///
+/// Corresponds to `R_Subsector` in `r_bsp.c`.
+///
+/// # Safety
+/// `num` must be a valid index into the global `subsectors` array (bounds are
+/// not checked at runtime to match C behavior). The subsector's `sector`
+/// pointer and all `segs` it references must be valid. Globals [`viewz`],
+/// [`skyflatnum`], [`floorplane`], and [`ceilingplane`] must be accessible.
 #[no_mangle]
 pub unsafe extern "C" fn R_Subsector(num: c_int) {
     let num_usize = num as usize;
@@ -860,6 +1159,28 @@ pub unsafe extern "C" fn R_Subsector(num: c_int) {
 // R_RenderBSPNode
 // ---------------------------------------------------------------------------
 
+/// Recursively traverses the BSP tree and renders all visible subsectors.
+///
+/// If `bspnum` has the `NF_SUBSECTOR` flag set it is a leaf: calls
+/// [`R_Subsector`] with the subsector index (treating -1 as subsector 0).
+///
+/// Otherwise loads the [`node_t`] at index `bspnum`, determines which side
+/// the viewpoint is on via [`R_PointOnSide`], recurses into the near (front)
+/// child first, then checks the far (back) child's bounding box with
+/// [`R_CheckBBox`] and recurses into it only if it might be visible.
+///
+/// This front-to-back ordering ensures that solid walls encountered first
+/// (nearer to the player) fill the `solidsegs` occlusion list, pruning
+/// distant subtrees early.
+///
+/// Corresponds to `R_RenderBSPNode` in `r_bsp.c`.
+///
+/// # Safety
+/// `bspnum` must be either a valid node index into the global `nodes` array
+/// or a value with the `NF_SUBSECTOR` flag set whose lower bits are a valid
+/// subsector index. All node and subsector data must have been loaded by
+/// `P_SetupLevel`. Globals [`viewx`], [`viewy`], and the occlusion list must
+/// be initialized for the current frame.
 #[no_mangle]
 pub unsafe extern "C" fn R_RenderBSPNode(bspnum: c_int) {
     // Found a subsector?
@@ -915,6 +1236,14 @@ pub unsafe extern "C" fn R_RenderBSPNode(bspnum: c_int) {
 // Anchor so linker doesn't discard
 // ---------------------------------------------------------------------------
 
+/// Linker anchor: references every public `#[no_mangle]` function in this
+/// module so the linker does not dead-strip them when building as a library.
+/// Not intended to be called at runtime.
+///
+/// # Safety
+/// Calls all exported functions with zero/null arguments purely to create
+/// symbol references. Behavior is undefined if called during normal
+/// execution; this function exists only to prevent linker GC.
 #[no_mangle]
 pub unsafe extern "C" fn R_Bsp_Link_Anchor() {
     R_ClearDrawSegs();
