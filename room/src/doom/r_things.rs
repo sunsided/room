@@ -1197,7 +1197,7 @@ pub unsafe extern "C" fn R_DrawSprite(spr: *mut vissprite_t) {
 
 /// Top-level masked rendering pass called at the end of each frame.
 ///
-/// Performs three steps in order:
+/// Performs four steps in order:
 /// 1. Sorts the vissprite pool back-to-front via `R_SortVisSprites`.
 /// 2. Draws each sorted vissprite with `R_DrawSprite` (which also interleaves
 ///    any masked mid-textures that are depth-behind the sprite).
