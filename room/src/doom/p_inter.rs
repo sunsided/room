@@ -1,7 +1,9 @@
-//! Rust port of vendor/doomgeneric/p_inter.c.
+//! Player/item interactions ported from `vendor/doomgeneric/p_inter.c`.
 //!
-//! Player/item interactions: ammo, weapons, armor, cards, power-ups, damage,
-//! kills, and the `P_TouchSpecialThing` pick-up routine.
+//! Handles ammo, weapon, armor, key, and power-up pickup logic
+//! (`P_GiveAmmo`, `P_GiveWeapon`, …), item-pickup dispatch
+//! (`P_TouchSpecialThing`), kill accounting (`P_KillMobj`), and damage
+//! application with armor absorption and knockback (`P_DamageMobj`).
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -24,119 +26,254 @@ use crate::i_error;
 // Constants
 // ---------------------------------------------------------------------------
 
+/// Bonus-count increment added to `player.bonuscount` on most pickups,
+/// causing a brief gold screen-flash. Matches `BONUSADD` in `p_inter.c`.
 const BONUSADD: c_int = 6;
+
+/// Number of distinct ammo types (clip, shell, cell, missile).
 const NUMAMMO: usize = 4;
+
+/// Maximum health for normal health items; over-100 bonuses use
+/// `DEH_DEFAULT_MAX_HEALTH` instead.
 const MAXHEALTH: c_int = 100;
+
+/// Special Z value meaning "place mobj at floor level of its sector".
+/// Stored as `i32::MIN` to match the C `ONFLOORZ` sentinel.
 const ONFLOORZ: c_int = i32::MIN;
+
+/// Initial `target.threshold` assigned when a monster acquires a new target.
 const BASETHRESHOLD: c_int = 100;
 
 // Skill levels
+
+/// Skill 0 — "I'm Too Young to Die" / baby mode. Damage is halved.
 const sk_baby: c_int = 0;
+
+/// Skill 4 — Nightmare. Ammo doublers apply and monsters are fast.
 const sk_nightmare: c_int = 4;
 
-// Power-up durations (TICRATE = 35)
+// Power-up durations (TICRATE = 35 tics/second)
+
+/// Duration of the invulnerability sphere power-up: 30 seconds.
 const INVULNTICS: c_int = 30 * 35;
+
+/// Duration of the partial-invisibility power-up: 60 seconds.
 const INVISTICS: c_int = 60 * 35;
+
+/// Duration of the light-amplification visor power-up: 120 seconds.
 const INFRATICS: c_int = 120 * 35;
+
+/// Duration of the radiation-shielding suit power-up: 60 seconds.
 const IRONTICS: c_int = 60 * 35;
 
-// Weapon types
+// Weapon type indices (match `weapontype_t` in `info.h`)
+
+/// Fist — the starting melee weapon.
 const wp_fist: c_int = 0;
+
+/// Pistol — the starting ranged weapon.
 const wp_pistol: c_int = 1;
+
+/// Single-barrelled shotgun.
 const wp_shotgun: c_int = 2;
+
+/// Chaingun.
 const wp_chaingun: c_int = 3;
+
+/// Rocket launcher.
 const wp_missile: c_int = 4;
+
+/// Plasma gun.
 const wp_plasma: c_int = 5;
+
+/// BFG 9000.
 const wp_bfg: c_int = 6;
+
+/// Chainsaw.
 const wp_chainsaw: c_int = 7;
+
+/// Super shotgun (Doom II only).
 const wp_supershotgun: c_int = 8;
 
-// Ammo types
+// Ammo type indices (match `ammotype_t`)
+
+/// Sentinel value meaning "this weapon uses no ammo".
 const am_noammo: c_int = 5;
+
+/// Bullet clip ammo (pistol / chaingun).
 const am_clip: c_int = 0;
+
+/// Shell ammo (shotgun / super shotgun).
 const am_shell: c_int = 1;
+
+/// Energy cell ammo (plasma gun / BFG).
 const am_cell: c_int = 2;
+
+/// Rocket ammo.
 const am_misl: c_int = 3;
 
-// Card types
+// Card/key type indices (match `card_t`)
+
+/// Blue keycard index.
 const it_bluecard: c_int = 0;
+
+/// Yellow keycard index.
 const it_yellowcard: c_int = 1;
+
+/// Red keycard index.
 const it_redcard: c_int = 2;
+
+/// Blue skull key index.
 const it_blueskull: c_int = 3;
+
+/// Yellow skull key index.
 const it_yellowskull: c_int = 4;
+
+/// Red skull key index.
 const it_redskull: c_int = 5;
 
-// Power types
+// Power type indices (match `powertype_t`)
+
+/// Invulnerability sphere power-up slot.
 const pw_invulnerability: usize = 0;
+
+/// Berserk pack power-up slot (also boosts fist damage).
 const pw_strength: usize = 1;
+
+/// Partial-invisibility power-up slot.
 const pw_invisibility: usize = 2;
+
+/// Radiation-shielding suit power-up slot.
 const pw_ironfeet: usize = 3;
+
+/// Computer area map power-up slot (reveals the automap).
 const pw_allmap: usize = 4;
+
+/// Light-amplification visor power-up slot.
 const pw_infrared: usize = 5;
 
-// Game version
+// Game version / mode constants
+
+/// Chex Quest game-version code. Monsters drop no items in Chex Quest.
 const exe_chex: c_int = 9;
 
-// Game mode
+/// Commercial game-mode code (Doom II / TNT / Plutonia). Required for
+/// MegaSphere pickup.
 const commercial: c_int = 2;
 
-// Dehacked defaults (FEATURE_DEHACKED is not defined)
+// DEH defaults — used when FEATURE_DEHACKED is not compiled in.
+
+/// Maximum health achievable via bonus health spheres (not normal medikits).
 const DEH_DEFAULT_MAX_HEALTH: c_int = 200;
+
+/// Maximum armor points achievable via armor bonuses.
 const DEH_DEFAULT_MAX_ARMOR: c_int = 200;
+
+/// Armor class granted by the green security armor shirt.
 const DEH_DEFAULT_GREEN_ARMOR_CLASS: c_int = 1;
+
+/// Armor class granted by the blue mega-armor.
 const DEH_DEFAULT_BLUE_ARMOR_CLASS: c_int = 2;
+
+/// Upper health limit imposed by the soulsphere.
 const DEH_DEFAULT_MAX_SOULSPHERE: c_int = 200;
+
+/// Health points added by the soulsphere.
 const DEH_DEFAULT_SOULSPHERE_HEALTH: c_int = 100;
+
+/// Health set to when the megasphere is picked up.
 const DEH_DEFAULT_MEGASPHERE_HEALTH: c_int = 200;
 
 // ---------------------------------------------------------------------------
 // Pick-up message strings
 // ---------------------------------------------------------------------------
 
+/// "Picked up the armor." — displayed when the green armor is collected.
 const GOTARMOR: *mut c_char = c"Picked up the armor.".as_ptr().cast_mut();
+/// "Picked up the MegaArmor!" — displayed when the blue mega-armor is collected.
 const GOTMEGA: *mut c_char = c"Picked up the MegaArmor!".as_ptr().cast_mut();
+/// "Picked up a health bonus." — displayed for the health-bonus helmet.
 const GOTHTHBONUS: *mut c_char = c"Picked up a health bonus.".as_ptr().cast_mut();
+/// "Picked up an armor bonus." — displayed for the armor-bonus helmet.
 const GOTARMBONUS: *mut c_char = c"Picked up an armor bonus.".as_ptr().cast_mut();
+/// "Picked up a stimpack." — displayed for the stimpack.
 const GOTSTIM: *mut c_char = c"Picked up a stimpack.".as_ptr().cast_mut();
+/// Urgent medikit message when health is critically low (below 25).
 const GOTMEDINEED: *mut c_char = c"Picked up a medikit that you REALLY need!"
     .as_ptr()
     .cast_mut();
+/// "Picked up a medikit." — normal medikit pickup message.
 const GOTMEDIKIT: *mut c_char = c"Picked up a medikit.".as_ptr().cast_mut();
+/// "Supercharge!" — displayed when the soulsphere is collected.
 const GOTSUPER: *mut c_char = c"Supercharge!".as_ptr().cast_mut();
+/// "MegaSphere!" — displayed when the megasphere is collected (Doom II only).
 const GOTMSPHERE: *mut c_char = c"MegaSphere!".as_ptr().cast_mut();
+/// "Picked up a blue keycard." — displayed when the blue keycard is collected.
 const GOTBLUECARD: *mut c_char = c"Picked up a blue keycard.".as_ptr().cast_mut();
+/// "Picked up a yellow keycard." — displayed when the yellow keycard is collected.
 const GOTYELWCARD: *mut c_char = c"Picked up a yellow keycard.".as_ptr().cast_mut();
+/// "Picked up a red keycard." — displayed when the red keycard is collected.
 const GOTREDCARD: *mut c_char = c"Picked up a red keycard.".as_ptr().cast_mut();
+/// "Picked up a blue skull key." — displayed when the blue skull key is collected.
 const GOTBLUESKUL: *mut c_char = c"Picked up a blue skull key.".as_ptr().cast_mut();
+/// "Picked up a yellow skull key." — displayed when the yellow skull key is collected.
 const GOTYELWSKUL: *mut c_char = c"Picked up a yellow skull key.".as_ptr().cast_mut();
+/// "Picked up a red skull key." — displayed when the red skull key is collected.
 const GOTREDSKULL: *mut c_char = c"Picked up a red skull key.".as_ptr().cast_mut();
+/// "Invulnerability!" — displayed when the invulnerability sphere is collected.
 const GOTINVUL: *mut c_char = c"Invulnerability!".as_ptr().cast_mut();
+/// "Berserk!" — displayed when the berserk pack is collected.
 const GOTBERSERK: *mut c_char = c"Berserk!".as_ptr().cast_mut();
+/// "Partial Invisibility" — displayed when the blur-sphere is collected.
 const GOTINVIS: *mut c_char = c"Partial Invisibility".as_ptr().cast_mut();
+/// "Radiation Shielding Suit" — displayed when the rad suit is collected.
 const GOTSUIT: *mut c_char = c"Radiation Shielding Suit".as_ptr().cast_mut();
+/// "Computer Area Map" — displayed when the automap power-up is collected.
 const GOTMAP: *mut c_char = c"Computer Area Map".as_ptr().cast_mut();
+/// "Light Amplification Visor" — displayed when the visor is collected.
 const GOTVISOR: *mut c_char = c"Light Amplification Visor".as_ptr().cast_mut();
+/// "Picked up a clip." — bullet clip pickup message.
 const GOTCLIP: *mut c_char = c"Picked up a clip.".as_ptr().cast_mut();
+/// "Picked up a box of bullets." — ammo box pickup message.
 const GOTCLIPBOX: *mut c_char = c"Picked up a box of bullets.".as_ptr().cast_mut();
+/// "Picked up a rocket." — single rocket pickup message.
 const GOTROCKET: *mut c_char = c"Picked up a rocket.".as_ptr().cast_mut();
+/// "Picked up a box of rockets." — rocket box pickup message.
 const GOTROCKBOX: *mut c_char = c"Picked up a box of rockets.".as_ptr().cast_mut();
+/// "Picked up an energy cell." — single energy cell pickup message.
 const GOTCELL: *mut c_char = c"Picked up an energy cell.".as_ptr().cast_mut();
+/// "Picked up an energy cell pack." — energy cell pack pickup message.
 const GOTCELLBOX: *mut c_char = c"Picked up an energy cell pack.".as_ptr().cast_mut();
+/// "Picked up 4 shotgun shells." — shotgun shell pickup message.
 const GOTSHELLS: *mut c_char = c"Picked up 4 shotgun shells.".as_ptr().cast_mut();
+/// "Picked up a box of shotgun shells." — shell box pickup message.
 const GOTSHELLBOX: *mut c_char = c"Picked up a box of shotgun shells.".as_ptr().cast_mut();
+/// "Picked up a backpack full of ammo!" — backpack pickup message.
 const GOTBACKPACK: *mut c_char = c"Picked up a backpack full of ammo!".as_ptr().cast_mut();
+/// "You got the BFG9000!  Oh, yes." — BFG pickup message.
 const GOTBFG9000: *mut c_char = c"You got the BFG9000!  Oh, yes.".as_ptr().cast_mut();
+/// "You got the chaingun!" — chaingun pickup message.
 const GOTCHAINGUN: *mut c_char = c"You got the chaingun!".as_ptr().cast_mut();
+/// "A chainsaw!  Find some meat!" — chainsaw pickup message.
 const GOTCHAINSAW: *mut c_char = c"A chainsaw!  Find some meat!".as_ptr().cast_mut();
+/// "You got the rocket launcher!" — rocket launcher pickup message.
 const GOTLAUNCHER: *mut c_char = c"You got the rocket launcher!".as_ptr().cast_mut();
+/// "You got the plasma gun!" — plasma gun pickup message.
 const GOTPLASMA: *mut c_char = c"You got the plasma gun!".as_ptr().cast_mut();
+/// "You got the shotgun!" — shotgun pickup message.
 const GOTSHOTGUN: *mut c_char = c"You got the shotgun!".as_ptr().cast_mut();
+/// "You got the super shotgun!" — super shotgun pickup message (Doom II only).
 const GOTSHOTGUN2: *mut c_char = c"You got the super shotgun!".as_ptr().cast_mut();
 
 // ---------------------------------------------------------------------------
 // DEH_String shim — identity when dehacked is disabled.
 // ---------------------------------------------------------------------------
 
+/// Passes `s` through unchanged.
+///
+/// When DEHacked support is compiled in this function would look up a
+/// patched string replacement. Here it is a no-op identity shim because
+/// `FEATURE_DEHACKED` is not defined.
 #[inline(always)]
 unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
     s
@@ -157,9 +294,16 @@ use crate::doom::s_sound::S_StartSound;
 // Ammo tables
 // ---------------------------------------------------------------------------
 
+/// Maximum ammo capacity for each ammo type when the player has no backpack.
+/// Indexed by `am_clip`, `am_shell`, `am_cell`, `am_misl` (0-3).
+/// Matches `maxammo[]` in `p_inter.c`.
 #[no_mangle]
 pub static mut maxammo: [c_int; NUMAMMO] = [200, 50, 300, 50];
 
+/// Base ammo count per pickup for each ammo type.
+/// A weapon pickup grants 2× this amount; a dropped weapon grants 1×;
+/// passing `num=0` to `P_GiveAmmo` grants half a clip.
+/// Matches `clipammo[]` in `p_inter.c`.
 #[no_mangle]
 pub static mut clipammo: [c_int; NUMAMMO] = [10, 4, 20, 1];
 
@@ -167,6 +311,22 @@ pub static mut clipammo: [c_int; NUMAMMO] = [10, 4, 20, 1];
 // P_GiveAmmo
 // ---------------------------------------------------------------------------
 
+/// Attempt to give the player `num` clip-loads of ammo type `ammo`.
+///
+/// `num` is a multiplier applied to `clipammo[ammo]`.  A value of `0`
+/// gives half a clip (used when picking up a dropped weapon).  On skill
+/// levels `sk_baby` and `sk_nightmare` the final count is doubled.
+///
+/// Returns `1` if any ammo was actually added; `0` if the player was
+/// already at maximum or the ammo type is `am_noammo`.  As a side-effect,
+/// if the player had zero ammo of this type before the pickup, a more
+/// appropriate weapon may be queued as `pendingweapon`.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to a live `PlayerT`.
+/// Global mutable statics `maxammo`, `clipammo`, `gameskill` must only be
+/// accessed from the game-logic thread.
 #[no_mangle]
 pub unsafe extern "C" fn P_GiveAmmo(player: *mut PlayerT, ammo: c_int, mut num: c_int) -> c_int {
     if ammo == am_noammo {
@@ -229,6 +389,21 @@ pub unsafe extern "C" fn P_GiveAmmo(player: *mut PlayerT, ammo: c_int, mut num: 
 // P_GiveWeapon
 // ---------------------------------------------------------------------------
 
+/// Attempt to give the player weapon `weapon`.
+///
+/// `dropped` is non-zero when the weapon was dropped by a dying monster
+/// (half the normal ammo is given).  In a net-game without deathmatch-2,
+/// weapons stay in the level and only ammo is given.
+///
+/// Returns `1` if either the weapon or its ammo was successfully added;
+/// `0` otherwise.  The weapon is queued as `pendingweapon` when granted.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to a live `PlayerT`.
+/// Global mutable statics `netgame`, `deathmatch`, `consoleplayer`,
+/// `players`, and `weaponinfo` must only be accessed from the game-logic
+/// thread.
 #[no_mangle]
 pub unsafe extern "C" fn P_GiveWeapon(
     player: *mut PlayerT,
@@ -280,6 +455,16 @@ pub unsafe extern "C" fn P_GiveWeapon(
 // P_GiveBody
 // ---------------------------------------------------------------------------
 
+/// Attempt to add `num` health points to the player, capped at `MAXHEALTH`
+/// (100).
+///
+/// Does nothing and returns `0` if the player is already at or above the
+/// cap.  Also syncs `player.mo.health` to match.  Returns `1` on success.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to a live `PlayerT`, and
+/// `player.mo` must be a valid, non-null pointer to the player's map object.
 #[no_mangle]
 pub unsafe extern "C" fn P_GiveBody(player: *mut PlayerT, num: c_int) -> c_int {
     if (*player).health >= MAXHEALTH {
@@ -298,6 +483,16 @@ pub unsafe extern "C" fn P_GiveBody(player: *mut PlayerT, num: c_int) -> c_int {
 // P_GiveArmor
 // ---------------------------------------------------------------------------
 
+/// Attempt to give the player armor of `armortype` (1 = green, 2 = blue).
+///
+/// The effective armor-point value is `armortype * 100`.  Returns `0` if the
+/// player already has at least that many armor points (i.e. the pick-up
+/// would not help).  Otherwise sets `armortype` and `armorpoints` and
+/// returns `1`.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to a live `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn P_GiveArmor(player: *mut PlayerT, armortype: c_int) -> c_int {
     let hits = armortype * 100;
@@ -313,6 +508,15 @@ pub unsafe extern "C" fn P_GiveArmor(player: *mut PlayerT, armortype: c_int) -> 
 // P_GiveCard
 // ---------------------------------------------------------------------------
 
+/// Give the player key `card` if they do not already have it.
+///
+/// Also adds `BONUSADD` to `bonuscount` to flash the HUD gold.  If the
+/// player already owns the card the function returns immediately without
+/// side-effects.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to a live `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn P_GiveCard(player: *mut PlayerT, card: c_int) {
     if (*player).cards[card as usize] != 0 {
@@ -326,6 +530,19 @@ pub unsafe extern "C" fn P_GiveCard(player: *mut PlayerT, card: c_int) {
 // P_GivePower
 // ---------------------------------------------------------------------------
 
+/// Attempt to activate power-up `power` for the player.
+///
+/// Sets the appropriate `powers[]` timer for timed power-ups.  The
+/// invisibility power additionally sets `MF_SHADOW` on the player's mobj.
+/// The strength (berserk) power calls `P_GiveBody` to restore health to
+/// 100.  Power-ups that are already active return `0`.
+///
+/// Returns `1` if the power was granted, `0` if it was already active.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to a live `PlayerT`, and for
+/// `pw_invisibility`, `player.mo` must also be valid.
 #[no_mangle]
 pub unsafe extern "C" fn P_GivePower(player: *mut PlayerT, power: c_int) -> c_int {
     let power = power as usize;
@@ -363,6 +580,36 @@ pub unsafe extern "C" fn P_GivePower(player: *mut PlayerT, power: c_int) -> c_in
 // P_TouchSpecialThing
 // ---------------------------------------------------------------------------
 
+/// Handle a player touching a special (pickup) thing.
+///
+/// Called by the collision-detection code when `toucher` overlaps `special`
+/// and `special` has the special-thing flag set.  Dispatches on the sprite
+/// number of `special` to call the appropriate `P_Give*` helper, sets the
+/// HUD pickup message, plays a sound, removes the special mobj, and
+/// increments `itemcount` for items with `MF_COUNTITEM`.
+///
+/// The function returns early (no pickup) if the vertical gap between
+/// `special` and `toucher` is greater than the toucher's height or less
+/// than -8 map units, preventing pickups from platforms above or pits below.
+///
+/// # Safety
+///
+/// Both `special` and `toucher` must be valid, non-null pointers to live
+/// map objects.  `toucher.player` must be a valid, non-null pointer to the
+/// owning `PlayerT`.  Global game-state statics (`players`, `consoleplayer`,
+/// `netgame`, `gamemode`, `gameskill`) must only be accessed from the
+/// game-logic thread.
+///
+/// # FIXME
+///
+/// The C source (`p_inter.c` lines 357-359) guards against a dead toucher
+/// (`toucher->health <= 0`) to handle sliding player corpses.  This Rust
+/// port omits that guard.
+///
+/// # FIXME
+///
+/// For `SPR_ARM1` the C source passes `deh_green_armor_class` (a runtime
+/// DEHacked value) to `P_GiveArmor`, but this port hardcodes `1`.
 #[no_mangle]
 pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut mobj_t) {
     let _test_spr = SPR_ARM1;
@@ -713,6 +960,29 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
 // P_KillMobj
 // ---------------------------------------------------------------------------
 
+/// Kill map object `target`, optionally crediting `source` with the kill.
+///
+/// Clears movement flags (`MF_SHOOTABLE`, `MF_FLOAT`, `MF_SKULLFLY`),
+/// sets `MF_CORPSE | MF_DROPOFF`, halves the height, transitions to the
+/// appropriate death state (normal or extra-gory `xdeathstate`), and
+/// randomises the initial death-animation tic offset by up to 3 tics.
+///
+/// Kill counters: if `source` is a player, `killcount` and `frags` are
+/// updated.  If `source` is null in a single-player game, `players[0]`
+/// still gets the kill credit (e.g. barrel chain-kills).
+///
+/// Weapon drops: `MT_WOLFSS` / `MT_POSSESSED` drop `MT_CLIP`;
+/// `MT_SHOTGUY` drops `MT_SHOTGUN`; `MT_CHAINGUY` drops `MT_CHAINGUN`.
+/// No items are dropped in Chex Quest.
+///
+/// If `target` is a player, the player enters `PST_DEAD`, the automap is
+/// stopped for the console player, and `P_DropWeapon` is called.
+///
+/// # Safety
+///
+/// `target` must be a valid, non-null pointer to a live `mobj_t`.
+/// `source` may be null (environmental kill).  All global game-state
+/// statics must only be accessed from the game-logic thread.
 #[no_mangle]
 pub unsafe extern "C" fn P_KillMobj(source: *mut mobj_t, target: *mut mobj_t) {
     let info = (*target).info as *mut MobjInfo;
@@ -784,6 +1054,35 @@ pub unsafe extern "C" fn P_KillMobj(source: *mut mobj_t, target: *mut mobj_t) {
 // P_DamageMobj
 // ---------------------------------------------------------------------------
 
+/// Apply `damage` points to map object `target`.
+///
+/// `inflictor` is the projectile or object that physically caused the
+/// damage (used to compute knockback direction); it may be null for
+/// environmental damage such as slime floors or barrel explosions.
+/// `source` is the actor to blame for the damage and to set as
+/// `target.target`; it may also be null.  `source` and `inflictor` are
+/// the same for hitscan and melee attacks.
+///
+/// Behavior summary:
+/// - On skill `sk_baby`, player damage is halved.
+/// - Knockback thrust is applied unless the source is using the chainsaw or
+///   the target has `MF_NOCLIP`.  A random forward-fall is possible when the
+///   target is damaged from below and has low remaining health.
+/// - In the end-of-game hell sector (special 11) damage is capped so the
+///   player cannot be killed.
+/// - `CF_GODMODE` and the invulnerability power-up block damage below 1000.
+/// - Green armor absorbs 1/3 of damage; blue armor absorbs 1/2.  Armor is
+///   consumed when points are exhausted.
+/// - If health drops to zero `P_KillMobj` is called.
+/// - On surviving hits a pain state may be entered and the monster's target
+///   is updated to `source`.
+///
+/// # Safety
+///
+/// `target` must be a valid, non-null pointer to a live `mobj_t`.
+/// `inflictor` and `source` may be null.  If `target.player` is non-null
+/// it must point to a valid `PlayerT`.  All global game-state statics must
+/// only be accessed from the game-logic thread.
 #[no_mangle]
 pub unsafe extern "C" fn P_DamageMobj(
     target: *mut mobj_t,
@@ -909,6 +1208,11 @@ pub unsafe extern "C" fn P_DamageMobj(
 // Link anchor
 // ---------------------------------------------------------------------------
 
+/// Ensures all public symbols in this module are included in the final
+/// binary even when the linker would otherwise dead-strip them.
+///
+/// Called from the crate's link-anchor collection; not intended for direct
+/// use in game logic.
 #[no_mangle]
 pub extern "C" fn P_Inter_Link_Anchor() {
     unsafe {
