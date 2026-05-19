@@ -34,8 +34,8 @@ use crate::i_error;
 /// and `raiseAndChange`/`raiseToNearestAndChange` use `PLATSPEED / 2`.
 const PLATSPEED: fixed_t = FRACUNIT;
 
-/// Number of tics a `downWaitUpStay` or `blazeDWUS` platform waits at the
-/// bottom before rising: 3 seconds at the default 35 Hz tic rate.
+/// Unitless platform wait count; multiplied by `TICRATE` at call sites to give
+/// the actual wait duration in tics (3 × 35 = 105 tics ≈ 3 s at 35 Hz).
 const PLATWAIT: c_int = 3;
 
 /// Maximum number of simultaneously active platform thinkers.

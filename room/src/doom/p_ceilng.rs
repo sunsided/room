@@ -218,7 +218,9 @@ pub unsafe extern "C" fn T_MoveCeiling(ceiling: *mut ceiling_t) {
 /// For each eligible sector (no existing special data):
 /// 1. Allocates and links a new `ceiling_t` thinker.
 /// 2. Sets its parameters based on `ceilingtype` (height targets, speed,
-///    crush flag, direction).
+///    crush flag, direction).  `silentCrushAndRaise` and `crushAndRaise` only
+///    initialise `crush` and `topheight`; `bottomheight` and `direction` keep
+///    their zero-initialised defaults and are set dynamically by `T_MoveCeiling`.
 /// 3. Registers it in [`activeceilings`].
 ///
 /// Returns `1` if at least one ceiling was activated, `0` otherwise.
