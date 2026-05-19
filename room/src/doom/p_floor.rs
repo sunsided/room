@@ -1,6 +1,8 @@
-//! Rust port of vendor/doomgeneric/p_floor.c.
+//! Floor movement and staircase construction.
 //!
-//! Floor animation: raising stairs, lowering/raising floors.
+//! Rust port of `vendor/doomgeneric/p_floor.c`. Provides `T_MovePlane` (shared
+//! by ceiling, platform, and door code), `T_MoveFloor`, `EV_DoFloor`, and
+//! `EV_BuildStairs`.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -22,66 +24,112 @@ use crate::doom::s_sound::S_StartSound;
 use crate::doom::sounds::Sfx;
 use crate::doom::z_zone::{Z_Malloc, PU_LEVSPEC};
 
+/// Movement speed for floors: 1 unit per tic in fixed-point (`FRACUNIT`).
 const FLOORSPEED: fixed_t = FRACUNIT;
+
+/// Convenience alias for `c_int::MAX`, used as an initial "infinity" in texture height searches.
 const INT_MAX: c_int = c_int::MAX;
 
 // result_e enum values
+/// `T_MovePlane` return: plane moved without reaching destination or crushing.
 const result_ok: c_int = 0;
+/// `T_MovePlane` return: plane was blocked by a thing (crushing).
 const result_crushed: c_int = 1;
+/// `T_MovePlane` return: plane reached its destination this tic.
 const result_pastdest: c_int = 2;
 
 // floor_e enum values
+/// Lower floor to the highest surrounding floor height.
 const floor_lowerFloor: c_int = 0;
+/// Lower floor to the lowest surrounding floor height.
 const floor_lowerFloorToLowest: c_int = 1;
+/// Lower floor at 4x speed, rising 8 units above the highest surrounding floor.
 const floor_turboLower: c_int = 2;
+/// Raise floor to the lowest surrounding ceiling minus 8 units (crush variant sets crush flag).
 const floor_raiseFloor: c_int = 3;
+/// Raise floor to the next-highest surrounding floor.
 const floor_raiseFloorToNearest: c_int = 4;
+/// Raise floor by the height of the shortest lower texture on its linedefs.
 const floor_raiseToTexture: c_int = 5;
+/// Lower floor to the lowest surrounding floor and transfer texture/special from neighbor.
 const floor_lowerAndChange: c_int = 6;
+/// Raise floor 24 units.
 const floor_raiseFloor24: c_int = 7;
+/// Raise floor 24 units and copy texture/special from the triggering linedef's front sector.
 const floor_raiseFloor24AndChange: c_int = 8;
+/// Raise floor to lowest surrounding ceiling (with crush enabled).
 const floor_raiseFloorCrush: c_int = 9;
+/// Raise floor at 4x speed to the next-highest surrounding floor.
 const floor_raiseFloorTurbo: c_int = 10;
+/// Raise floor for a donut special (transfers texture/special when done).
 const floor_donutRaise: c_int = 11;
+/// Raise floor 512 units.
 const floor_raiseFloor512: c_int = 12;
 
 // stair_e enum values
+/// Build an 8-unit staircase at quarter speed (`FLOORSPEED / 4`).
 const stair_build8: c_int = 0;
+/// Build a 16-unit staircase at 4x speed (`FLOORSPEED * 4`).
 const stair_turbo16: c_int = 1;
 
 use crate::doom::c_ffi::LinedefFlag;
 
+/// Thinker state for a moving floor.
+///
+/// Each active `EV_DoFloor` or `EV_BuildStairs` call allocates one of these per
+/// affected sector. `T_MoveFloor` is called every tic until the floor reaches
+/// `floordestheight`.
+// Only .sector is accessed in EV_BuildStairs via pointer arithmetic.
+// Probe required for offset. On x86_64, sector is at offset 48.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct floormove_t {
+    /// Embedded thinker header; must be the first field.
     pub thinker: thinker_t,
+    /// Floor movement type (`floor_*` constant).
     pub r#type: c_int,
+    /// Non-zero if this floor should crush things it encounters.
     pub crush: c_int,
+    /// The sector whose floor is being moved.
     pub sector: *mut sector_t,
+    /// Direction of movement: `1` = up, `-1` = down.
     pub direction: c_int,
+    /// Sector special to apply when the floor finishes (`floor_lowerAndChange` / `floor_donutRaise`).
     pub newspecial: c_int,
+    /// Floor flat (texture) to apply when the floor finishes.
     pub texture: c_short,
     _pad: [u8; 2],
+    /// Target floor height in fixed-point units.
     pub floordestheight: fixed_t,
+    /// Movement speed in fixed-point units per tic.
     pub speed: fixed_t,
 }
-// Only .sector is accessed in EV_BuildStairs via pointer arithmetic.
-// Probe required for offset. On x86_64, sector is at offset 48.
 
+/// Partial mirror of `side_t` from `p_local.h`, containing the fields required
+/// by the floor subsystem.
+///
+/// Layout is verified by the `side_t_layout_matches_c` test.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct side_t {
+    /// Horizontal texture offset for the sidedef.
     pub textureoffset: c_int,
+    /// Vertical texture offset for the sidedef.
     pub rowoffset: c_int,
+    /// Top (upper) texture index.
     pub toptexture: c_short,
+    /// Bottom (lower) texture index.
     pub bottomtexture: c_short,
+    /// Middle texture index.
     pub midtexture: c_short,
     _pad: [u8; 2],
+    /// Sector on this side of the linedef.
     pub sector: *mut sector_t,
 }
 
 use crate::doom::p_lights::line_t;
 
+/// Compile-time layout checks for `floormove_t` and `side_t` on 64-bit targets.
 #[cfg(target_pointer_width = "64")]
 mod layout_checks {
     use super::*;
@@ -105,8 +153,18 @@ mod layout_checks {
     const _: () = assert!(std::mem::offset_of!(side_t, sector) == 16);
 }
 
-/// Move a plane (floor or ceiling) and check for crushing.
-/// Shared by p_floor, p_ceilng, p_plats, p_doors.
+/// Move a plane (floor or ceiling) one step toward `dest` and check for crushing.
+///
+/// Shared by the floor, ceiling, platform, and door subsystems.
+///
+/// `floorOrCeiling`: `0` = floor, `1` = ceiling.
+/// `direction`: `1` = up, `-1` = down.
+/// `crush`: non-zero enables crushing things caught by the moving plane.
+///
+/// Returns one of:
+/// - `result_ok` — moved without incident.
+/// - `result_crushed` — a thing was crushed; the plane may have been reversed.
+/// - `result_pastdest` — the plane reached `dest` this tic.
 #[no_mangle]
 pub extern "C" fn T_MovePlane(
     sector: *mut sector_t,
@@ -227,6 +285,17 @@ pub extern "C" fn T_MovePlane(
     }
 }
 
+/// Per-tic update for a moving floor.
+///
+/// Calls `T_MovePlane` every tic and plays `sfx_stnmov` every 8 tics. When the
+/// floor reaches `floordestheight` (`result_pastdest`), it applies any pending
+/// texture/special changes, removes the thinker, and plays `sfx_pstop`.
+///
+/// # Safety
+///
+/// `floor` must be a valid, aligned, non-null pointer to a `floormove_t`
+/// whose embedded `sector` pointer is also valid for the current map.
+/// Called exclusively by the thinker dispatcher from `P_RunThinkers`.
 #[no_mangle]
 pub unsafe extern "C" fn T_MoveFloor(floor: *mut floormove_t) {
     let res = T_MovePlane(
@@ -266,6 +335,30 @@ pub unsafe extern "C" fn T_MoveFloor(floor: *mut floormove_t) {
     }
 }
 
+/// Linedef-triggered event: activate floor movement on all tagged sectors.
+///
+/// For each sector whose tag matches `line`'s tag and that has no active
+/// special, allocates a `floormove_t` thinker and configures it according to
+/// `floortype`. Returns `1` if at least one floor was started, `0` otherwise.
+///
+/// # Safety
+///
+/// `line` must be a valid non-null pointer for the current map; the global
+/// `sectors` array must be initialised.
+///
+/// # FIXME
+/// The `floor_raiseFloorCrush` arm only sets `crush = 1` and leaves direction,
+/// sector, speed, and `floordestheight` uninitialised. In C, the switch falls
+/// through into `raiseFloor`, which sets those fields. The Rust port handles
+/// `raiseFloor` and `raiseFloorCrush` as separate arms; only the `raiseFloor`
+/// arm sets direction/speed/dest, so `raiseFloorCrush` sectors never actually
+/// move. This is a behavioural divergence from the C original.
+///
+/// # FIXME
+/// In the `floor_raiseFloor24` arm, the line
+/// `(*floor).floordestheight = (*floor).sector.offset_from(sec as *mut sector_t) as fixed_t`
+/// is a leftover dead assignment that is immediately overwritten. It is harmless
+/// (the correct value is set on the next line) but should be removed.
 #[no_mangle]
 pub unsafe extern "C" fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_int {
     let mut secnum: c_int = -1;
@@ -320,6 +413,10 @@ pub unsafe extern "C" fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_in
                 }
             }
             floor_raiseFloorCrush => {
+                // FIXME: In C, `raiseFloorCrush` falls through into `raiseFloor`,
+                // so it sets crush = true AND then configures direction/speed/dest.
+                // Here the arms are separate: only crush is set; the floor never
+                // actually moves. This diverges from the C original.
                 (*floor).crush = 1;
             }
             floor_raiseFloor => {
@@ -349,6 +446,8 @@ pub unsafe extern "C" fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_in
                 (*floor).direction = 1;
                 (*floor).sector = sec as *mut sector_t;
                 (*floor).speed = FLOORSPEED;
+                // FIXME: the next line is a dead assignment (offset_from produces the wrong type
+                // and the value is immediately overwritten); it should be removed.
                 (*floor).floordestheight =
                     (*floor).sector.offset_from(sec as *mut sector_t) as fixed_t;
                 (*floor).floordestheight = (*sec).floorheight + 24 * FRACUNIT;
@@ -426,6 +525,20 @@ pub unsafe extern "C" fn EV_DoFloor(line: *mut line_t, floortype: c_int) -> c_in
     rtn
 }
 
+/// Linedef-triggered event: build a rising staircase starting from tagged sectors.
+///
+/// For each tagged sector, raises its floor by `stairsize` (8 or 16 units
+/// depending on `stype`), then walks adjacent sectors that share the same floor
+/// texture, raising each step by another `stairsize`. Sectors already moving are
+/// skipped but the height counter still increments so the step sequence is
+/// preserved.
+///
+/// Returns `1` if at least one stair was started, `0` otherwise.
+///
+/// # Safety
+///
+/// `line` must be a valid non-null pointer for the current map; the global
+/// `sectors` array must be initialised.
 #[no_mangle]
 pub unsafe extern "C" fn EV_BuildStairs(line: *mut line_t, stype: c_int) -> c_int {
     let mut secnum: c_int = -1;
@@ -528,6 +641,10 @@ pub unsafe extern "C" fn EV_BuildStairs(line: *mut line_t, stype: c_int) -> c_in
     rtn
 }
 
+/// Anchor function ensuring all `#[no_mangle]` floor functions survive
+/// link-time dead-code elimination.
+///
+/// Referenced from `doomgeneric_Create` during engine initialisation.
 #[no_mangle]
 pub extern "C" fn P_Floor_Link_Anchor() {
     let _ = T_MovePlane as *const () as usize;

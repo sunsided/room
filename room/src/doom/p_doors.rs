@@ -1,6 +1,7 @@
-//! Rust port of vendor/doomgeneric/p_doors.c.
+//! Door animation: opening, closing, and locked vertical doors.
 //!
-//! Door animation: opening/closing vertical doors.
+//! Rust port of `vendor/doomgeneric/p_doors.c`. Each active door is managed by
+//! a `vldoor_t` thinker that moves the sector ceiling up or down every game tic.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -22,52 +23,90 @@ use crate::doom::p_tick::{thinker_t, P_AddThinker, P_RemoveThinker};
 use crate::doom::s_sound::S_StartSound;
 use crate::doom::z_zone::{Z_Malloc, PU_LEVSPEC};
 
+/// Movement speed for normal vertical doors (in fixed-point units per tic).
 const VDOORSPEED: fixed_t = FRACUNIT * 2;
+
+/// Number of tics a normal door waits at the top before closing (`VDOORWAIT` in C).
 const VDOORWAIT: c_int = 150;
 
 // vldoor_e enum values
+/// Normal raise-and-wait door: opens, waits `VDOORWAIT` tics, then closes.
 const vld_normal: c_int = 0;
+/// Door that closes immediately, waits 30 seconds, then opens permanently.
 const vld_close30ThenOpen: c_int = 1;
+/// Door that closes and stays closed (no re-open).
 const vld_close: c_int = 2;
+/// Door that opens and stays open (no auto-close).
 const vld_open: c_int = 3;
+/// Door that starts waiting and raises after 5 minutes.
 const vld_raiseIn5Mins: c_int = 4;
+/// Fast normal door (blaze speed: `VDOORSPEED * 4`), waits then closes.
 const vld_blazeRaise: c_int = 5;
+/// Fast door that opens and stays open.
 const vld_blazeOpen: c_int = 6;
+/// Fast door that closes and stays closed.
 const vld_blazeClose: c_int = 7;
 
 // result_e enum values
+/// `T_MovePlane` return: plane moved without reaching destination or crushing.
 const result_ok: c_int = 0;
+/// `T_MovePlane` return: plane was blocked by a thing (crushing).
 const result_crushed: c_int = 1;
+/// `T_MovePlane` return: plane reached its destination this tic.
 const result_pastdest: c_int = 2;
 
 // card indices
+/// Index into the player card array for the blue keycard.
 const it_bluecard: usize = 0;
+/// Index into the player card array for the yellow keycard.
 const it_yellowcard: usize = 1;
+/// Index into the player card array for the red keycard.
 const it_redcard: usize = 2;
+/// Index into the player card array for the blue skull key.
 const it_blueskull: usize = 3;
+/// Index into the player card array for the yellow skull key.
 const it_yellowskull: usize = 4;
+/// Index into the player card array for the red skull key.
 const it_redskull: usize = 5;
 
+/// Helper macro: produce a null-terminated `*mut c_char` from a string literal.
 macro_rules! cstr {
     ($s:literal) => {
         concat!($s, "\0").as_ptr() as *mut c_char
     };
 }
 
+/// Thinker state for an active vertical door.
+///
+/// The door moves its sector's ceiling between `floorheight + 0` (closed) and
+/// `topheight` (open). `direction` encodes the current movement:
+/// - `1` = moving up (opening)
+/// - `-1` = moving down (closing)
+/// - `0` = waiting at the top
+/// - `2` = initial wait (used by `vld_raiseIn5Mins`)
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct vldoor_t {
+    /// Embedded thinker header; must be the first field.
     pub thinker: thinker_t,
+    /// Door type (`vld_*` constant); controls behaviour at open/close limits.
     pub r#type: c_int,
     _pad0: [u8; 4],
+    /// The sector this door controls (its ceiling is the moving plane).
     pub sector: *mut sector_t,
+    /// Target height of the open position (lowest surrounding ceiling - 4 units).
     pub topheight: fixed_t,
+    /// Movement speed in fixed-point units per tic.
     pub speed: fixed_t,
+    /// Current movement direction: `1` up, `-1` down, `0` waiting, `2` initial wait.
     pub direction: c_int,
+    /// Tics to wait at the top before starting to close (set to `VDOORWAIT`).
     pub topwait: c_int,
+    /// Countdown tics remaining in the current wait phase.
     pub topcountdown: c_int,
 }
 
+/// Compile-time layout checks for `vldoor_t` against the C struct on 64-bit.
 #[cfg(target_pointer_width = "64")]
 mod layout_checks {
     use super::*;
@@ -82,6 +121,20 @@ mod layout_checks {
     const _: () = assert!(std::mem::offset_of!(vldoor_t, topcountdown) == 56);
 }
 
+/// Per-tic update for a vertical door.
+///
+/// Dispatches on `door->direction`:
+/// - `0` (waiting): counts down `topcountdown`, then starts closing or re-opening.
+/// - `2` (initial wait): counts down `topcountdown`, then transitions to open.
+/// - `-1` (moving down): calls `T_MovePlane`; handles crush, fully-closed, and
+///   the `vld_close30ThenOpen` re-open delay.
+/// - `1` (moving up): calls `T_MovePlane`; parks at top or removes thinker when done.
+///
+/// # Safety
+///
+/// `door` must be a valid, aligned, non-null pointer to a `vldoor_t` whose
+/// `sector` pointer is also valid for the current map. Called exclusively by
+/// the thinker dispatcher from `P_RunThinkers`.
 #[no_mangle]
 pub unsafe extern "C" fn T_VerticalDoor(door: *mut vldoor_t) {
     let res: c_int;
@@ -200,6 +253,23 @@ pub unsafe extern "C" fn T_VerticalDoor(door: *mut vldoor_t) {
     }
 }
 
+/// Linedef-triggered event: activate a key-locked door for `thing`.
+///
+/// Checks whether the player associated with `thing` holds any of the required
+/// keys for `line`'s special number. Displays a message and plays `sfx_oof` if
+/// the required key is absent, then returns `0`. If the key check passes,
+/// delegates to `EV_DoDoor`.
+///
+/// Returns `1` if the door was activated, `0` otherwise.
+///
+/// # Safety
+///
+/// `line`, `thing` must be valid non-null pointers for the current map.
+///
+/// # FIXME
+/// The lock-failure messages are hardcoded English strings. The C original uses
+/// `DEH_String(PD_BLUEO)` etc., which allows Dehacked patches to override them.
+/// This port drops that indirection, so Dehacked key messages cannot be patched.
 #[no_mangle]
 pub unsafe extern "C" fn EV_DoLockedDoor(
     line: *mut line_t,
@@ -217,6 +287,7 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
                 return 0;
             }
             if (*p).cards[it_bluecard] == 0 && (*p).cards[it_blueskull] == 0 {
+                // FIXME: C uses DEH_String(PD_BLUEO) here; Dehacked blue-object message is not patchable.
                 (*p).message = cstr!("You need a blue key to activate this object");
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return 0;
@@ -227,6 +298,7 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
                 return 0;
             }
             if (*p).cards[it_redcard] == 0 && (*p).cards[it_redskull] == 0 {
+                // FIXME: C uses DEH_String(PD_REDO) here; Dehacked red-object message is not patchable.
                 (*p).message = cstr!("You need a red key to activate this object");
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return 0;
@@ -237,6 +309,7 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
                 return 0;
             }
             if (*p).cards[it_yellowcard] == 0 && (*p).cards[it_yellowskull] == 0 {
+                // FIXME: C uses DEH_String(PD_YELLOWO) here; Dehacked yellow-object message is not patchable.
                 (*p).message = cstr!("You need a yellow key to activate this object");
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return 0;
@@ -248,6 +321,18 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
     EV_DoDoor(line, r#type)
 }
 
+/// Linedef-triggered event: activate doors on all sectors tagged to `line`.
+///
+/// For each tagged sector that does not already have an active special, allocates
+/// a `vldoor_t` thinker and configures it according to `type`. Blaze variants
+/// move at `VDOORSPEED * 4`.
+///
+/// Returns `1` if at least one door was activated, `0` otherwise.
+///
+/// # Safety
+///
+/// `line` must be a valid non-null pointer for the current map; the global
+/// `sectors` array must be initialised.
 #[no_mangle]
 pub unsafe extern "C" fn EV_DoDoor(line: *mut line_t, r#type: c_int) -> c_int {
     let mut secnum: c_int = -1;
@@ -338,6 +423,22 @@ pub unsafe extern "C" fn EV_DoDoor(line: *mut line_t, r#type: c_int) -> c_int {
     rtn
 }
 
+/// Linedef use-action: manually open or toggle the door behind `line`.
+///
+/// Only the front side of a linedef can be used (`side = 0`). Checks key locks
+/// first (specials 26-28, 32-34). If the sector behind the line already has an
+/// active thinker, toggles its direction (open doors begin closing, and vice
+/// versa). Otherwise spawns a new `vldoor_t` thinker.
+///
+/// # Safety
+///
+/// `line` and `thing` must be valid non-null pointers for the current map; the
+/// global `sides` array must be initialised.
+///
+/// # FIXME
+/// The key-locked door messages use hardcoded English strings (e.g.
+/// `"You need a blue key to open this door"`). The C original uses
+/// `DEH_String(PD_BLUEK)` etc., allowing Dehacked to override them.
 #[no_mangle]
 pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) {
     let side = 0;
@@ -351,6 +452,7 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
                 return;
             }
             if (*player).cards[it_bluecard] == 0 && (*player).cards[it_blueskull] == 0 {
+                // FIXME: C uses DEH_String(PD_BLUEK) here; Dehacked blue-door message is not patchable.
                 (*player).message = cstr!("You need a blue key to open this door");
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return;
@@ -361,6 +463,7 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
                 return;
             }
             if (*player).cards[it_yellowcard] == 0 && (*player).cards[it_yellowskull] == 0 {
+                // FIXME: C uses DEH_String(PD_YELLOWK) here; Dehacked yellow-door message is not patchable.
                 (*player).message = cstr!("You need a yellow key to open this door");
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return;
@@ -371,6 +474,7 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
                 return;
             }
             if (*player).cards[it_redcard] == 0 && (*player).cards[it_redskull] == 0 {
+                // FIXME: C uses DEH_String(PD_REDK) here; Dehacked red-door message is not patchable.
                 (*player).message = cstr!("You need a red key to open this door");
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return;
@@ -479,6 +583,14 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
     (*door).topheight -= 4 * FRACUNIT;
 }
 
+/// Spawn a door thinker that closes `sec` after 30 seconds.
+///
+/// The door starts in direction `0` (waiting) with `topcountdown = 30 * TICRATE`.
+/// After the countdown it begins closing as a `vld_normal` door.
+///
+/// # Safety
+///
+/// `sec` must be a valid non-null pointer to a sector for the current map.
 #[no_mangle]
 pub unsafe extern "C" fn P_SpawnDoorCloseIn30(sec: *mut sector_t) {
     let door = Z_Malloc(
@@ -503,6 +615,16 @@ pub unsafe extern "C" fn P_SpawnDoorCloseIn30(sec: *mut sector_t) {
     (*door).topcountdown = 30 * TICRATE;
 }
 
+/// Spawn a door thinker that opens `sec` after 5 minutes (`vld_raiseIn5Mins`).
+///
+/// The door starts in direction `2` (initial wait) with
+/// `topcountdown = 5 * 60 * TICRATE`. `_secnum` is accepted for C ABI
+/// compatibility but is not used.
+///
+/// # Safety
+///
+/// `sec` must be a valid non-null pointer to a sector for the current map; the
+/// global `sectors` array must be initialised.
 #[no_mangle]
 pub unsafe extern "C" fn P_SpawnDoorRaiseIn5Mins(sec: *mut sector_t, _secnum: c_int) {
     let door = Z_Malloc(
@@ -532,6 +654,11 @@ pub unsafe extern "C" fn P_SpawnDoorRaiseIn5Mins(sec: *mut sector_t, _secnum: c_
 
 /// Anchor function referenced from `doomgeneric_Create` to ensure all
 /// `#[no_mangle]` door functions survive link-time dead-code elimination.
+///
+/// # Safety
+///
+/// Must only be called during engine initialisation before any thinker
+/// dispatch occurs; taking the address of each function is always safe.
 #[no_mangle]
 pub unsafe extern "C" fn P_Doors_Link_Anchor() {
     let _ = T_VerticalDoor as *const () as usize;
