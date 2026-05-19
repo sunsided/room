@@ -166,7 +166,9 @@ const _: () = assert!(std::mem::offset_of!(visplane_t, bottom) == 343);
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(std::mem::offset_of!(visplane_t, pad4) == 663);
 
+/// Default initialization for visplane pool entries.
 impl Default for visplane_t {
+    /// Returns a zeroed `visplane_t`, used to initialize the visplane pool.
     fn default() -> Self {
         Self {
             height: 0,
@@ -188,16 +190,18 @@ impl Default for visplane_t {
 // Global mutable state (exported for C consumers)
 // ---------------------------------------------------------------------------
 
-/// Callback invoked by [`R_MapPlane`] for each floor span.
+/// Legacy floor-span callback pointer, carried over from the C source.
 ///
-/// Exported as `#[no_mangle]` for C callers.  Set to `R_DrawSpan` (normal
-/// detail) or `R_DrawSpanLow` (low detail) by `R_SetupFrame` in `r_main`.
+/// Not used in this port; `R_MapPlane` does not invoke it.  Retained and
+/// exported as `#[no_mangle]` for ABI compatibility with C consumers.
 #[no_mangle]
 pub static mut floorfunc: Option<planefunction_t> = None;
 
-/// Callback invoked by [`R_MapPlane`] for each ceiling span.
+/// Legacy ceiling-span callback pointer, carried over from the C source.
 ///
-/// Exported as `#[no_mangle]` for C callers.  Parallels [`floorfunc`].
+/// Not used in this port; `R_MapPlane` does not invoke it.  Retained and
+/// exported as `#[no_mangle]` for ABI compatibility with C consumers.
+/// Parallels [`floorfunc`].
 #[no_mangle]
 pub static mut ceilingfunc: Option<planefunction_t> = None;
 

@@ -614,9 +614,12 @@ unsafe fn R_RenderSegLoop() {
 /// # Safety
 ///
 /// `curline`, `frontsector`, and (for two-sided lines) `backsector` must be
-/// valid pointers set by the BSP traversal before this call.  `ds_p` must
-/// point within the `drawsegs` array.  Reads and writes numerous `static mut`
-/// renderer globals; calls [`R_CheckPlane`] and `R_RenderSegLoop`.
+/// valid pointers set by the BSP traversal before this call.  `ds_p` must be
+/// a valid pointer into `drawsegs` or one-past-end (`&drawsegs[MAXDRAWSEGS]`);
+/// the function checks for the one-past-end case internally and returns
+/// silently, so callers need not guard that boundary themselves.  Reads and
+/// writes numerous `static mut` renderer globals; calls [`R_CheckPlane`] and
+/// `R_RenderSegLoop`.
 // FIXME: In R_StoreWallRange the Rust code computes `rw_scalestep` only when
 //        `stop > start`, leaving `rw_scalestep` at its value from the
 //        *previous* seg when `stop == start`.  The C source has the same
