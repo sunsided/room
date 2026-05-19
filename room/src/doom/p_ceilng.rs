@@ -1,6 +1,9 @@
-//! Rust port of vendor/doomgeneric/p_ceilng.c.
+//! Ceiling animation: lowering, crushing, and raising.
 //!
-//! Ceiling animation: lowering, crushing, raising.
+//! Rust port of `vendor/doomgeneric/p_ceilng.c`.  Manages the per-tic update
+//! logic for moving ceilings ([`T_MoveCeiling`]), linedef-triggered ceiling
+//! activation ([`EV_DoCeiling`] / [`EV_CeilingCrushStop`]), and the fixed-size
+//! active-ceiling table ([`activeceilings`]).
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -18,35 +21,72 @@ use crate::doom::p_tick::{leveltime, thinker_t, P_AddThinker, P_RemoveThinker};
 use crate::doom::s_sound::S_StartSound;
 use crate::doom::z_zone::{Z_Malloc, PU_LEVSPEC};
 
+/// Default ceiling movement speed: 1 fixed-point unit per tic (`FRACUNIT`).
+///
+/// Crusher ceilings slow to `CEILSPEED / 8` when they hit something, and fast
+/// crushers move at `CEILSPEED * 2`.  Matches `CEILSPEED` in `p_ceilng.c`.
 const CEILSPEED: fixed_t = FRACUNIT;
+
+/// Maximum number of simultaneously active ceiling movers.
+///
+/// Matches `MAXCEILINGS` in `p_local.h`.  If all slots are occupied,
+/// [`P_AddActiveCeiling`] silently discards new ceilings.
 pub const MAXCEILINGS: usize = 30;
 
-// result_e enum values
+// result_e enum values returned by T_MovePlane.
+/// `T_MovePlane` result: the plane moved without incident.
 const result_ok: c_int = 0;
+/// `T_MovePlane` result: the plane crushed something while moving.
 const result_crushed: c_int = 1;
+/// `T_MovePlane` result: the plane reached its destination height.
 const result_pastdest: c_int = 2;
 
-// ceiling_e enum values
+// ceiling_e enum values — ceiling mover types.
+/// Lower ceiling until it reaches the floor height of the sector.
 const lowerToFloor: c_int = 0;
+/// Raise ceiling to the highest surrounding ceiling height.
 const raiseToHighest: c_int = 1;
+/// Lower ceiling to 8 units above the floor, crushing things in the way.
 const lowerAndCrush: c_int = 2;
+/// Crusher that bounces between floor+8 and its original height; normal speed.
 const crushAndRaise: c_int = 3;
+/// Crusher that bounces at twice the normal speed.
 const fastCrushAndRaise: c_int = 4;
+/// Like [`crushAndRaise`] but does not play the movement sound each tic.
 const silentCrushAndRaise: c_int = 5;
 
+/// Per-sector thinker for an active ceiling mover.
+///
+/// Allocated via `Z_Malloc` and linked into the thinker list.  The `thinker`
+/// field must be at offset 0 (verified by the compile-time assertions in
+/// `layout_checks`) so that a `*mut ceiling_t` can be cast safely to
+/// `*mut thinker_t`.
+///
+/// Layout matches the C `ceiling_t` struct.  Padding (`_pad0`, `_pad1`)
+/// preserves C alignment on 64-bit targets.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ceiling_t {
+    /// Thinker header — must be at offset 0.
     pub thinker: thinker_t,
+    /// Ceiling type (one of the `ceiling_e` integer constants).
     pub r#type: c_int,
     _pad0: [u8; 4],
+    /// The sector whose ceiling this thinker is moving.
     pub sector: *mut sector_t,
+    /// Target height when the ceiling is moving downward.
     pub bottomheight: fixed_t,
+    /// Target height when the ceiling is moving upward.
     pub topheight: fixed_t,
+    /// Current movement speed in fixed-point units per tic.
     pub speed: fixed_t,
+    /// Non-zero if the ceiling damages things it crushes.
     pub crush: c_int,
+    /// Current movement direction: `1` = up, `-1` = down, `0` = in stasis.
     pub direction: c_int,
+    /// Linedef tag that activated this ceiling (used for crush-stop matching).
     pub tag: c_int,
+    /// Saved direction used to resume a ceiling that was put into stasis.
     pub olddirection: c_int,
     _pad1: [u8; 4],
 }
@@ -67,9 +107,55 @@ mod layout_checks {
     const _: () = assert!(std::mem::offset_of!(ceiling_t, olddirection) == 64);
 }
 
+/// Table of all currently active ceiling thinkers.
+///
+/// Null entries represent free slots.  [`P_AddActiveCeiling`] fills the first
+/// null slot; [`P_RemoveActiveCeiling`] nulls the matching slot.
+/// Exported as `activeceilings` for C linkage.
 #[no_mangle]
 pub static mut activeceilings: [*mut ceiling_t; MAXCEILINGS] = [std::ptr::null_mut(); MAXCEILINGS];
 
+/// Per-tic update for a moving ceiling thinker.
+///
+/// Calls `T_MovePlane` with the appropriate target height (determined by
+/// `ceiling->direction`), then reacts to the result:
+///
+/// - **`result_pastdest`**: the ceiling reached its target height.
+///   - `raiseToHighest`: remove and free the thinker.
+///   - `silentCrushAndRaise` (downward): play the stop sound, then reverse
+///     direction upward.
+///   - `fastCrushAndRaise` / `crushAndRaise` (downward): reverse direction.
+///   - `lowerAndCrush` / `lowerToFloor` (downward): remove and free the
+///     thinker.
+/// - **`result_crushed`**: the ceiling hit something while moving down.
+///   - `silentCrushAndRaise` / `crushAndRaise` / `lowerAndCrush`: reduce
+///     speed to `CEILSPEED / 8` to avoid shaking the victim rapidly.
+///
+/// Every 8 tics, a movement sound (`sfx_stnmov`) is played at the sector's
+/// sound origin, except for `silentCrushAndRaise` which suppresses it.
+///
+/// # FIXME
+/// The C original uses a `switch(direction)` with explicit `case 0` (stasis,
+/// no-op), `case 1` (up), and `case -1` (down) branches.  The direction
+/// controls which target height is passed to `T_MovePlane` and which
+/// `pastdest` actions apply.  This Rust port passes `direction` to
+/// `T_MovePlane` but does not gate the `pastdest`/`crushed` handling on the
+/// current direction, so those match arms may fire for `direction == 0`
+/// (stasis) or the wrong direction — a minor behavioral divergence from C.
+///
+/// # FIXME
+/// The C `case silentCrushAndRaise` (downward) falls through to
+/// `crushAndRaise`/`fastCrushAndRaise`, which restores speed to `CEILSPEED`
+/// and reverses direction.  This Rust port handles `silentCrushAndRaise`
+/// separately and only plays the stop sound; it does not restore speed or
+/// reverse direction for that variant.
+///
+/// Corresponds to `T_MoveCeiling` in `p_ceilng.c`.
+///
+/// # Safety
+///
+/// `ceiling` must be a valid, non-null pointer to a `ceiling_t` that is
+/// currently linked in the thinker list and whose `sector` pointer is valid.
 #[no_mangle]
 pub unsafe extern "C" fn T_MoveCeiling(ceiling: *mut ceiling_t) {
     let res = T_MovePlane(
@@ -123,6 +209,26 @@ pub unsafe extern "C" fn T_MoveCeiling(ceiling: *mut ceiling_t) {
     }
 }
 
+/// Activate a ceiling mover on every sector whose tag matches `line->tag`.
+///
+/// For crusher types (`fastCrushAndRaise`, `silentCrushAndRaise`,
+/// `crushAndRaise`), first reactivates any in-stasis ceilings with the same
+/// tag via [`P_ActivateInStasisCeiling`].
+///
+/// For each eligible sector (no existing special data):
+/// 1. Allocates and links a new `ceiling_t` thinker.
+/// 2. Sets its parameters based on `ceilingtype` (height targets, speed,
+///    crush flag, direction).
+/// 3. Registers it in [`activeceilings`].
+///
+/// Returns `1` if at least one ceiling was activated, `0` otherwise.
+///
+/// Corresponds to `EV_DoCeiling` in `p_ceilng.c`.
+///
+/// # Safety
+///
+/// `line` must be a valid, non-null pointer.  The global `sectors` array must
+/// be initialised for the current level.
 #[no_mangle]
 pub unsafe extern "C" fn EV_DoCeiling(line: *mut line_t, ceilingtype: c_int) -> c_int {
     let mut secnum: c_int = -1;
@@ -196,6 +302,13 @@ pub unsafe extern "C" fn EV_DoCeiling(line: *mut line_t, ceilingtype: c_int) -> 
     rtn
 }
 
+/// Register `c` in the first available slot of [`activeceilings`].
+///
+/// If all [`MAXCEILINGS`] slots are occupied the function returns silently,
+/// discarding the ceiling — matching the C behaviour which has no overflow
+/// guard.
+///
+/// Corresponds to `P_AddActiveCeiling` in `p_ceilng.c`.
 #[no_mangle]
 pub extern "C" fn P_AddActiveCeiling(c: *mut ceiling_t) {
     unsafe {
@@ -208,6 +321,13 @@ pub extern "C" fn P_AddActiveCeiling(c: *mut ceiling_t) {
     }
 }
 
+/// Unlink and schedule deallocation of the active ceiling `c`.
+///
+/// Clears `sector->specialdata`, calls [`P_RemoveThinker`] (which marks the
+/// thinker for deferred `Z_Free`), and nulls the matching slot in
+/// [`activeceilings`].  Does nothing if `c` is not found in the table.
+///
+/// Corresponds to `P_RemoveActiveCeiling` in `p_ceilng.c`.
 #[no_mangle]
 pub extern "C" fn P_RemoveActiveCeiling(c: *mut ceiling_t) {
     unsafe {
@@ -222,6 +342,18 @@ pub extern "C" fn P_RemoveActiveCeiling(c: *mut ceiling_t) {
     }
 }
 
+/// Restart any in-stasis ceilings whose tag matches `line->tag`.
+///
+/// A ceiling is in stasis when `direction == 0`.  This function restores
+/// `direction` from `olddirection` and reinstates `T_MoveCeiling` as the
+/// thinker callback.
+///
+/// Called by [`EV_DoCeiling`] for crusher types, and corresponds to
+/// `P_ActivateInStasisCeiling` in `p_ceilng.c`.
+///
+/// # Safety
+///
+/// `line` must be a valid, non-null pointer.
 #[no_mangle]
 pub extern "C" fn P_ActivateInStasisCeiling(line: *mut line_t) {
     unsafe {
@@ -240,6 +372,20 @@ pub extern "C" fn P_ActivateInStasisCeiling(line: *mut line_t) {
     }
 }
 
+/// Stop all active crusher ceilings whose tag matches `line->tag`.
+///
+/// Each matching ceiling has its `direction` saved to `olddirection`, its
+/// `direction` set to `0` (stasis), and its thinker function set to `None` so
+/// the callback is skipped each tic.  The ceiling is not removed from
+/// [`activeceilings`]; it can be restarted by [`P_ActivateInStasisCeiling`].
+///
+/// Returns `1` if at least one ceiling was stopped, `0` otherwise.
+///
+/// Corresponds to `EV_CeilingCrushStop` in `p_ceilng.c`.
+///
+/// # Safety
+///
+/// `line` must be a valid, non-null pointer.
 #[no_mangle]
 pub extern "C" fn EV_CeilingCrushStop(line: *mut line_t) -> c_int {
     unsafe {
@@ -259,6 +405,11 @@ pub extern "C" fn EV_CeilingCrushStop(line: *mut line_t) -> c_int {
     }
 }
 
+/// Link anchor that prevents dead-code elimination of exported ceiling symbols.
+///
+/// Referenced from the engine initialisation path so the linker keeps every
+/// ceiling function in the final binary even if no Rust caller uses them
+/// directly.
 #[no_mangle]
 pub extern "C" fn P_Ceilng_Link_Anchor() {
     let _ = T_MoveCeiling as *const () as usize;

@@ -49,7 +49,7 @@ conflicts resolve trivially.
 
 ## Map / Physics (`p_*`)
 
-- [ ] doom/p_ceilng.rs (318 lines, 0 docs)
+- [x] doom/p_ceilng.rs (318 lines, 0 docs)
 - [ ] doom/p_doors.rs (590 lines, 2 docs)
 - [ ] doom/p_enemy.rs (1639 lines, 0 docs)
 - [ ] doom/p_floor.rs (597 lines, 2 docs)
@@ -58,15 +58,15 @@ conflicts resolve trivially.
 - [ ] doom/p_map.rs (1052 lines, 0 docs)
 - [ ] doom/p_maputl.rs (751 lines, 0 docs)
 - [ ] doom/p_mobj.rs (883 lines, 0 docs)
-- [ ] doom/p_plats.rs (396 lines, 0 docs)
+- [x] doom/p_plats.rs (396 lines, 0 docs)
 - [ ] doom/p_pspr.rs (928 lines, 42 docs)
 - [ ] doom/p_saveg.rs (1725 lines, 6 docs)
 - [ ] doom/p_setup.rs (1238 lines, 51 docs)
 - [ ] doom/p_sight.rs (507 lines, 10 docs)
 - [ ] doom/p_spec.rs (1168 lines, 0 docs)
 - [ ] doom/p_switch.rs (736 lines, 5 docs)
-- [ ] doom/p_telept.rs (291 lines, 2 docs)
-- [ ] doom/p_tick.rs (184 lines, 3 docs)
+- [x] doom/p_telept.rs (291 lines, 2 docs)
+- [x] doom/p_tick.rs (184 lines, 3 docs)
 - [ ] doom/p_user.rs (450 lines, 4 docs)
 
 ## HUD / UI (`hu_*`, `st_*`, `wi_*`, `am_map`, `f_*`, `m_menu`)

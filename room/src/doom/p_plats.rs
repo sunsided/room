@@ -1,6 +1,9 @@
-//! Rust port of vendor/doomgeneric/p_plats.c.
+//! Plats (elevator platforms): raising and lowering floor sectors.
 //!
-//! Plats (elevator platforms) code: raising/lowering.
+//! Rust port of `vendor/doomgeneric/p_plats.c`.  Manages the per-tic update
+//! logic for moving platforms ([`T_PlatRaise`]), linedef-triggered platform
+//! activation ([`EV_DoPlat`] / [`EV_StopPlat`]), and the fixed-size active
+//! platform table ([`activeplats`]).
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -24,42 +27,90 @@ use crate::doom::s_sound::S_StartSound;
 use crate::doom::z_zone::{Z_Malloc, PU_LEVSPEC};
 use crate::i_error;
 
+/// Default platform movement speed: 1 fixed-point unit per tic.
+///
+/// Individual platform types multiply or divide this value:
+/// `downWaitUpStay` uses `PLATSPEED * 4`, `blazeDWUS` uses `PLATSPEED * 8`,
+/// and `raiseAndChange`/`raiseToNearestAndChange` use `PLATSPEED / 2`.
 const PLATSPEED: fixed_t = FRACUNIT;
+
+/// Number of tics a `downWaitUpStay` or `blazeDWUS` platform waits at the
+/// bottom before rising: 3 seconds at the default 35 Hz tic rate.
 const PLATWAIT: c_int = 3;
+
+/// Maximum number of simultaneously active platform thinkers.
+///
+/// Matches `MAXPLATS` in `p_local.h`.  If all slots are full,
+/// [`P_AddActivePlat`] calls `I_Error` and the engine aborts.
 const MAXPLATS: usize = 30;
 
-// result_e enum values
+// result_e enum values returned by T_MovePlane.
+/// `T_MovePlane` result: the floor moved without incident.
 const result_ok: c_int = 0;
+/// `T_MovePlane` result: the floor crushed something while moving.
 const result_crushed: c_int = 1;
+/// `T_MovePlane` result: the floor reached its destination height.
 const result_pastdest: c_int = 2;
 
-// plat_e enum values
+// plat_e enum values — current platform motion state.
+/// Platform is moving upward toward `high`.
 const up: c_int = 0;
+/// Platform is moving downward toward `low`.
 const down: c_int = 1;
+/// Platform has reached a target and is counting down before reversing.
 const waiting: c_int = 2;
+/// Platform has been suspended; its thinker callback is suppressed.
 const in_stasis: c_int = 3;
 
-// plattype_e enum values
+// plattype_e enum values — platform behaviour types.
+/// Perpetually bounces between the lowest and highest surrounding floor heights.
 const perpetualRaise: c_int = 0;
+/// Lowers to the lowest surrounding floor, waits, then rises back and stops.
 const downWaitUpStay: c_int = 1;
+/// Rises by `amount` units while matching the front sidedef's floor texture,
+/// then stops.
 const raiseAndChange: c_int = 2;
+/// Rises to the next higher surrounding floor while matching texture, then
+/// stops.
 const raiseToNearestAndChange: c_int = 3;
+/// Like [`downWaitUpStay`] but at twice the speed (`PLATSPEED * 8`).
 const blazeDWUS: c_int = 4;
 
+/// Per-sector thinker for an active platform mover.
+///
+/// Allocated via `Z_Malloc` and linked into the thinker list.  The `thinker`
+/// field must be at offset 0 (verified by the compile-time assertions in
+/// `layout_checks`) so that a `*mut plat_t` can be cast safely to
+/// `*mut thinker_t`.
+///
+/// Layout matches the C `plat_t` struct.  The overall size is 72 bytes on
+/// 64-bit targets.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct plat_t {
+    /// Thinker header — must be at offset 0.
     pub thinker: thinker_t,
+    /// The sector whose floor this thinker is moving.
     pub sector: *mut sector_t,
+    /// Current movement speed in fixed-point units per tic.
     pub speed: fixed_t,
+    /// Lower target height (destination when moving down).
     pub low: fixed_t,
+    /// Upper target height (destination when moving up).
     pub high: fixed_t,
+    /// Total tics to wait at a target before reversing (set from `PLATWAIT`).
     pub wait: c_int,
+    /// Remaining tics in the current wait period; decremented each tic.
     pub count: c_int,
+    /// Current motion state: one of `up`, `down`, `waiting`, `in_stasis`.
     pub status: c_int,
+    /// Saved status used to resume after stasis.
     pub oldstatus: c_int,
+    /// Non-zero if the platform damages things it crushes (unused for plats).
     pub crush: c_int,
+    /// Linedef tag that activated this platform.
     pub tag: c_int,
+    /// Platform behaviour type (one of the `plattype_e` integer constants).
     pub r#type: c_int,
 }
 
@@ -81,9 +132,43 @@ mod layout_checks {
     const _: () = assert!(std::mem::offset_of!(plat_t, r#type) == 68);
 }
 
+/// Table of all currently active platform thinkers.
+///
+/// Null entries represent free slots.  [`P_AddActivePlat`] fills the first
+/// null slot; [`P_RemoveActivePlat`] nulls the matching slot.  Unlike ceilings,
+/// overflowing this table is a fatal error.
+///
+/// Exported as `activeplats` for C linkage.
 #[no_mangle]
 pub static mut activeplats: [*mut plat_t; MAXPLATS] = [std::ptr::null_mut(); MAXPLATS];
 
+/// Per-tic update for a moving platform thinker.
+///
+/// Dispatches on `plat->status`:
+///
+/// - **`up`**: calls `T_MovePlane` toward `high`.
+///   - If the result is `result_crushed` and `crush == 0`, resets the count,
+///     reverses direction to `down`, and plays the start sound.
+///   - If the result is `result_pastDest`, switches to `waiting`, plays the
+///     stop sound, and for one-shot types (`downWaitUpStay`, `blazeDWUS`,
+///     `raiseAndChange`, `raiseToNearestAndChange`) removes the platform.
+///   - For `raiseAndChange`/`raiseToNearestAndChange`, plays the movement
+///     sound every 8 tics during the rise.
+/// - **`down`**: calls `T_MovePlane` toward `low` (no crush).
+///   - On `result_pastDest`, switches to `waiting` and plays the stop sound.
+/// - **`waiting`**: decrements `count`; when it reaches 0, determines the next
+///   direction by comparing the current floor height to `low`, plays the start
+///   sound, and transitions to `up` or `down`.
+/// - **`in_stasis`**: no-op — the thinker function is nulled by
+///   [`EV_StopPlat`] in practice, but this arm handles the edge case where it
+///   is not.
+///
+/// Corresponds to `T_PlatRaise` in `p_plats.c`.
+///
+/// # Safety
+///
+/// `plat` must be a valid, non-null pointer to a `plat_t` that is currently
+/// linked in the thinker list and whose `sector` pointer is valid.
 #[no_mangle]
 pub unsafe extern "C" fn T_PlatRaise(plat: *mut plat_t) {
     match (*plat).status {
@@ -164,6 +249,28 @@ pub unsafe extern "C" fn T_PlatRaise(plat: *mut plat_t) {
     }
 }
 
+/// Activate a platform mover on every sector whose tag matches `line->tag`.
+///
+/// For `perpetualRaise`, first reactivates any in-stasis platforms with the
+/// same tag via [`P_ActivateInStasis`].
+///
+/// For each eligible sector (no existing special data):
+/// 1. Allocates and links a new `plat_t` thinker.
+/// 2. Initialises its parameters (speed, height targets, wait time, initial
+///    status) based on `plattype`.
+/// 3. Registers it in [`activeplats`].
+///
+/// The `amount` parameter is only used by `raiseAndChange` to set the target
+/// height to `floorheight + amount * FRACUNIT`.
+///
+/// Returns `1` if at least one platform was activated, `0` otherwise.
+///
+/// Corresponds to `EV_DoPlat` in `p_plats.c`.
+///
+/// # Safety
+///
+/// `line` must be a valid, non-null pointer.  The global `sectors` and `sides`
+/// arrays must be initialised for the current level.
 #[no_mangle]
 pub unsafe extern "C" fn EV_DoPlat(line: *mut line_t, plattype: c_int, amount: c_int) -> c_int {
     let mut secnum: c_int = -1;
@@ -283,6 +390,12 @@ pub unsafe extern "C" fn EV_DoPlat(line: *mut line_t, plattype: c_int, amount: c
     rtn
 }
 
+/// Restart all in-stasis platforms whose tag equals `tag`.
+///
+/// Restores `status` from `oldstatus` and reinstates `T_PlatRaise` as the
+/// thinker callback.  Called by [`EV_DoPlat`] for the `perpetualRaise` type.
+///
+/// Corresponds to `P_ActivateInStasis` in `p_plats.c`.
 #[no_mangle]
 pub extern "C" fn P_ActivateInStasis(tag: c_int) {
     unsafe {
@@ -301,6 +414,17 @@ pub extern "C" fn P_ActivateInStasis(tag: c_int) {
     }
 }
 
+/// Suspend all active platforms whose tag matches `line->tag`.
+///
+/// Saves `status` to `oldstatus`, sets `status` to `in_stasis`, and sets the
+/// thinker function to `None` so the callback is skipped.  The platform
+/// remains in [`activeplats`] and can be resumed by [`P_ActivateInStasis`].
+///
+/// Corresponds to `EV_StopPlat` in `p_plats.c`.
+///
+/// # Safety
+///
+/// `line` must be a valid, non-null pointer.
 #[no_mangle]
 pub extern "C" fn EV_StopPlat(line: *mut line_t) {
     unsafe {
@@ -317,6 +441,12 @@ pub extern "C" fn EV_StopPlat(line: *mut line_t) {
     }
 }
 
+/// Register `plat` in the first available slot of [`activeplats`].
+///
+/// If all `MAXPLATS` (30) slots are occupied, calls `I_Error` and aborts — unlike
+/// `P_AddActiveCeiling` which silently discards overflows.
+///
+/// Corresponds to `P_AddActivePlat` in `p_plats.c`.
 #[no_mangle]
 pub extern "C" fn P_AddActivePlat(plat: *mut plat_t) {
     unsafe {
@@ -330,6 +460,13 @@ pub extern "C" fn P_AddActivePlat(plat: *mut plat_t) {
     }
 }
 
+/// Unlink and schedule deallocation of the active platform `plat`.
+///
+/// Clears `sector->specialdata`, calls [`P_RemoveThinker`] (which marks the
+/// thinker for deferred `Z_Free`), and nulls the matching slot in
+/// [`activeplats`].  Calls `I_Error` if the platform is not found.
+///
+/// Corresponds to `P_RemoveActivePlat` in `p_plats.c`.
 #[no_mangle]
 pub extern "C" fn P_RemoveActivePlat(plat: *mut plat_t) {
     unsafe {
@@ -345,6 +482,11 @@ pub extern "C" fn P_RemoveActivePlat(plat: *mut plat_t) {
     }
 }
 
+/// Link anchor that prevents dead-code elimination of exported platform symbols.
+///
+/// Referenced from the engine initialisation path so the linker keeps every
+/// platform function in the final binary even if no Rust caller uses them
+/// directly.
 #[no_mangle]
 pub extern "C" fn P_Plats_Link_Anchor() {
     let _ = T_PlatRaise as *const () as usize;
