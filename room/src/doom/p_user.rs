@@ -1,6 +1,8 @@
-//! Rust port of vendor/doomgeneric/p_user.c.
+//! Player movement, view, and weapon logic.
 //!
-//! Player-related stuff: bobbing POV/weapon, movement, pending weapon, death think.
+//! Rust port of `vendor/doomgeneric/p_user.c`. Handles per-tic player
+//! thinking: movement commands from `ticcmd_t`, weapon switching, special
+//! sector effects, view bobbing, and death-camera behaviour.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -15,47 +17,106 @@ use crate::doom::p_telept::mobj_t;
 use crate::doom::p_tick::leveltime;
 use crate::doom::tables::{finecosine, finesine, ANG180, ANG90, ANGLETOFINESHIFT, FINEANGLES};
 
+/// Maximum view-bob amplitude in fixed-point units (16 pixels = 0x100000).
+/// Matches `MAXBOB` in `p_user.c`.
 const MAXBOB: c_int = 0x100000;
+
+/// Default player eye height above the floor in fixed-point units (41 map
+/// units). Matches `VIEWHEIGHT` in `p_local.h`.
 const VIEWHEIGHT: fixed_t = 41 * FRACUNIT;
+
+/// 5 degrees expressed as a binary angle (BAM). Used in `P_DeathThink` to
+/// rotate the dead player's camera toward the killer.
 const ANG5: u32 = ANG90 / 18;
 
+// ---------------------------------------------------------------------------
 // Button constants (from d_event.h)
+// ---------------------------------------------------------------------------
+
+/// Button flag: this `ticcmd` carries a special (menu/cheat) event rather
+/// than a normal game button. When set, all other button bits are ignored.
 const BT_SPECIAL: u8 = 128;
+
+/// Button flag: the player wants to switch weapons.
 const BT_CHANGE: u8 = 4;
+
+/// Bitmask that extracts the requested weapon index from `buttons` when
+/// `BT_CHANGE` is set. Three bits wide (weapons 0-7), shifted by `BT_WEAPONSHIFT`.
 const BT_WEAPONMASK: u8 = 8 + 16 + 32;
+
+/// Number of bits to right-shift `buttons & BT_WEAPONMASK` to obtain the
+/// raw weapon index.
 const BT_WEAPONSHIFT: u8 = 3;
+
+/// Button flag: the player pressed the Use/Open key.
 const BT_USE: u8 = 2;
+
+/// Button flag: the player is holding the attack button.
 const BT_ATTACK: u8 = 1;
 
-// Weapon types (from doomdef.h)
+// ---------------------------------------------------------------------------
+// Weapon type indices (from doomdef.h / info.h)
+// ---------------------------------------------------------------------------
+
+/// Fist weapon index.
 const wp_fist: c_int = 0;
+/// Pistol weapon index.
 const wp_pistol: c_int = 1;
+/// Single-barrel shotgun weapon index.
 const wp_shotgun: c_int = 2;
+/// Chaingun weapon index.
 const wp_chaingun: c_int = 3;
+/// Rocket launcher weapon index.
 const wp_missile: c_int = 4;
+/// Plasma rifle weapon index.
 const wp_plasma: c_int = 5;
+/// BFG 9000 weapon index.
 const wp_bfg: c_int = 6;
+/// Chainsaw weapon index.
 const wp_chainsaw: c_int = 7;
+/// Super shotgun (double-barrel) weapon index. Commercial/Doom 2 only.
 const wp_supershotgun: c_int = 8;
 
-// Power types (from doomdef.h)
+// ---------------------------------------------------------------------------
+// Power-up indices (from doomdef.h)
+// ---------------------------------------------------------------------------
+
+/// Index into `player.powers[]` for the invulnerability sphere.
 const pw_invulnerability: usize = 0;
+/// Index into `player.powers[]` for the berserk pack (strength).
 const pw_strength: usize = 1;
+/// Index into `player.powers[]` for the partial-invisibility sphere.
 const pw_invisibility: usize = 2;
+/// Index into `player.powers[]` for the radiation shielding suit (iron feet).
 const pw_ironfeet: usize = 3;
+/// Index into `player.powers[]` for the computer area map.
 const pw_allmap: usize = 4;
+/// Index into `player.powers[]` for the light-amplification visor (infrared).
 const pw_infrared: usize = 5;
 
-// Player states (from d_player.h)
+// ---------------------------------------------------------------------------
+// Player state constants (from d_player.h)
+// ---------------------------------------------------------------------------
+
+/// Player state: alive and playing.
 const PST_LIVE: c_int = 0;
+/// Player state: dead (playing the death sequence / death-camera).
 const PST_DEAD: c_int = 1;
+/// Player state: ready to be reborn (respawn requested).
 const PST_REBORN: c_int = 2;
 
+// ---------------------------------------------------------------------------
 // Colormap index
+// ---------------------------------------------------------------------------
+
+/// Colormap index for the full-bright inverse palette used during
+/// invulnerability. Matches `INVERSECOLORMAP` in `p_user.c`.
 const INVERSECOLORMAP: c_int = 32;
 
-/// Whether the player is on ground (boolean → c_int for 4-byte ABI).
-/// Read by not-yet-ported C modules (e.g. p_pspr.c).
+/// Whether the player is standing on the floor (`mo->z == mo->floorz`).
+///
+/// Stored as a `c_int` (0 or 1) for ABI compatibility with not-yet-ported C
+/// modules such as `p_pspr.c`. The `#[no_mangle]` export keeps the C name.
 #[no_mangle]
 pub static mut onground: c_int = 0;
 
@@ -65,6 +126,15 @@ use crate::doom::p_pspr::P_MovePsprites;
 use crate::doom::p_spec::P_PlayerInSpecialSector;
 use crate::doom::r_main::R_PointToAngle2;
 
+/// Apply a momentum impulse to the player's map object along `angle`.
+///
+/// Converts `angle` (binary angle) to a fine-angle table index, then adds
+/// `move_ * cos(angle)` to `momx` and `move_ * sin(angle)` to `momy`.
+/// Corresponds to `P_Thrust` in `p_user.c`.
+///
+/// # Safety
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub extern "C" fn P_Thrust(player: *mut PlayerT, angle: u32, move_: fixed_t) {
     unsafe {
@@ -75,6 +145,18 @@ pub extern "C" fn P_Thrust(player: *mut PlayerT, angle: u32, move_: fixed_t) {
     }
 }
 
+/// Compute and set the player's view height (`viewz`) for the current tic.
+///
+/// Calculates the view-bob amplitude from the player's momentum, applies a
+/// sinusoidal bob offset (unless `CF_NOMOMENTUM` is set or the player is
+/// airborne), and clamps `viewz` to avoid clipping through the ceiling.
+/// Also advances `viewheight` toward `VIEWHEIGHT` via `deltaviewheight`.
+///
+/// Corresponds to `P_CalcHeight` in `p_user.c`.
+///
+/// # Safety
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub extern "C" fn P_CalcHeight(player: *mut PlayerT) {
     unsafe {
@@ -135,6 +217,17 @@ pub extern "C" fn P_CalcHeight(player: *mut PlayerT) {
     }
 }
 
+/// Apply the player's movement command for one tic.
+///
+/// Rotates `mo->angle` by `cmd.angleturn`, sets `onground`, and calls
+/// `P_Thrust` for forward and side movement when the player is on the ground.
+/// Also transitions the player mobj to the `S_PLAY_RUN1` state when moving.
+///
+/// Corresponds to `P_MovePlayer` in `p_user.c`.
+///
+/// # Safety
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub extern "C" fn P_MovePlayer(player: *mut PlayerT) {
     unsafe {
@@ -168,6 +261,17 @@ pub extern "C" fn P_MovePlayer(player: *mut PlayerT) {
     }
 }
 
+/// Per-tic camera and respawn logic for a dead player.
+///
+/// Drops `viewheight` to floor level, calls `P_CalcHeight`, and slowly
+/// rotates the camera toward the attacker (if one exists). Pressing the Use
+/// key transitions the player to `PST_REBORN`.
+///
+/// Corresponds to `P_DeathThink` in `p_user.c`.
+///
+/// # Safety
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub extern "C" fn P_DeathThink(player: *mut PlayerT) {
     unsafe {
@@ -218,6 +322,29 @@ pub extern "C" fn P_DeathThink(player: *mut PlayerT) {
     }
 }
 
+/// Main per-tic player thinker.
+///
+/// Called once per game tic for each player. Handles (in order):
+/// - `CF_NOCLIP` cheat flag propagation to the mobj,
+/// - chainsaw auto-run override (`MF_JUSTATTACKED`),
+/// - death dispatch to `P_DeathThink`,
+/// - movement via `P_MovePlayer` (suppressed during `reactiontime` after a
+///   teleport),
+/// - view height via `P_CalcHeight`,
+/// - special sector effects via `P_PlayerInSpecialSector`,
+/// - weapon switching (with shareware plasma/BFG guard and super-shotgun
+///   upgrade logic),
+/// - Use-key processing via `P_UseLines`,
+/// - weapon sprite animation via `P_MovePsprites`,
+/// - power-up timer countdown, and
+/// - colormap selection for invulnerability and infrared.
+///
+/// Corresponds to `P_PlayerThink` in `p_user.c`.
+///
+/// # Safety
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t` with a valid `subsector`
+/// chain.
 #[no_mangle]
 pub extern "C" fn P_PlayerThink(player: *mut PlayerT) {
     unsafe {
