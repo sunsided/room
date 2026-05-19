@@ -118,8 +118,8 @@ pub static mut centerxfrac: fixed_t = 0;
 
 /// [`centery`] expressed as a 16.16 fixed-point value (`centery << FRACBITS`).
 ///
-/// Used in floor/ceiling plane slope calculations inside
-/// [`R_ExecuteSetViewSize`].
+/// Precomputed by [`R_ExecuteSetViewSize`]; used by wall and sprite renderers
+/// in `r_segs` and `r_things` to project top/bottom screen coordinates.
 #[no_mangle]
 pub static mut centeryfrac: fixed_t = 0;
 
