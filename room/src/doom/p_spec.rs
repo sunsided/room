@@ -676,18 +676,19 @@ pub unsafe extern "C" fn P_FindMinSurroundingLight(sector: *mut sector_t, max: c
 /// may only activate specials 4, 10, 39, 88, 97, 125, and 126.
 ///
 /// The function dispatches on `line->special`:
-/// - Specials in the lower range (2-141) fire once and clear `line->special`
-///   to 0 so they cannot trigger again (one-shot triggers).
-/// - Specials 72-129 are re-triggerable and do **not** clear `line->special`.
-/// - Special 52 exits the level; special 124 exits to the secret level.
-/// - Specials 125 and 126 are monster-only teleports (skipped if the thing
-///   has a player).
+/// - Specials 2-71 and 130-141 are one-shot: the handler clears `line->special`
+///   to 0 after firing so the line cannot trigger again.
+/// - Specials 72-129 are re-triggerable: `line->special` is left intact.
+/// - Special 52 exits the level; special 124 exits to the secret level (both
+///   are in the re-triggerable range and do not clear `line->special`).
+/// - Specials 125 and 126 activate only when `thing` has no player (monster-
+///   only teleports; ignored if the thing is a player-controlled object).
 ///
 /// - `linenum`: index into the global `lines` array.
 /// - `side`: side of the line the thing is approaching from (0 = front).
 /// - `thing`: the map object that crossed the line.
 ///
-/// Called from p_map.c (`P_CrossSpecialLine` is referenced by C callers).
+/// Called from `p_map.c` via C FFI.
 #[no_mangle]
 pub unsafe extern "C" fn P_CrossSpecialLine(linenum: c_int, side: c_int, thing: *mut mobj_t) {
     let line = lines.offset(linenum as isize);
