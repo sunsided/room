@@ -74,10 +74,10 @@ conflicts resolve trivially.
 - [x] doom/am_map.rs (1429 lines, 0 docs)
 - [x] doom/f_finale.rs (1108 lines, 1 doc)
 - [x] doom/f_wipe.rs (258 lines, 2 docs)
-- [ ] doom/hu_lib.rs (606 lines, 6 docs)
-- [ ] doom/hu_stuff.rs (625 lines, 2 docs)
+- [x] doom/hu_lib.rs (606 lines, 6 docs)
+- [x] doom/hu_stuff.rs (625 lines, 2 docs)
 - [ ] doom/m_menu.rs (1731 lines, 0 docs)
-- [ ] doom/st_lib.rs (350 lines, 2 docs)
+- [x] doom/st_lib.rs (350 lines, 2 docs)
 - [ ] doom/st_stuff.rs (1116 lines, 0 docs)
 - [ ] doom/wi_stuff.rs (1725 lines, 16 docs)
 

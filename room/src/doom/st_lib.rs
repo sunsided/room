@@ -1,6 +1,24 @@
 //! Rust port of vendor/doomgeneric/st_lib.c.
 //!
 //! Status bar widget library: number, percent, multi-icon, and binary-icon widgets.
+//!
+//! Four widget types are provided, mirroring `st_lib.h`:
+//! * [`st_number_t`] - right-justified integer rendered digit-by-digit with a
+//!   patch font; supports negative values and a magic "no-draw" sentinel (1994).
+//! * [`st_percent_t`] - wraps an [`st_number_t`] and appends a `%` patch.
+//! * [`st_multicon_t`] - displays one patch from an indexed array, e.g. for
+//!   key-card icons or face sprites.
+//! * [`st_binicon_t`] - shows a patch when a boolean flag is non-zero, hides
+//!   it otherwise.
+//!
+//! All widgets use a "dirty bit" pattern: the previous value is cached and the
+//! widget is only redrawn when the value changes or `refresh` is requested.
+//! Erasing is done by blitting from `st_backing_screen` (a saved copy of the
+//! status bar background).
+//!
+//! Notable Rust-vs-C differences:
+//! * C `boolean*` is `*mut c_int` throughout.
+//! * The `SHORT` macro (little-endian swap) is an identity function on x86_64.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -9,7 +27,13 @@ use std::os::raw::c_int;
 use crate::doom::v_video::patch_t;
 use crate::doom::z_zone::PU_STATIC;
 use crate::i_error;
+/// Height of the status bar in pixels.
+/// Mirrors `ST_HEIGHT` from `st_stuff.h`.
 const ST_HEIGHT: c_int = 32;
+
+/// Y coordinate of the top of the status bar (screen height minus bar height).
+/// All widget Y coordinates are expected to be at or below this value.
+/// Mirrors `ST_Y` from `st_stuff.h`.
 const ST_Y: c_int = 200 - ST_HEIGHT; // 168
 
 /// Byte-swap for little-endian (SHORT macro from i_swap.h).
@@ -19,50 +43,119 @@ fn short_swap(v: i16) -> i16 {
     v
 }
 
+/// A right-justified integer display widget.
+///
+/// Corresponds to `st_number_t` in `st_lib.h`. Digits are rendered
+/// right-to-left using a patch font; a minus sign patch is prepended for
+/// negative values. The magic value `1994` means "do not draw" (used when
+/// a slot is inactive).
+///
+/// # Layout invariants
+/// * `p[0..9]` must point to valid digit patches when drawing.
+/// * `on` and `num` must be valid non-null pointers for the widget's lifetime.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct st_number_t {
+    /// Right edge X coordinate of the number (digits extend leftward from here).
     pub x: c_int,
+    /// Top Y coordinate of the number.
     pub y: c_int,
+    /// Maximum number of digits to display (controls field width).
     pub width: c_int,
+    /// Cached value from the previous frame; used to detect changes.
     pub oldnum: c_int,
+    /// Pointer to the current integer value to display.
     pub num: *mut c_int,
+    /// Visibility flag pointer; widget is only drawn when `*on != 0`.
+    /// Maps to `boolean*` in C.
     pub on: *mut c_int, // boolean* (c_int in C)
+    /// Array of digit patches; `p[d]` is the patch for digit `d` (0-9).
     pub p: *mut *mut patch_t,
+    /// User-defined auxiliary data (unused by the widget library itself).
     pub data: c_int,
 }
 
+/// A percentage display widget: a number followed by a `%` sign patch.
+///
+/// Corresponds to `st_percent_t` in `st_lib.h`. The embedded [`st_number_t`]
+/// renders the numeric portion; the additional `p` patch is drawn immediately
+/// to the right of the number on each refresh.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct st_percent_t {
+    /// The underlying number widget (renders the digits).
     pub n: st_number_t,
+    /// The `%` percent-sign patch drawn after the number.
     pub p: *mut patch_t,
 }
 
+/// A widget that displays one patch selected from an indexed array.
+///
+/// Corresponds to `st_multicon_t` in `st_lib.h`. Used for key-card slots,
+/// player face sprites, and any other status bar element that cycles through
+/// a discrete set of images. When the selected index changes, the old patch
+/// area is erased by blitting from the backing screen before the new patch is
+/// drawn.
+///
+/// # Layout invariants
+/// * `p[0..N]` must contain valid patch pointers for all possible values of
+///   `*inum`.
+/// * `inum == -1` means "no image"; the widget skips drawing entirely.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct st_multicon_t {
+    /// Center-justified screen X position (patch offset subtracted at draw time).
     pub x: c_int,
+    /// Center-justified screen Y position (patch offset subtracted at draw time).
     pub y: c_int,
+    /// Index of the patch displayed in the previous frame; `-1` if no patch was
+    /// shown.
     pub oldinum: c_int,
+    /// Pointer to the current icon index; `-1` suppresses drawing.
     pub inum: *mut c_int,
+    /// Visibility flag pointer; widget is only drawn when `*on != 0`.
     pub on: *mut c_int,
+    /// Array of icon patches indexed by `*inum`.
     pub p: *mut *mut patch_t,
+    /// User-defined auxiliary data (unused by the widget library itself).
     pub data: c_int,
 }
 
+/// A widget that shows a single patch when a boolean flag is set.
+///
+/// Corresponds to `st_binicon_t` in `st_lib.h`. When `*val` transitions from
+/// zero to non-zero the patch is drawn; when it transitions back to zero the
+/// patch area is erased from the backing screen. Used for key-card presence
+/// indicators and similar binary status elements.
+///
+/// # Layout invariants
+/// * `p` must point to a valid patch for the lifetime of the widget.
+/// * `val` and `on` must be valid non-null pointers.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct st_binicon_t {
+    /// Center-justified screen X position.
     pub x: c_int,
+    /// Center-justified screen Y position.
     pub y: c_int,
+    /// Cached value of `*val` from the previous frame.
     pub oldval: c_int,
+    /// Pointer to the current boolean value (non-zero = draw, zero = hide).
     pub val: *mut c_int,
+    /// Visibility flag pointer; widget is only drawn when `*on != 0`.
     pub on: *mut c_int,
+    /// The patch to display when `*val != 0`.
     pub p: *mut patch_t,
+    /// User-defined auxiliary data (unused by the widget library itself).
     pub data: c_int,
 }
 
+/// The minus-sign patch (`STTMINUS`) used when rendering negative numbers.
+///
+/// Loaded by [`STlib_init`] from the WAD and drawn to the left of the
+/// most-significant digit when a number widget displays a negative value.
+/// Corresponds to `sttminus` in `st_lib.c`; exported so `st_stuff.c` can
+/// reference it directly.
 #[no_mangle]
 pub static mut sttminus: *mut patch_t = std::ptr::null_mut();
 
@@ -70,6 +163,12 @@ use crate::doom::st_stuff::st_backing_screen;
 use crate::doom::v_video::{V_CopyRect, V_DrawPatch};
 use crate::doom::w_wad::W_CacheLumpName;
 
+/// Initialize the status bar widget library.
+///
+/// Loads the `STTMINUS` WAD lump as `PU_STATIC` and stores it in
+/// [`sttminus`]. All other widget state is initialized via the individual
+/// `STlib_init*` functions. Called once at startup from `ST_Init` in
+/// `st_stuff.c`.
 #[no_mangle]
 pub extern "C" fn STlib_init() {
     unsafe {
@@ -78,6 +177,14 @@ pub extern "C" fn STlib_init() {
     }
 }
 
+/// Initialize a number widget.
+///
+/// Stores the position, digit-patch array, value pointer, visibility flag,
+/// and field width into `*n`. Sets `oldnum` to 0.
+///
+/// # Preconditions
+/// * `pl` must point to at least 10 valid patch pointers (digits 0-9).
+/// * `num` and `on` must be valid non-null pointers for the widget's lifetime.
 #[no_mangle]
 pub extern "C" fn STlib_initNum(
     n: *mut st_number_t,
@@ -99,6 +206,19 @@ pub extern "C" fn STlib_initNum(
     }
 }
 
+/// Draw a number widget unconditionally.
+///
+/// Algorithm:
+/// 1. Clamp negative values to fit within `width` digits (e.g., max -9 for
+///    `width == 2`).
+/// 2. Erase the current field by blitting from `st_backing_screen`.
+/// 3. If the value equals `1994`, skip rendering (magic "inactive" sentinel).
+/// 4. Draw digits right-to-left using `p[digit]` patches.
+/// 5. If negative, draw the [`sttminus`] patch 8 pixels left of the field.
+///
+/// The `_refresh` parameter is accepted for ABI compatibility but is currently
+/// unused; erasing and redrawing always happen unconditionally.
+/// Called by [`STlib_updateNum`].
 #[no_mangle]
 pub extern "C" fn STlib_drawNum(n: *mut st_number_t, _refresh: c_int) {
     unsafe {
@@ -165,6 +285,11 @@ pub extern "C" fn STlib_drawNum(n: *mut st_number_t, _refresh: c_int) {
     }
 }
 
+/// Update a number widget, redrawing it if the widget is visible.
+///
+/// Calls [`STlib_drawNum`] when `*n.on != 0`. In the C original this function
+/// also checked whether the value had changed before drawing; this port always
+/// redraws when visible (matching the `refresh` path).
 #[no_mangle]
 pub extern "C" fn STlib_updateNum(n: *mut st_number_t, refresh: c_int) {
     unsafe {
@@ -174,6 +299,14 @@ pub extern "C" fn STlib_updateNum(n: *mut st_number_t, refresh: c_int) {
     }
 }
 
+/// Initialize a percent widget.
+///
+/// Calls [`STlib_initNum`] with `width = 3` for the embedded number, then
+/// stores the `%` sign patch in `p.p`.
+///
+/// # Preconditions
+/// * `pl` must point to at least 10 valid digit patches.
+/// * `num`, `on`, and `percent` must be valid non-null pointers.
 #[no_mangle]
 pub extern "C" fn STlib_initPercent(
     p: *mut st_percent_t,
@@ -192,6 +325,10 @@ pub extern "C" fn STlib_initPercent(
     }
 }
 
+/// Update a percent widget, drawing the `%` patch and updating the number.
+///
+/// When `refresh != 0` and the widget is visible, draws the `%` patch at the
+/// number's position before delegating to [`STlib_updateNum`].
 #[no_mangle]
 pub extern "C" fn STlib_updatePercent(per: *mut st_percent_t, refresh: c_int) {
     unsafe {
@@ -202,6 +339,14 @@ pub extern "C" fn STlib_updatePercent(per: *mut st_percent_t, refresh: c_int) {
     }
 }
 
+/// Initialize a multi-icon widget.
+///
+/// Sets position, patch array, current-index pointer, and visibility flag.
+/// `oldinum` is initialized to `-1` so the first draw is unconditional.
+///
+/// # Preconditions
+/// * `inum` and `on` must be valid non-null pointers.
+/// * `il` must point to a valid patch array covering all expected index values.
 #[no_mangle]
 pub extern "C" fn STlib_initMultIcon(
     i: *mut st_multicon_t,
@@ -221,6 +366,17 @@ pub extern "C" fn STlib_initMultIcon(
     }
 }
 
+/// Update a multi-icon widget, redrawing if the index changed or refresh is
+/// requested.
+///
+/// When the widget is visible and (`oldinum != *inum` or `refresh != 0`) and
+/// `*inum != -1`:
+/// * If there was a previous icon (`oldinum != -1`), erases it by blitting its
+///   patch area from `st_backing_screen`.
+/// * Draws the new icon patch using `V_DrawPatch`.
+/// * Updates `oldinum`.
+///
+/// Skips all work when `*on == 0` or `*inum == -1`.
 #[no_mangle]
 pub extern "C" fn STlib_updateMultIcon(mi: *mut st_multicon_t, refresh: c_int) {
     unsafe {
@@ -244,6 +400,13 @@ pub extern "C" fn STlib_updateMultIcon(mi: *mut st_multicon_t, refresh: c_int) {
     }
 }
 
+/// Initialize a binary icon widget.
+///
+/// Sets position, icon patch, value pointer, and visibility flag. `oldval` is
+/// initialized to 0.
+///
+/// # Preconditions
+/// * `i`, `val`, and `on` must be valid non-null pointers.
 #[no_mangle]
 pub extern "C" fn STlib_initBinIcon(
     b: *mut st_binicon_t,
@@ -263,6 +426,15 @@ pub extern "C" fn STlib_initBinIcon(
     }
 }
 
+/// Update a binary icon widget, toggling the patch when the value changes.
+///
+/// When the widget is visible and (`oldval != *val` or `refresh != 0`):
+/// * Computes the patch's top-left corner using its `leftoffset` / `topoffset`.
+/// * If `*val != 0`, draws the patch with `V_DrawPatch`.
+/// * If `*val == 0`, erases the patch area by blitting from `st_backing_screen`.
+/// * Updates `oldval`.
+///
+/// Skips all work when `*on == 0`.
 #[no_mangle]
 pub extern "C" fn STlib_updateBinIcon(bi: *mut st_binicon_t, refresh: c_int) {
     unsafe {

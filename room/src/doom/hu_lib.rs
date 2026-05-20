@@ -1,6 +1,18 @@
 //! Rust port of vendor/doomgeneric/hu_lib.c.
 //!
 //! Heads-up text and input code: text lines, scrolling text, and input widgets.
+//!
+//! Three widget types are provided, mirroring the C originals:
+//! * [`hu_textline_t`] - a single line of patch-font text drawn at a fixed
+//!   screen position; parent type for the other two.
+//! * [`hu_stext_t`] - a scrolling message widget backed by a ring of up to
+//!   `HU_MAXLINES` (4) text lines.
+//! * [`hu_itext_t`] - a text-input widget with a protected left-margin prefix
+//!   (used for chat entry and cheat codes).
+//!
+//! Rust differences from C: `boolean` is `c_int` (0/1); padding fields have
+//! been added to maintain identical ABI layout on 64-bit targets (verified by
+//! compile-time `assert!` in `layout_checks`).
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -10,39 +22,100 @@ use crate::doom::v_video::patch_t;
 
 use crate::doom::i_video::SCREENWIDTH;
 
+/// Maximum number of text lines in a scrolling text widget (`hu_stext_t`).
+/// Mirrors the C constant `HU_MAXLINES` from `hu_lib.h`.
 const HU_MAXLINES: usize = 4;
+
+/// Maximum number of characters per text line, excluding the NUL terminator.
+/// Mirrors the C constant `HU_MAXLINELENGTH` from `hu_lib.h`.
 const HU_MAXLINELENGTH: usize = 80;
 
+/// A single line of text rendered with a patch font.
+///
+/// Corresponds to `hu_textline_t` in `hu_lib.h`. All other HUD text widgets
+/// embed or inherit this struct. The layout is identical to the C struct on
+/// 64-bit targets (verified by `layout_checks`).
+///
+/// # Layout invariants
+/// * `l[len] == 0` at all times (NUL-terminated prefix).
+/// * `len <= HU_MAXLINELENGTH` (the array has `HU_MAXLINELENGTH + 1` elements).
+/// * `f` points into the `hu_font` array and must not be null when drawing.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct hu_textline_t {
+    /// Left-justified screen X position of the text line.
     pub x: c_int,
+    /// Screen Y position of the text line.
     pub y: c_int,
+    /// Pointer into the font patch array; `f[c - sc]` yields the patch for
+    /// character `c`. Mirrors `patch_t **f` in `hu_textline_t`.
     pub f: *mut *mut patch_t,
+    /// ASCII code of the first character in the font array (`l->sc` in C).
+    /// Characters below this value are rendered as spaces.
     pub sc: c_int,
+    /// NUL-terminated text buffer; `l[0..len]` holds the visible characters.
     pub l: [c_char; HU_MAXLINELENGTH + 1],
+    /// Number of valid characters currently in `l` (excludes the NUL terminator).
     pub len: c_int,
+    /// Dirty-flag countdown: non-zero means the line must be redrawn / erased.
+    /// Set to 4 on modification, decremented by `HUlib_eraseTextLine` each
+    /// frame until it reaches 0.
     pub needsupdate: c_int,
 }
 
+/// A scrolling message widget backed by a ring of text lines.
+///
+/// Corresponds to `hu_stext_t` in `hu_lib.h`. Lines are stored in a circular
+/// buffer; `cl` is the index of the most-recently-added line, and older lines
+/// are at `(cl - i + h) % h` for `i in 1..h`.
+///
+/// # Layout invariants
+/// * `h <= HU_MAXLINES`.
+/// * `cl` is always in `0..h`.
+/// * `on` is a non-null pointer to a `c_int` flag; 0 = hidden, non-zero = visible.
+/// * The four-byte `_pad` field exists solely to match the C ABI on 64-bit
+///   platforms where `boolean` following a pointer leaves a gap.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct hu_stext_t {
+    /// Ring of text lines; only `l[0..h]` are used.
     pub l: [hu_textline_t; HU_MAXLINES],
+    /// Height of the widget in lines (`s->h` in C).
     pub h: c_int,
+    /// Index of the current (most recently written) line in `l` (`s->cl` in C).
     pub cl: c_int,
+    /// Pointer to the visibility flag; widget is drawn only when `*on != 0`.
     pub on: *mut c_int,
+    /// Cached value of `*on` from the previous frame, used to detect
+    /// transitions from visible to hidden so dirty flags can be set.
     pub laston: c_int,
     _pad: [u8; 4],
 }
 
+/// A text-input widget with a protected prefix region.
+///
+/// Corresponds to `hu_itext_t` in `hu_lib.h`. Used for chat entry and
+/// (conceptually) cheat-code input. The first `lm` characters of `l` form
+/// an immutable prefix set by [`HUlib_addPrefixToIText`]; delete operations
+/// via [`HUlib_delCharFromIText`] and [`HUlib_eraseLineFromIText`] refuse to
+/// go past this left margin.
+///
+/// # Layout invariants
+/// * `lm <= l.len` at all times.
+/// * `on` must be a non-null pointer.
+/// * `_pad0` and `_pad1` are ABI-alignment fillers only.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct hu_itext_t {
+    /// The underlying text line that receives key input.
     pub l: hu_textline_t,
+    /// Left-margin character count: characters at indices `0..lm` are
+    /// protected from deletion (`it->lm` in C).
     pub lm: c_int,
     _pad0: [u8; 4],
+    /// Pointer to the visibility flag; widget is drawn only when `*on != 0`.
     pub on: *mut c_int,
+    /// Cached value of `*on` from the previous frame (see [`hu_stext_t::laston`]).
     pub laston: c_int,
     _pad1: [u8; 4],
 }
@@ -74,12 +147,20 @@ mod layout_checks {
 }
 
 extern "C" {
+    /// Draw a patch at (`x`, `y`) directly to the screen buffer (v_video.c).
     fn V_DrawPatchDirect(x: c_int, y: c_int, patch: *mut patch_t);
+    /// Erase `count` bytes of the screen buffer starting at byte offset `ofs`
+    /// by copying from the background buffer (r_draw.c).
     fn R_VideoErase(ofs: c_uint, count: c_int);
+    /// Non-zero while the automap overlay is active (am_map.c).
     static mut automapactive: c_int;
+    /// X offset of the rendered view within the full screen (r_main.c).
     static mut viewwindowx: c_int;
+    /// Y offset of the rendered view within the full screen (r_main.c).
     static mut viewwindowy: c_int;
+    /// Width of the rendered view in pixels (r_main.c).
     static mut viewwidth: c_int;
+    /// Height of the rendered view in pixels (r_main.c).
     static mut viewheight: c_int;
 }
 
@@ -89,9 +170,16 @@ fn short_swap(v: i16) -> i16 {
     v
 }
 
+/// Initialize the heads-up widget library (no-op in this port, matching C).
+///
+/// Called once at startup from `HU_Init`. The C original also had no body.
 #[no_mangle]
 pub extern "C" fn HUlib_init() {}
 
+/// Reset a text line to empty, marking it for redisplay.
+///
+/// Sets `len` to 0, NUL-terminates `l[0]`, and sets `needsupdate` to 1.
+/// Called from `HU_Init`, `HUlib_addLineToSText`, and `HUlib_resetIText`.
 #[no_mangle]
 pub extern "C" fn HUlib_clearTextLine(t: *mut hu_textline_t) {
     unsafe {
@@ -101,6 +189,15 @@ pub extern "C" fn HUlib_clearTextLine(t: *mut hu_textline_t) {
     }
 }
 
+/// Initialize a text line widget with its screen position and font.
+///
+/// Sets the position (`x`, `y`), font pointer `f`, and start character `sc`,
+/// then calls [`HUlib_clearTextLine`] to zero the text buffer.
+///
+/// # Preconditions
+/// * `t` must be a valid non-null pointer.
+/// * `f` must point to a valid array of at least `('_' - sc + 1)` patch
+///   pointers when drawing is later requested.
 #[no_mangle]
 pub extern "C" fn HUlib_initTextLine(
     t: *mut hu_textline_t,
@@ -118,6 +215,11 @@ pub extern "C" fn HUlib_initTextLine(
     }
 }
 
+/// Append a character to a text line.
+///
+/// Returns 1 (true) on success, 0 (false) if the line is already at
+/// `HU_MAXLINELENGTH` (80) characters. On success, sets `needsupdate` to 4.
+/// The buffer remains NUL-terminated after the call.
 #[no_mangle]
 pub extern "C" fn HUlib_addCharToTextLine(t: *mut hu_textline_t, ch: c_char) -> c_int {
     unsafe {
@@ -133,6 +235,10 @@ pub extern "C" fn HUlib_addCharToTextLine(t: *mut hu_textline_t, ch: c_char) -> 
     }
 }
 
+/// Delete the last character from a text line.
+///
+/// Returns 1 (true) on success, 0 (false) if the line is already empty.
+/// On success, NUL-terminates the new end and sets `needsupdate` to 4.
 #[no_mangle]
 pub extern "C" fn HUlib_delCharFromTextLine(t: *mut hu_textline_t) -> c_int {
     unsafe {
@@ -147,6 +253,17 @@ pub extern "C" fn HUlib_delCharFromTextLine(t: *mut hu_textline_t) -> c_int {
     }
 }
 
+/// Render a text line to the screen using its patch font.
+///
+/// Iterates over `l[0..len]`, uppercases each character, and calls
+/// `V_DrawPatchDirect` for characters in the range `[sc, '_']`; spaces and
+/// out-of-range characters advance the x cursor by 4 pixels. Rendering stops
+/// early if the cursor would exceed `SCREENWIDTH`.
+///
+/// If `drawcursor` is non-zero, the `'_'` patch is drawn at the current
+/// position (provided it fits), giving a text-entry cursor appearance.
+///
+/// Called from `HU_Drawer` and `HUlib_drawSText`/`HUlib_drawIText`.
 #[no_mangle]
 pub extern "C" fn HUlib_drawTextLine(l: *mut hu_textline_t, drawcursor: c_int) {
     unsafe {
@@ -182,6 +299,17 @@ pub extern "C" fn HUlib_drawTextLine(l: *mut hu_textline_t, drawcursor: c_int) {
     }
 }
 
+/// Erase the screen region occupied by a text line and decrement the dirty
+/// counter.
+///
+/// Erasing only occurs when the automap is inactive and the view window is
+/// reduced (`viewwindowx != 0`). For each scanline in the font-height range,
+/// the function erases either the full line (if it is outside the view window)
+/// or the left and right border strips (if it falls within the view window).
+/// `needsupdate` is decremented by 1 each call (never below 0), so the line
+/// stays "dirty" for up to 4 frames after a change.
+///
+/// Called from `HU_Erase`, `HUlib_eraseSText`, and `HUlib_eraseIText`.
 #[no_mangle]
 pub extern "C" fn HUlib_eraseTextLine(l: *mut hu_textline_t) {
     unsafe {
@@ -204,6 +332,16 @@ pub extern "C" fn HUlib_eraseTextLine(l: *mut hu_textline_t) {
     }
 }
 
+/// Initialize a scrolling text widget.
+///
+/// Sets height `h`, visibility pointer `on`, resets the current-line index
+/// to 0, and initializes each of the `h` text lines. Lines are stacked
+/// upward: line 0 is at `y`, line 1 at `y - font_height - 1`, and so on.
+///
+/// # Preconditions
+/// * `h <= HU_MAXLINES`.
+/// * `font` must point to valid patch data so the font height can be read.
+/// * `on` must be a valid non-null pointer for the widget's lifetime.
 #[no_mangle]
 pub extern "C" fn HUlib_initSText(
     s: *mut hu_stext_t,
@@ -232,6 +370,10 @@ pub extern "C" fn HUlib_initSText(
     }
 }
 
+/// Advance the ring-buffer cursor and clear the new current line.
+///
+/// Increments `cl` modulo `h`, clears the new current text line, and sets
+/// `needsupdate` to 4 on every line so they are all redrawn.
 #[no_mangle]
 pub extern "C" fn HUlib_addLineToSText(s: *mut hu_stext_t) {
     unsafe {
@@ -247,6 +389,15 @@ pub extern "C" fn HUlib_addLineToSText(s: *mut hu_stext_t) {
     }
 }
 
+/// Append a message (with optional prefix) to a scrolling text widget.
+///
+/// Calls [`HUlib_addLineToSText`] to advance the ring buffer, then appends
+/// each character of `prefix` (if non-null) followed by each character of
+/// `msg` to the current line using [`HUlib_addCharToTextLine`].
+///
+/// # Preconditions
+/// * `msg` must be a valid NUL-terminated C string.
+/// * `prefix` may be null; if non-null it must also be NUL-terminated.
 #[no_mangle]
 pub extern "C" fn HUlib_addMessageToSText(
     s: *mut hu_stext_t,
@@ -270,6 +421,10 @@ pub extern "C" fn HUlib_addMessageToSText(
     }
 }
 
+/// Render all lines of a scrolling text widget.
+///
+/// Skips drawing if `*s.on == 0`. Otherwise iterates `h` lines in ring order
+/// (newest first) and calls [`HUlib_drawTextLine`] for each without a cursor.
 #[no_mangle]
 pub extern "C" fn HUlib_drawSText(s: *mut hu_stext_t) {
     unsafe {
@@ -286,6 +441,11 @@ pub extern "C" fn HUlib_drawSText(s: *mut hu_stext_t) {
     }
 }
 
+/// Erase all lines of a scrolling text widget and update the visibility cache.
+///
+/// If the widget just transitioned from visible to hidden (`laston != 0` and
+/// `*on == 0`), marks every line dirty so they are erased from the screen.
+/// Then calls [`HUlib_eraseTextLine`] on each line and updates `laston`.
 #[no_mangle]
 pub extern "C" fn HUlib_eraseSText(s: *mut hu_stext_t) {
     unsafe {
@@ -299,6 +459,14 @@ pub extern "C" fn HUlib_eraseSText(s: *mut hu_stext_t) {
     }
 }
 
+/// Initialize a text-input widget.
+///
+/// Zeroes the left margin (`lm = 0`), stores the visibility pointer, sets
+/// `laston = 1`, and initialises the underlying text line via
+/// [`HUlib_initTextLine`].
+///
+/// # Preconditions
+/// * `on` must be a valid non-null pointer for the widget's lifetime.
 #[no_mangle]
 pub extern "C" fn HUlib_initIText(
     it: *mut hu_itext_t,
@@ -316,6 +484,10 @@ pub extern "C" fn HUlib_initIText(
     }
 }
 
+/// Delete the last character from an input widget, respecting the left margin.
+///
+/// Calls [`HUlib_delCharFromTextLine`] only when `l.len > lm`; characters
+/// within the protected prefix are never removed.
 #[no_mangle]
 pub extern "C" fn HUlib_delCharFromIText(it: *mut hu_itext_t) {
     unsafe {
@@ -325,6 +497,11 @@ pub extern "C" fn HUlib_delCharFromIText(it: *mut hu_itext_t) {
     }
 }
 
+/// Delete all user-entered characters from an input widget, stopping at the
+/// left margin.
+///
+/// Repeatedly calls [`HUlib_delCharFromTextLine`] until `l.len == lm`,
+/// effectively clearing everything after the prefix.
 #[no_mangle]
 pub extern "C" fn HUlib_eraseLineFromIText(it: *mut hu_itext_t) {
     unsafe {
@@ -334,6 +511,10 @@ pub extern "C" fn HUlib_eraseLineFromIText(it: *mut hu_itext_t) {
     }
 }
 
+/// Reset an input widget to a fully empty state, including the prefix.
+///
+/// Sets `lm` to 0 and calls [`HUlib_clearTextLine`], discarding both the
+/// prefix and any user input. Used at the start of a new chat session.
 #[no_mangle]
 pub extern "C" fn HUlib_resetIText(it: *mut hu_itext_t) {
     unsafe {
@@ -342,6 +523,14 @@ pub extern "C" fn HUlib_resetIText(it: *mut hu_itext_t) {
     }
 }
 
+/// Append a prefix string to an input widget and lock it as the left margin.
+///
+/// Appends each byte of the NUL-terminated `str` to the underlying text line,
+/// then sets `lm = l.len` so that subsequent delete operations cannot remove
+/// those characters.
+///
+/// # Preconditions
+/// * `str` must be a valid NUL-terminated C string.
 #[no_mangle]
 pub extern "C" fn HUlib_addPrefixToIText(it: *mut hu_itext_t, str: *mut c_char) {
     unsafe {
@@ -354,6 +543,15 @@ pub extern "C" fn HUlib_addPrefixToIText(it: *mut hu_itext_t, str: *mut c_char) 
     }
 }
 
+/// Process a keypress for an input text widget.
+///
+/// Uppercases `ch` before dispatch:
+/// * Printable range `[' ', '_']`: appended via [`HUlib_addCharToTextLine`].
+/// * `KEY_BACKSPACE`: deletes via [`HUlib_delCharFromIText`] (honours margin).
+/// * `KEY_ENTER`: accepted as a terminator (no text change).
+/// * Any other value: returns 0 to signal the key was not consumed.
+///
+/// Returns 1 if the key was consumed, 0 otherwise.
 #[no_mangle]
 pub extern "C" fn HUlib_keyInIText(it: *mut hu_itext_t, ch: u8) -> c_int {
     unsafe {
@@ -369,6 +567,10 @@ pub extern "C" fn HUlib_keyInIText(it: *mut hu_itext_t, ch: u8) -> c_int {
     }
 }
 
+/// Render the input text widget, including the cursor glyph.
+///
+/// Skips drawing if `*it.on == 0`. Otherwise delegates to
+/// [`HUlib_drawTextLine`] with `drawcursor = 1`.
 #[no_mangle]
 pub extern "C" fn HUlib_drawIText(it: *mut hu_itext_t) {
     unsafe {
@@ -379,6 +581,11 @@ pub extern "C" fn HUlib_drawIText(it: *mut hu_itext_t) {
     }
 }
 
+/// Erase the input text widget from the screen and update the visibility cache.
+///
+/// Marks the line dirty if the widget just became hidden (transition from
+/// `laston != 0` to `*on == 0`), then calls [`HUlib_eraseTextLine`] and
+/// updates `laston`.
 #[no_mangle]
 pub extern "C" fn HUlib_eraseIText(it: *mut hu_itext_t) {
     unsafe {
