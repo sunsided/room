@@ -1,7 +1,23 @@
 //! Rust port of vendor/doomgeneric/p_setup.c.
 //!
 //! Level/map loading and initialization. Reads all BSP and geometry lumps
-//! from the WAD into runtime data structures (vertexes, lines, sectors, etc.).
+//! from the WAD into runtime data structures (vertexes, lines, sectors,
+//! subsectors, nodes, segs, blockmap, and reject table). `P_SetupLevel` is
+//! the single entry point called by the game loop when entering a new map;
+//! `P_Init` is called once at startup to initialize switch lists, animated
+//! flats, and the sprite name table.
+//!
+//! # Rust-vs-C differences
+//!
+//! - All WAD data is little-endian; the `SHORT` helper performs an explicit
+//!   `i16::from_le` conversion instead of relying on the C `SHORT` macro from
+//!   `i_swap.h`.
+//! - `P_LoadThings` increments the `mt` pointer only after the spawn decision
+//!   so that a `break` on a non-commercial monster does not advance past it.
+//! - `P_SetupLevel` uses `format!` for lump-name construction instead of
+//!   `DEH_snprintf`, so DeHackEd lump-name patches are not applied.
+//! - Global map tables (`vertexes`, `lines`, etc.) are `#[no_mangle]`
+//!   `static mut` values with C linkage, matching the C extern declarations.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -34,6 +50,9 @@ fn SHORT(x: i16) -> i16 {
 // Zone-memory tags
 // ---------------------------------------------------------------------------
 
+/// Zone-memory purge level used when freeing all level data between maps.
+/// Matches `PU_PURGELEVEL` in `z_zone.h`; all tags in `[PU_LEVEL,
+/// PU_PURGELEVEL)` are freed by `Z_FreeTags` at the start of `P_SetupLevel`.
 const PU_PURGELEVEL: c_int = 7;
 
 // ---------------------------------------------------------------------------
@@ -41,31 +60,54 @@ const PU_PURGELEVEL: c_int = 7;
 // Slope types
 // ---------------------------------------------------------------------------
 
+/// Linedef slope type: line is perfectly horizontal (dy == 0).
+/// Referenced by `c_ffi::line_t.slopetype`.
 const ST_HORIZONTAL: c_int = 0;
+/// Linedef slope type: line is perfectly vertical (dx == 0).
+/// Referenced by `c_ffi::line_t.slopetype`.
 const ST_VERTICAL: c_int = 1;
+/// Linedef slope type: dy/dx > 0 (rises left-to-right).
+/// Referenced by `c_ffi::line_t.slopetype`.
 const ST_POSITIVE: c_int = 2;
+/// Linedef slope type: dy/dx < 0 (falls left-to-right).
+/// Referenced by `c_ffi::line_t.slopetype`.
 const ST_NEGATIVE: c_int = 3;
 
 // ---------------------------------------------------------------------------
 // Misc constants
 // ---------------------------------------------------------------------------
 
+/// Shift to convert a fixed-point map coordinate to a blockmap cell index.
+/// Equals `FRACBITS + 7`, i.e. each blockmap cell covers 128 map units.
 const MAPBLOCKSHIFT: c_int = FRACBITS as c_int + 7;
+
+/// Maximum radius added/subtracted when clamping sector bounding boxes to
+/// blockmap cells. 32 map units in fixed-point (32 << FRACBITS).
 const MAXRADIUS: c_int = 32 * FRACUNIT;
 
 /// Maximum number of deathmatch start positions in a level.
+/// Matches `MAX_DEATHMATCH_STARTS` in `p_setup.c`.
 pub const MAX_DEATHMATCH_STARTS: usize = 10;
 
 // ---------------------------------------------------------------------------
 // Packed WAD structs (exact on-disk layout)
 // ---------------------------------------------------------------------------
 
+/// On-disk vertex record from the WAD VERTEXES lump.
+/// Maps to `mapvertex_t` in `p_local.h`. Coordinates are 16-bit integers
+/// in map units; they are sign-extended and shifted left by `FRACBITS` when
+/// copied into the runtime `vertex_t`.
 #[repr(C, packed)]
 struct mapvertex_t {
     x: i16,
     y: i16,
 }
 
+/// On-disk sidedef record from the WAD SIDEDEFS lump.
+/// Maps to `mapsidedef_t` in `p_local.h`. Texture offsets are in map units
+/// and are shifted left by `FRACBITS` when copied to the runtime `side_t`.
+/// Texture name fields are 8-byte null-padded ASCII strings resolved to
+/// runtime texture indices by `R_TextureNumForName`.
 #[repr(C, packed)]
 struct mapsidedef_t {
     textureoffset: i16,
@@ -76,6 +118,9 @@ struct mapsidedef_t {
     sector: i16,
 }
 
+/// On-disk linedef record from the WAD LINEDEFS lump.
+/// Maps to `maplinedef_t` in `p_local.h`. `sidenum[1]` is -1 for one-sided
+/// lines; the runtime `line_t` stores null pointers in that case.
 #[repr(C, packed)]
 struct maplinedef_t {
     v1: i16,
@@ -86,6 +131,10 @@ struct maplinedef_t {
     sidenum: [i16; 2],
 }
 
+/// On-disk sector record from the WAD SECTORS lump.
+/// Maps to `mapsector_t` in `p_local.h`. Floor/ceiling heights are in map
+/// units and shifted left by `FRACBITS` in the runtime `sector_t`. Flat name
+/// fields are 8-byte null-padded ASCII strings resolved via `R_FlatNumForName`.
 #[repr(C, packed)]
 struct mapsector_t {
     floorheight: i16,
@@ -97,12 +146,21 @@ struct mapsector_t {
     tag: i16,
 }
 
+/// On-disk subsector record from the WAD SSECTORS lump.
+/// Maps to `mapsubsector_t` in `p_local.h`. `firstseg` is an index into the
+/// segs array; `numsegs` is the count of consecutive segs forming the convex
+/// polygon of this subsector.
 #[repr(C, packed)]
 struct mapsubsector_t {
     numsegs: i16,
     firstseg: i16,
 }
 
+/// On-disk seg record from the WAD SEGS lump.
+/// Maps to `mapseg_t` in `p_local.h`. `angle` is a BAM (Binary Angle
+/// Measurement) stored in the upper 16 bits of a `u32` after shifting.
+/// `offset` is the distance along the linedef to the seg's start vertex,
+/// in fixed-point.
 #[repr(C, packed)]
 struct mapseg_t {
     v1: i16,
@@ -113,6 +171,11 @@ struct mapseg_t {
     offset: i16,
 }
 
+/// On-disk BSP node record from the WAD NODES lump.
+/// Maps to `mapnode_t` in `p_local.h`. `x`, `y`, `dx`, `dy` define the
+/// partition line in map units. `bbox[2][4]` are the bounding boxes for each
+/// child subtree. `children[2]` are child indices; the high bit set indicates
+/// a subsector leaf.
 #[repr(C, packed)]
 struct mapnode_t {
     x: i16,
@@ -123,6 +186,20 @@ struct mapnode_t {
     children: [u16; 2],
 }
 
+/// On-disk thing record from the WAD THINGS lump, and also the runtime spawn
+/// descriptor passed to `P_SpawnMapThing`.
+///
+/// Maps to `mapthing_t` in `p_local.h`. This struct is `pub` because it is
+/// referenced by `deathmatchstarts`, `deathmatch_p`, and `playerstarts`
+/// globals that are visible to C. `#[repr(C)]` ensures ABI compatibility;
+/// `#[derive(Clone, Copy)]` allows it to be used by value in initialization
+/// expressions.
+///
+/// Fields:
+/// - `x`, `y`: map-unit position (not fixed-point)
+/// - `angle`: facing direction in degrees (0, 45, 90, ...)
+/// - `type`: Doom editor number identifying the thing class
+/// - `options`: bit flags (skill levels, deaf, etc.)
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 pub struct mapthing_t {
@@ -137,59 +214,121 @@ pub struct mapthing_t {
 // MAP-related lookup tables
 // ---------------------------------------------------------------------------
 
+/// Total number of vertexes loaded from the current map's VERTEXES lump.
+/// C linkage: referenced by `r_bsp.c` and other renderer modules.
 #[no_mangle]
 pub static mut numvertexes: c_int = 0;
+/// Pointer to the runtime vertex array, allocated from zone memory at
+/// `PU_LEVEL`. Each entry holds fixed-point (16.16) x/y coordinates.
+/// C linkage: referenced by `p_map.c`, `r_bsp.c`, and many others.
 #[no_mangle]
 pub static mut vertexes: *mut vertex_t = ptr::null_mut();
 
+/// Total number of segs loaded from the current map's SEGS lump.
+/// C linkage: referenced by `r_bsp.c`.
 #[no_mangle]
 pub static mut numsegs: c_int = 0;
+/// Pointer to the runtime seg array, allocated from zone memory at `PU_LEVEL`.
+/// C linkage: referenced by `r_bsp.c` and `p_sight.c`.
 #[no_mangle]
 pub static mut segs: *mut seg_t = ptr::null_mut();
 
+/// Total number of sectors loaded from the current map's SECTORS lump.
+/// C linkage: referenced throughout the game and renderer.
 #[no_mangle]
 pub static mut numsectors: c_int = 0;
+/// Pointer to the runtime sector array, allocated from zone memory at
+/// `PU_LEVEL`. Sectors own the lighting, floor/ceiling heights, and thing
+/// lists used by most game logic.
+/// C linkage: referenced throughout the game and renderer.
 #[no_mangle]
 pub static mut sectors: *mut sector_t = ptr::null_mut();
 
+/// Total number of subsectors loaded from the current map's SSECTORS lump.
+/// C linkage: referenced by `r_bsp.c` and `p_sight.c`.
 #[no_mangle]
 pub static mut numsubsectors: c_int = 0;
+/// Pointer to the runtime subsector array, allocated from zone memory at
+/// `PU_LEVEL`. Each subsector is a convex polygon leaf of the BSP tree.
+/// C linkage: referenced by `r_bsp.c`, `p_map.c`, and `p_sight.c`.
 #[no_mangle]
 pub static mut subsectors: *mut subsector_t = ptr::null_mut();
 
+/// Total number of BSP nodes loaded from the current map's NODES lump.
+/// C linkage: referenced by `r_bsp.c` and `p_sight.c`.
 #[no_mangle]
 pub static mut numnodes: c_int = 0;
+/// Pointer to the runtime BSP node array, allocated from zone memory at
+/// `PU_LEVEL`. The root node is `nodes[numnodes - 1]`.
+/// C linkage: referenced by `r_bsp.c`, `p_map.c`, and `p_sight.c`.
 #[no_mangle]
 pub static mut nodes: *mut node_t = ptr::null_mut();
 
+/// Total number of linedefs loaded from the current map's LINEDEFS lump.
+/// C linkage: referenced by `p_map.c`, `p_maputl.c`, and others.
 #[no_mangle]
 pub static mut numlines: c_int = 0;
+/// Pointer to the runtime linedef array, allocated from zone memory at
+/// `PU_LEVEL`. Each linedef connects two vertexes and references up to two
+/// sidedefs.
+/// C linkage: referenced throughout the game.
 #[no_mangle]
 pub static mut lines: *mut line_t = ptr::null_mut();
 
+/// Total number of sidedefs loaded from the current map's SIDEDEFS lump.
+/// C linkage: referenced by `r_segs.c` and others.
 #[no_mangle]
 pub static mut numsides: c_int = 0;
+/// Pointer to the runtime sidedef array, allocated from zone memory at
+/// `PU_LEVEL`. Sidedefs hold texture indices and offsets; each linedef
+/// references one or two.
+/// C linkage: referenced by `r_segs.c`, `p_spec.c`, and others.
 #[no_mangle]
 pub static mut sides: *mut side_t = ptr::null_mut();
 
+/// Running total of front+back linedef-sector references, used to size the
+/// per-sector line-pointer buffer in `P_GroupLines`. Module-private; not
+/// exported to C.
 static mut totallines: c_int = 0;
 
 // ---------------------------------------------------------------------------
 // BLOCKMAP
 // ---------------------------------------------------------------------------
 
+/// Width of the blockmap grid in 128-unit cells.
+/// C linkage: referenced by `p_map.c` and `p_maputl.c` for collision queries.
 #[no_mangle]
 pub static mut bmapwidth: c_int = 0;
+/// Height of the blockmap grid in 128-unit cells.
+/// C linkage: referenced by `p_map.c` and `p_maputl.c` for collision queries.
 #[no_mangle]
 pub static mut bmapheight: c_int = 0;
+/// Pointer into `blockmaplump` offset by 4 shorts (past the header).
+/// Each entry is an offset from `blockmaplump` to the list of linedefs in that
+/// cell, terminated by -1.
+/// C linkage: referenced by `p_maputl.c`.
 #[no_mangle]
 pub static mut blockmap: *mut c_short = ptr::null_mut();
+/// Base pointer to the raw blockmap lump data (including the 4-short header).
+/// Header layout: `[orgx, orgy, width, height]` in map units (not fixed-point
+/// before shifting). Allocated from zone memory at `PU_LEVEL`.
+/// C linkage: referenced by `p_maputl.c`.
 #[no_mangle]
 pub static mut blockmaplump: *mut c_short = ptr::null_mut();
+/// X origin of the blockmap in fixed-point (16.16) map coordinates.
+/// Subtract from a thing's x to get the blockmap column.
+/// C linkage: referenced by `p_maputl.c`.
 #[no_mangle]
 pub static mut bmaporgx: c_int = 0;
+/// Y origin of the blockmap in fixed-point (16.16) map coordinates.
+/// Subtract from a thing's y to get the blockmap row.
+/// C linkage: referenced by `p_maputl.c`.
 #[no_mangle]
 pub static mut bmaporgy: c_int = 0;
+/// Pointer to the blockmap thing-chain heads, one per cell (`bmapwidth *
+/// bmapheight` entries). Each entry is a pointer to the first `mobj_t` in
+/// that cell's chain, or null. Zeroed at level load.
+/// C linkage: referenced by `p_maputl.c` and `p_map.c`.
 #[no_mangle]
 pub static mut blocklinks: *mut *mut c_void = ptr::null_mut();
 
@@ -197,6 +336,11 @@ pub static mut blocklinks: *mut *mut c_void = ptr::null_mut();
 // REJECT
 // ---------------------------------------------------------------------------
 
+/// Pointer to the precomputed LOS (line-of-sight) reject table.
+/// A 2-D bit array indexed by `[sector1 * numsectors + sector2]`; a set bit
+/// means the two sectors cannot see each other, so detailed LOS checks are
+/// skipped. Allocated from zone memory at `PU_LEVEL`.
+/// C linkage: referenced by `p_sight.c`.
 #[no_mangle]
 pub static mut rejectmatrix: *mut u8 = ptr::null_mut();
 
@@ -204,6 +348,10 @@ pub static mut rejectmatrix: *mut u8 = ptr::null_mut();
 // Starting spots
 // ---------------------------------------------------------------------------
 
+/// Array of deathmatch start positions collected from the THINGS lump.
+/// Holds up to `MAX_DEATHMATCH_STARTS` entries; the active count is tracked
+/// by `deathmatch_p - deathmatchstarts`.
+/// C linkage: referenced by `g_game.c`.
 #[no_mangle]
 pub static mut deathmatchstarts: [mapthing_t; MAX_DEATHMATCH_STARTS] = [mapthing_t {
     x: 0,
@@ -213,9 +361,16 @@ pub static mut deathmatchstarts: [mapthing_t; MAX_DEATHMATCH_STARTS] = [mapthing
     options: 0,
 }; MAX_DEATHMATCH_STARTS];
 
+/// Write cursor into `deathmatchstarts`; points to the next free slot.
+/// Reset to `&deathmatchstarts[0]` at the start of each `P_SetupLevel`.
+/// C linkage: advanced by `P_SpawnMapThing` when spawning deathmatch starts.
 #[no_mangle]
 pub static mut deathmatch_p: *mut mapthing_t = ptr::null_mut();
 
+/// Per-player single-player start positions, indexed by player number.
+/// Holds `MAXPLAYERS` entries; populated by `P_SpawnMapThing` from THINGS
+/// with type 1-4 (player starts).
+/// C linkage: referenced by `g_game.c` for respawning.
 #[no_mangle]
 pub static mut playerstarts: [mapthing_t; MAXPLAYERS] = [mapthing_t {
     x: 0,
@@ -252,6 +407,16 @@ use crate::doom::z_zone::{Z_FreeTags, Z_Malloc};
 // GetSectorAtNullAddress
 // ---------------------------------------------------------------------------
 
+/// Return a pointer to a synthetic `sector_t` that represents the sector at
+/// address 0, used to handle malformed WAD data (the "glass hack").
+///
+/// The returned sector is initialized on first call by reading 4 bytes each
+/// from address 0 and 4 via `I_GetMemoryValue`, matching vanilla Doom's
+/// behavior of reading the initial heap block header at address 0.
+/// Subsequent calls return the already-initialized sector without re-reading.
+///
+/// C callers: `P_LoadSegs` (this file). Also called via C FFI from legacy
+/// unported code that encounters two-sided linedefs with an invalid back sidenum.
 #[no_mangle]
 pub extern "C" fn GetSectorAtNullAddress() -> *mut sector_t {
     static mut NULL_SECTOR_IS_INITIALIZED: bool = false;
@@ -280,6 +445,16 @@ pub extern "C" fn GetSectorAtNullAddress() -> *mut sector_t {
 // P_LoadVertexes
 // ---------------------------------------------------------------------------
 
+/// Load the VERTEXES lump and populate the global `vertexes` array.
+///
+/// Allocates `numvertexes * sizeof(vertex_t)` bytes at `PU_LEVEL`, reads each
+/// on-disk `mapvertex_t` (2 × i16 little-endian), and stores the result as
+/// fixed-point (16.16) coordinates by shifting left by `FRACBITS`. The raw
+/// lump is released after conversion.
+///
+/// `lump` must be the lump number of the VERTEXES entry for the current map
+/// (typically `lumpnum + MapLump::VERTEXES`).
+/// C callers: `P_SetupLevel` (this file).
 #[no_mangle]
 pub extern "C" fn P_LoadVertexes(lump: c_int) {
     unsafe {
@@ -309,6 +484,24 @@ pub extern "C" fn P_LoadVertexes(lump: c_int) {
 // P_LoadSegs
 // ---------------------------------------------------------------------------
 
+/// Load the SEGS lump and populate the global `segs` array.
+///
+/// Allocates `numsegs * sizeof(seg_t)` bytes at `PU_LEVEL` (zero-initialized
+/// via zone memory) and fills each entry from the corresponding on-disk
+/// `mapseg_t`. Key conversions:
+/// - Vertex indices are resolved to pointers into `vertexes`.
+/// - `angle` is shifted left 16 to become a full BAM (Binary Angle
+///   Measurement) u32 value.
+/// - `offset` is shifted left by `FRACBITS` to become fixed-point.
+/// - `sidedef` and `frontsector` are resolved from the linedef's `sidenum`
+///   array using the seg's side (0 = front, 1 = back).
+/// - For two-sided linedefs, `backsector` is resolved from the opposite
+///   sidenum; if that sidenum is out of range, `GetSectorAtNullAddress` is
+///   used (glass-hack compatibility).
+///
+/// `lump` must be the lump number of the SEGS entry for the current map.
+/// Precondition: `vertexes`, `lines`, and `sides` must already be loaded.
+/// C callers: `P_SetupLevel` (this file).
 #[no_mangle]
 pub extern "C" fn P_LoadSegs(lump: c_int) {
     unsafe {
@@ -359,6 +552,16 @@ pub extern "C" fn P_LoadSegs(lump: c_int) {
 // P_LoadSubsectors
 // ---------------------------------------------------------------------------
 
+/// Load the SSECTORS lump and populate the global `subsectors` array.
+///
+/// Allocates `numsubsectors * sizeof(subsector_t)` bytes at `PU_LEVEL`
+/// (zero-initialized) and fills each entry from the corresponding on-disk
+/// `mapsubsector_t`. The `numlines` and `firstline` fields (confusingly named
+/// in the runtime struct - they actually count/index segs) are byte-swapped
+/// from little-endian.
+///
+/// `lump` must be the lump number of the SSECTORS entry for the current map.
+/// C callers: `P_SetupLevel` (this file).
 #[no_mangle]
 pub extern "C" fn P_LoadSubsectors(lump: c_int) {
     unsafe {
@@ -390,6 +593,16 @@ pub extern "C" fn P_LoadSubsectors(lump: c_int) {
 // P_LoadSectors
 // ---------------------------------------------------------------------------
 
+/// Load the SECTORS lump and populate the global `sectors` array.
+///
+/// Allocates `numsectors * sizeof(sector_t)` bytes at `PU_LEVEL`
+/// (zero-initialized) and fills each entry from the corresponding on-disk
+/// `mapsector_t`. Floor and ceiling heights are shifted left by `FRACBITS`
+/// to become fixed-point. Flat names are resolved to runtime indices via
+/// `R_FlatNumForName`. The `thinglist` field is explicitly cleared to null.
+///
+/// `lump` must be the lump number of the SECTORS entry for the current map.
+/// C callers: `P_SetupLevel` (this file).
 #[no_mangle]
 pub extern "C" fn P_LoadSectors(lump: c_int) {
     unsafe {
@@ -427,6 +640,17 @@ pub extern "C" fn P_LoadSectors(lump: c_int) {
 // P_LoadNodes
 // ---------------------------------------------------------------------------
 
+/// Load the NODES lump and populate the global `nodes` array.
+///
+/// Allocates `numnodes * sizeof(node_t)` bytes at `PU_LEVEL` and fills each
+/// entry from the corresponding on-disk `mapnode_t`. Partition-line origin
+/// (`x`, `y`) and direction (`dx`, `dy`) are shifted left by `FRACBITS` to
+/// become fixed-point. Bounding-box values are similarly shifted. Child
+/// indices are stored as `u16`; the high bit (0x8000) indicates a subsector
+/// leaf rather than an internal node.
+///
+/// `lump` must be the lump number of the NODES entry for the current map.
+/// C callers: `P_SetupLevel` (this file).
 #[no_mangle]
 pub extern "C" fn P_LoadNodes(lump: c_int) {
     unsafe {
@@ -464,6 +688,24 @@ pub extern "C" fn P_LoadNodes(lump: c_int) {
 // P_LoadThings
 // ---------------------------------------------------------------------------
 
+/// Load the THINGS lump and spawn all map objects for the current level.
+///
+/// Iterates over each on-disk `mapthing_t` in the lump. In non-commercial
+/// (shareware/registered) game modes, monster types that only appear in Doom
+/// II are skipped; when the first such type is encountered the loop
+/// **breaks** immediately (not `continue`), so no subsequent things are
+/// processed either - this matches vanilla Doom's behavior and preserves
+/// demo-compatible RNG sequencing.
+///
+/// Each surviving thing is byte-swapped and passed to `P_SpawnMapThing`.
+/// `P_SpawnMapThing` handles player starts, deathmatch starts, and all
+/// game objects.
+///
+/// `lump` must be the lump number of the THINGS entry for the current map.
+/// Preconditions: `vertexes`, `lines`, `sides`, `sectors`, and `blockmap`
+/// must already be loaded; `deathmatch_p` must be reset to the base of
+/// `deathmatchstarts`.
+/// C callers: `P_SetupLevel` (this file).
 #[no_mangle]
 pub extern "C" fn P_LoadThings(lump: c_int) {
     unsafe {
@@ -507,6 +749,23 @@ pub extern "C" fn P_LoadThings(lump: c_int) {
 // P_LoadLineDefs
 // ---------------------------------------------------------------------------
 
+/// Load the LINEDEFS lump and populate the global `lines` array.
+///
+/// Allocates `numlines * sizeof(line_t)` bytes at `PU_LEVEL`
+/// (zero-initialized) and fills each entry from the corresponding on-disk
+/// `maplinedef_t`. Notable steps per linedef:
+/// - Vertex pointers are resolved from indices into `vertexes`.
+/// - `dx` and `dy` are computed from the vertex coordinates (fixed-point).
+/// - `slopetype` is set to `ST_VERTICAL`, `ST_HORIZONTAL`, `ST_POSITIVE`, or
+///   `ST_NEGATIVE` based on the sign of `FixedDiv(dy, dx)`.
+/// - The linedef's axis-aligned bounding box (`bbox[4]`) is computed from the
+///   two vertex coordinates.
+/// - Front and back sector pointers are resolved from `sidenum` indices; -1
+///   means no side (one-sided line), resulting in a null sector pointer.
+///
+/// `lump` must be the lump number of the LINEDEFS entry for the current map.
+/// Preconditions: `vertexes` and `sides` must already be loaded.
+/// C callers: `P_SetupLevel` (this file).
 #[no_mangle]
 pub extern "C" fn P_LoadLineDefs(lump: c_int) {
     unsafe {
@@ -596,6 +855,18 @@ pub extern "C" fn P_LoadLineDefs(lump: c_int) {
 // P_LoadSideDefs
 // ---------------------------------------------------------------------------
 
+/// Load the SIDEDEFS lump and populate the global `sides` array.
+///
+/// Allocates `numsides * sizeof(side_t)` bytes at `PU_LEVEL`
+/// (zero-initialized) and fills each entry from the corresponding on-disk
+/// `mapsidedef_t`. Texture offsets are shifted left by `FRACBITS` to become
+/// fixed-point. Texture names (8-byte null-padded ASCII) are resolved to
+/// runtime indices via `R_TextureNumForName`. The `sector` pointer is
+/// resolved from the on-disk sector index into the `sectors` array.
+///
+/// `lump` must be the lump number of the SIDEDEFS entry for the current map.
+/// Precondition: `sectors` must already be loaded.
+/// C callers: `P_SetupLevel` (this file).
 #[no_mangle]
 pub extern "C" fn P_LoadSideDefs(lump: c_int) {
     unsafe {
@@ -633,6 +904,23 @@ pub extern "C" fn P_LoadSideDefs(lump: c_int) {
 // P_LoadBlockMap
 // ---------------------------------------------------------------------------
 
+/// Load the BLOCKMAP lump and initialize the blockmap collision grid.
+///
+/// The blockmap is a WAD-stored acceleration structure dividing the map into
+/// 128-unit cells. Each cell contains a null-terminated list of linedefs that
+/// pass through it, enabling fast broad-phase collision detection.
+///
+/// Loading steps:
+/// 1. Allocate zone memory for the raw lump and read it with `W_ReadLump`.
+/// 2. Set `blockmap = blockmaplump + 4` (skip the 4-short header).
+/// 3. Byte-swap all `count = lumplen / 2` shorts from little-endian to native.
+/// 4. Extract the header: `bmaporgx`, `bmaporgy` (shifted by `FRACBITS`),
+///    `bmapwidth`, `bmapheight`.
+/// 5. Allocate and zero-fill the `blocklinks` thing-chain array
+///    (`bmapwidth * bmapheight` pointer-sized entries).
+///
+/// `lump` must be the lump number of the BLOCKMAP entry for the current map.
+/// C callers: `P_SetupLevel` (this file).
 #[no_mangle]
 pub extern "C" fn P_LoadBlockMap(lump: c_int) {
     unsafe {
@@ -663,6 +951,35 @@ pub extern "C" fn P_LoadBlockMap(lump: c_int) {
 // P_GroupLines
 // ---------------------------------------------------------------------------
 
+/// Build per-sector line lists, resolve subsector sectors, and compute sector
+/// bounding boxes.
+///
+/// This function performs three passes over the map geometry after all lumps
+/// have been loaded:
+///
+/// 1. **Subsector sectors**: for each subsector, resolves its sector pointer
+///    by following `segs[ss.firstline].sidedef.sector`. This uses the seg's
+///    already-resolved sidedef (set during `P_LoadSegs`) rather than the raw
+///    `sidenum[0]`, correctly handling back-side segs.
+///
+/// 2. **Line count and buffer allocation**: counts how many line references
+///    each sector accumulates (`totallines` tracks the total for the shared
+///    buffer). Two-sided lines contribute to both front and back sectors, but
+///    a line shared between the same front and back sector is counted only once
+///    per side.
+///
+/// 3. **Line table assignment**: allocates a single flat buffer of
+///    `totallines` line pointers at `PU_LEVEL`, then assigns slices to each
+///    sector using a cumulative cursor (not per-sector independent offsets).
+///    A second pass over lines fills in the pointers.
+///
+/// 4. **Bounding boxes and sound origins**: for each sector, computes an
+///    axis-aligned bounding box from its lines' vertices, sets the sound
+///    origin (`soundorg`) to the bounding-box center, and records the
+///    clamped blockmap cell extents in `sector.blockbox`.
+///
+/// Preconditions: all lump-load functions must have been called first.
+/// C callers: `P_SetupLevel` (this file).
 #[no_mangle]
 pub extern "C" fn P_GroupLines() {
     unsafe {
@@ -784,6 +1101,32 @@ pub extern "C" fn P_GroupLines() {
 // PadRejectArray
 // ---------------------------------------------------------------------------
 
+/// Pad the tail of an undersized REJECT lump to simulate vanilla Doom's
+/// behavior of reading past the end of the lump into the zone-memory block
+/// header.
+///
+/// Vanilla Doom allocated the REJECT array with `Z_Malloc`, and when the lump
+/// was shorter than the required `(numsectors * numsectors + 7) / 8` bytes,
+/// reads of the missing bytes would fall into the zone block header that
+/// immediately precedes the allocation in memory. This function reproduces
+/// those header bytes so that WADs relying on the overflow behavior work
+/// correctly.
+///
+/// `rejectpad` encodes the first 16 bytes of a zone block header:
+/// - `[(totallines * 4 + 3) & !3) + 24]` - block size field
+/// - `0` - user pointer (low word of z_zone header)
+/// - `50` - `PU_LEVEL` tag
+/// - `0x1d4a11` - `DOOM_CONST_ZONEID`
+///
+/// If `len > sizeof(rejectpad)` (i.e. the lump is extremely short), a warning
+/// is printed and the remainder is filled with 0x00 or 0xff depending on
+/// whether `-reject_pad_with_ff` was passed on the command line.
+///
+/// # Safety
+///
+/// `array` must point to at least `len` writable bytes. The caller
+/// (`P_LoadReject`) ensures this by passing `rejectmatrix + lumplen` with
+/// `len = minlength - lumplen`.
 unsafe fn PadRejectArray(array: *mut u8, len: usize) {
     let rejectpad: [u32; 4] = [((totallines * 4 + 3) & !3) as u32 + 24, 0, 50, 0x1d4a11];
 
@@ -820,6 +1163,22 @@ unsafe fn PadRejectArray(array: *mut u8, len: usize) {
 // P_LoadReject
 // ---------------------------------------------------------------------------
 
+/// Load or synthesize the REJECT lump for the current map.
+///
+/// The REJECT table is a packed bit array of size
+/// `ceil(numsectors^2 / 8)` bytes. Bit `(s1 * numsectors + s2)` is set if
+/// sectors `s1` and `s2` cannot see each other, allowing the enemy AI to skip
+/// expensive LOS checks.
+///
+/// If the WAD's REJECT lump is large enough (`lumplen >= minlength`), it is
+/// cached directly at `PU_LEVEL`. Otherwise a `minlength`-byte buffer is
+/// allocated, the lump is read into it, and the remaining bytes are filled by
+/// `PadRejectArray` to simulate vanilla Doom's zone-header overflow.
+///
+/// # Safety
+///
+/// Writes to the global `rejectmatrix`. Must be called after `P_GroupLines`
+/// so that `totallines` is valid (needed by `PadRejectArray`).
 unsafe fn P_LoadReject(lumpnum: c_int) {
     let minlength = (numsectors * numsectors + 7) / 8;
     let lumplen = W_LumpLength(lumpnum as c_uint);
@@ -841,6 +1200,35 @@ unsafe fn P_LoadReject(lumpnum: c_int) {
 // P_SetupLevel
 // ---------------------------------------------------------------------------
 
+/// Initialize all game state for the given episode/map and load its geometry.
+///
+/// This is the main map-load entry point, called by `G_DoLoadLevel` in
+/// `g_game.c`. It performs the following steps in order (order matters):
+///
+/// 1. Reset kill/item/secret counters and intermission stats.
+/// 2. Set the console player's `viewz` to 1 (will be corrected by player think).
+/// 3. Stop all sounds (`S_Start`) before freeing zone memory.
+/// 4. Free all `PU_LEVEL` through `PU_PURGELEVEL - 1` zone blocks.
+/// 5. Re-initialize the thinker list (`P_InitThinkers`).
+/// 6. Construct the WAD lump name: `"MAPxx"` for commercial, `"ExMy"` for
+///    episodic. The `episode` and `map` parameters are 1-based.
+/// 7. Load map lumps in this specific order: BLOCKMAP, VERTEXES, SECTORS,
+///    SIDEDEFS, LINEDEFS, SSECTORS, NODES, SEGS.
+/// 8. Post-process: `P_GroupLines`, then load REJECT.
+/// 9. Reset `bodyqueslot` and `deathmatch_p`, then load THINGS
+///    (`P_LoadThings` spawns all map objects).
+/// 10. If deathmatch mode, randomly respawn active players.
+/// 11. Reset the item-queue indices (`iquehead`, `iquetail`).
+/// 12. Spawn special sector effects (`P_SpawnSpecials`).
+/// 13. If `precache` is set, preload all level graphics (`R_PrecacheLevel`).
+///
+/// `_playermask` and `_skill` parameters are accepted for C ABI compatibility
+/// but are unused; skill filtering is handled by `P_SpawnMapThing`.
+///
+/// C callers: `G_DoLoadLevel` in `g_game.c`.
+// FIXME: C uses DEH_snprintf for lump name construction, allowing DeHackEd
+// patches to rename map lumps. The Rust port uses format! and does not apply
+// DEH patches to the lump name, which may break modded WADs that rely on this.
 #[no_mangle]
 pub extern "C" fn P_SetupLevel(episode: c_int, map: c_int, _playermask: c_int, _skill: c_int) {
     unsafe {
@@ -927,6 +1315,17 @@ pub extern "C" fn P_SetupLevel(episode: c_int, map: c_int, _playermask: c_int, _
 // P_Init
 // ---------------------------------------------------------------------------
 
+/// Initialize the map/physics subsystem at engine startup.
+///
+/// Called once from `D_DoomMain` before the game loop starts. Sets up:
+/// - `P_InitSwitchList`: builds the switch animation list from the texture
+///   names defined in `p_switch.c`.
+/// - `P_InitPicAnims`: builds the animated flat/texture list from the lump
+///   sequence tables in `p_spec.c`.
+/// - `R_InitSprites`: builds the sprite frame lookup table from the WAD's
+///   sprite lump names, starting at `sprnames[0]`.
+///
+/// C callers: `D_DoomMain` in `d_main.c`.
 #[no_mangle]
 pub extern "C" fn P_Init() {
     unsafe {
