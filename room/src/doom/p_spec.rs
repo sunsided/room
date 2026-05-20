@@ -5,6 +5,17 @@
 //! effect.  Also contains the utility functions (`getSide`, `getSector`,
 //! `twoSided`, `P_Find*Surrounding`) used by the floor/ceiling/platform
 //! code.
+//!
+//! Notable Rust-vs-C differences:
+//! - The `animdefs` table is a Rust `const` slice of tuples instead of a
+//!   C array of `animdef_t` structs; the `animdef_t` struct is kept for
+//!   layout testing only.
+//! - `DonutOverrun` uses `static mut` locals to replicate C `static` locals;
+//!   first-call initialisation is guarded by a `first` flag exactly as in C.
+//! - Button `where` enum (C `bwhere_e`) is stored as a raw `c_int` (`0/1/2`)
+//!   because the Rust FFI button type uses an integer discriminant.
+//! - `P_PlayerInSpecialSector` navigates via `subsector_t` to reach the
+//!   sector; the C version accesses `player->mo->subsector->sector` directly.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -46,73 +57,135 @@ macro_rules! cstr {
 // Constants
 // ---------------------------------------------------------------------------
 
+/// Maximum number of animated texture/flat cycles that can be active at once.
+/// Corresponds to `MAXANIMS` in p_spec.c.
 const MAXANIMS: usize = 32;
+
+/// Maximum number of scrolling-wall linedefs that may be registered per level.
+/// Corresponds to `MAXLINEANIMS` in p_spec.c (Vanilla Doom limit is 64).
 const MAXLINEANIMS: usize = 64;
+
+/// Maximum number of adjoining sectors examined by `P_FindNextHighestFloor`.
+/// Exceeding this limit emulates the vanilla stack-overflow behaviour.
+/// Corresponds to `MAX_ADJOINING_SECTORS` in p_spec.c.
 const MAX_ADJOINING_SECTORS: usize = 20;
 
-// vldoor_e
+// vldoor_e — door direction/behaviour constants used by `EV_DoDoor`.
+/// Door opens and stays open. (`vld_open`)
 const vld_normal: c_int = 0;
+/// Door closes, waits 30 seconds, then opens again. (`vld_close30ThenOpen`)
 const vld_close30ThenOpen: c_int = 1;
+/// Door closes and stays closed. (`vld_close`)
 const vld_close: c_int = 2;
+/// Door opens normally (raise then wait then lower). (`vld_open` in C is 3 here mapped as `vld_normal=0`)
 const vld_open: c_int = 3;
+/// Blaze-speed raise-then-lower door. (`vld_blazeRaise`)
 const vld_blazeRaise: c_int = 5;
+/// Blaze-speed open door. (`vld_blazeOpen`)
 const vld_blazeOpen: c_int = 6;
+/// Blaze-speed close door. (`vld_blazeClose`)
 const vld_blazeClose: c_int = 7;
 
-// floor_e
+// floor_e — floor movement type constants used by `EV_DoFloor`.
+/// Lower floor to next lowest neighbouring floor. (`lowerFloor`)
 const lowerFloor: c_int = 0;
+/// Lower floor to the absolute lowest neighbouring floor. (`lowerFloorToLowest`)
 const lowerFloorToLowest: c_int = 1;
+/// Lower floor at turbo speed. (`turboLower`)
 const turboLower: c_int = 2;
+/// Raise floor to next highest neighbouring floor. (`raiseFloor`)
 const raiseFloor: c_int = 3;
+/// Raise floor to nearest neighbouring floor. (`raiseFloorToNearest`)
 const raiseFloorToNearest: c_int = 4;
+/// Raise floor to the height of the shortest lower texture on a bounding wall. (`raiseToTexture`)
 const raiseToTexture: c_int = 5;
+/// Lower floor and change its texture/special to match the destination sector. (`lowerAndChange`)
 const lowerAndChange: c_int = 6;
+/// Raise floor by exactly 24 map units (fixed-point 16.16). (`raiseFloor24`)
 const raiseFloor24: c_int = 7;
+/// Raise floor by 24 map units and change texture/special. (`raiseFloor24AndChange`)
 const raiseFloor24AndChange: c_int = 8;
+/// Raise floor while crushing anything caught between floor and ceiling. (`raiseFloorCrush`)
 const raiseFloorCrush: c_int = 9;
+/// Raise floor at turbo speed. (`raiseFloorTurbo`)
 const raiseFloorTurbo: c_int = 10;
+/// Raise floor to the height of the outer (ring) sector in a donut effect. (`donutRaise`)
 const donutRaise: c_int = 11;
 
-// ceiling_e
+// ceiling_e — ceiling movement type constants used by `EV_DoCeiling`.
+/// Raise ceiling to the highest neighbouring ceiling. (`raiseToHighest`)
 const raiseToHighest: c_int = 1;
+/// Lower ceiling while crushing. (`lowerAndCrush`)
 const lowerAndCrush: c_int = 2;
+/// Crush ceiling down then raise it repeatedly. (`crushAndRaise`)
 const crushAndRaise: c_int = 3;
+/// Fast crush-and-raise ceiling. (`fastCrushAndRaise`)
 const fastCrushAndRaise: c_int = 4;
+/// Silent crush-and-raise ceiling (no grinding sound). (`silentCrushAndRaise`)
 const silentCrushAndRaise: c_int = 5;
 
-// plattype_e
+// plattype_e — platform movement type constants used by `EV_DoPlat`.
+/// Platform goes down, waits, then rises back up. (`downWaitUpStay`)
 const downWaitUpStay: c_int = 1;
+/// Platform raises to the nearest floor height and changes texture. (`raiseToNearestAndChange`)
 const raiseToNearestAndChange: c_int = 3;
+/// Blaze-speed down-wait-up-stay platform. (`blazeDWUS`)
 const blazeDWUS: c_int = 4;
+/// Platform oscillates perpetually up and down. (`perpetualRaise`)
 const perpetualRaise: c_int = 0;
 
-// stair_e
+// stair_e — stair-building step size constants used by `EV_BuildStairs`.
+/// Build stairs in 8-unit steps. (`build8`)
 const build8: c_int = 0;
+/// Build stairs in 16-unit turbo steps. (`turbo16`)
 const turbo16: c_int = 1;
 
-// powers
+// powers — index into `player_t::powers[]`.
+/// Index of the Radiation Suit power in the powers array; grants immunity to slime damage.
 const pw_ironfeet: usize = 3;
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
+/// Runtime state for a single animated texture or flat sequence.
+///
+/// Maps to the C `anim_t` typedef in p_spec.c (also used internally in
+/// wi_stuff.c with different semantics, but this is the p_spec version).
+/// Layout invariant: the struct is `#[repr(C)]` and its size is asserted to
+/// be exactly 20 bytes on 64-bit targets (matching the C layout).
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct anim_t {
+    /// Non-zero if this animation cycle is for wall textures; zero for flats.
     pub istexture: c_int,
+    /// WAD lump number of the last frame in the sequence.
     pub picnum: c_int,
+    /// WAD lump number of the first frame in the sequence.
     pub basepic: c_int,
+    /// Total number of frames in the cycle (`picnum - basepic + 1`).
     pub numpics: c_int,
+    /// Tic-count duration of each frame; the sequence advances every `speed` tics.
     pub speed: c_int,
 }
 
+/// Static definition of one animation cycle as loaded from the ANIMDEFS table.
+///
+/// Maps to the C `animdef_t` typedef in p_spec.c.  The Rust code uses a
+/// tuple-slice (`ANIMDEFS`) instead of an array of this struct for animation
+/// initialisation; `animdef_t` is retained only for ABI size verification.
+/// Layout invariant: 28 bytes on 64-bit (4-byte `istexture`, two 9-byte name
+/// arrays padded to alignment, 4-byte `speed`).
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct animdef_t {
+    /// Non-zero for wall textures, zero for flats; -1 marks the sentinel entry.
     pub istexture: c_int,
+    /// Name of the last frame lump (NUL-padded to 9 bytes).
     pub endname: [c_char; 9],
+    /// Name of the first frame lump (NUL-padded to 9 bytes).
     pub startname: [c_char; 9],
+    /// Frame duration in tics.
     pub speed: c_int,
 }
 
@@ -127,6 +200,12 @@ mod layout_checks {
 // Animation definitions
 // ---------------------------------------------------------------------------
 
+/// Compile-time animation definition table, equivalent to C `animdefs[]`.
+///
+/// Each tuple is `(istexture, endname, startname, speed)`.  A sentinel entry
+/// with `istexture == -1` terminates the list.  Pointers are created from
+/// string literals via the `cstr!` macro and are valid for the program
+/// lifetime.  Sourced from p_spec.c `animdefs[]`.
 const ANIMDEFS: &[(c_int, *mut c_char, *mut c_char, c_int)] = &[
     (0, cstr!("NUKAGE3"), cstr!("NUKAGE1"), 8),
     (0, cstr!("FWATER4"), cstr!("FWATER1"), 8),
@@ -157,6 +236,12 @@ const ANIMDEFS: &[(c_int, *mut c_char, *mut c_char, c_int)] = &[
 // Globals
 // ---------------------------------------------------------------------------
 
+/// Array of active animation state records, one per registered animation cycle.
+///
+/// Populated by `P_InitPicAnims`; only entries in `anims[0..lastanim)` are
+/// valid.  Exported with C linkage (`#[no_mangle]`) for access from p_spec.c
+/// and the renderer (r_data.c reads `texturetranslation`/`flattranslation`
+/// which are updated in `P_UpdateSpecials` based on this array).
 #[no_mangle]
 pub static mut anims: [anim_t; MAXANIMS] = [anim_t {
     istexture: 0,
@@ -166,18 +251,43 @@ pub static mut anims: [anim_t; MAXANIMS] = [anim_t {
     speed: 0,
 }; MAXANIMS];
 
+/// Pointer one-past the last valid entry in `anims[]`.
+///
+/// Acts as an end-iterator: the range `anims..lastanim` contains every active
+/// animation cycle.  Null on startup, set by `P_InitPicAnims`.  Exported with
+/// C linkage for symmetry with the C declaration `extern anim_t* lastanim`.
 #[no_mangle]
 pub static mut lastanim: *mut anim_t = ptr::null_mut();
 
+/// Number of scrolling-wall linedefs registered in `linespeciallist`.
+///
+/// Counts lines with special 48 (first-column texture scroll).  Reset to zero
+/// by `P_SpawnSpecials` at map start.  Exported with C linkage; referenced by
+/// `P_UpdateSpecials` and p_spec.c.
 #[no_mangle]
 pub static mut numlinespecials: c_short = 0;
 
+/// List of pointers to linedefs that carry the scrolling-wall special (48).
+///
+/// Populated by `P_SpawnSpecials`; iterated by `P_UpdateSpecials` each tic to
+/// advance `textureoffset` by one `FRACUNIT`.  Capped at `MAXLINEANIMS` (64)
+/// entries.  Exported with C linkage.
 #[no_mangle]
 pub static mut linespeciallist: [*mut line_t; MAXLINEANIMS] = [ptr::null_mut(); MAXLINEANIMS];
 
+/// Non-zero when a deathmatch level timer is active.
+///
+/// Set to 1 by `P_SpawnSpecials` when `timelimit > 0` and `deathmatch != 0`.
+/// Checked each tic by `P_UpdateSpecials`.  Stored as `c_int` boolean to
+/// match the C declaration `boolean levelTimer`.  Exported with C linkage.
 #[no_mangle]
 pub static mut levelTimer: c_int = 0; // boolean
 
+/// Remaining tics before the deathmatch time limit expires.
+///
+/// Initialised by `P_SpawnSpecials` to `timelimit * 60 * TICRATE`.
+/// Decremented each tic by `P_UpdateSpecials`; reaching zero calls
+/// `G_ExitLevel`.  Exported with C linkage.
 #[no_mangle]
 pub static mut levelTimeCount: c_int = 0;
 
@@ -211,6 +321,13 @@ type TeleptMobj = crate::doom::p_telept::mobj_t;
 // DEH_String shim — identity when dehacked is disabled.
 // ---------------------------------------------------------------------------
 
+/// Returns `s` unchanged; a no-op shim for the Dehacked string-replacement
+/// hook that exists in the full Chocolate Doom build.
+///
+/// In the C source, `DEH_String` may redirect a hard-coded string to a
+/// Dehacked patch string.  Because this port does not support Dehacked, the
+/// shim simply returns its argument so that all call sites compile without
+/// conditional compilation guards.
 #[inline(always)]
 unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
     s
@@ -220,6 +337,19 @@ unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
 // P_InitPicAnims
 // ---------------------------------------------------------------------------
 
+/// Initialises the animated texture and flat cycle table from `ANIMDEFS`.
+///
+/// Iterates `ANIMDEFS` until the sentinel entry (`istexture == -1`).  For
+/// each entry it resolves the start and end lump numbers via
+/// `R_TextureNumForName` / `R_FlatNumForName` (skipping entries whose start
+/// lump does not exist in the WAD).  The resolved `anim_t` record is written
+/// into the `anims` array and `lastanim` is advanced.
+///
+/// Calls `I_Error` (via `i_error!`) if an animation cycle contains fewer than
+/// two frames.
+///
+/// Called once at map load time from C (p_spec.c `P_SpawnSpecials` via the
+/// game initialisation path).
 #[no_mangle]
 pub unsafe extern "C" fn P_InitPicAnims() {
     lastanim = std::ptr::addr_of_mut!(anims[0]);
@@ -264,6 +394,16 @@ pub unsafe extern "C" fn P_InitPicAnims() {
 // Utilities
 // ---------------------------------------------------------------------------
 
+/// Returns a pointer to the `side_t` on a given side of a line bounding a sector.
+///
+/// - `currentSector`: index into the global `sectors` array.
+/// - `line`: index into `sector.lines[]` (the sector's own line list, not the
+///   global `lines` array).
+/// - `side`: 0 for front, 1 for back.
+///
+/// Returns a pointer into the global `sides` array.  The pointer is valid as
+/// long as the map data is loaded.  Called from p_spec.c and the floor/ceiling
+/// modules.
 #[no_mangle]
 pub unsafe extern "C" fn getSide(currentSector: c_int, line: c_int, side: c_int) -> *mut side_t {
     let line_ptr = *(*sectors.offset(currentSector as isize))
@@ -273,6 +413,15 @@ pub unsafe extern "C" fn getSide(currentSector: c_int, line: c_int, side: c_int)
     sides.offset(side_idx as isize)
 }
 
+/// Returns a pointer to the `sector_t` on a given side of a line bounding a sector.
+///
+/// - `currentSector`: index into the global `sectors` array.
+/// - `line`: index into `sector.lines[]`.
+/// - `side`: 0 for front sector, 1 for back sector.
+///
+/// Returns a pointer to the sector.  Callers must guard against the back sector
+/// being null (one-sided line) before dereferencing the result.  Called from
+/// p_spec.c and various map-action modules.
 #[no_mangle]
 pub unsafe extern "C" fn getSector(
     currentSector: c_int,
@@ -286,6 +435,14 @@ pub unsafe extern "C" fn getSector(
     (*sides.offset(side_idx as isize)).sector
 }
 
+/// Returns non-zero if the given line on a sector's boundary is two-sided.
+///
+/// - `sector`: index into the global `sectors` array.
+/// - `line`: index into `sector.lines[]`.
+///
+/// Returns the `ML_TWOSIDED` flag value (non-zero) if the line has a back
+/// sector, or zero for one-sided lines.  Called from p_spec.c and the
+/// floor/ceiling/platform modules.
 #[no_mangle]
 pub unsafe extern "C" fn twoSided(sector: c_int, line: c_int) -> c_int {
     let line_ptr = *(*sectors.offset(sector as isize))
@@ -294,6 +451,11 @@ pub unsafe extern "C" fn twoSided(sector: c_int, line: c_int) -> c_int {
     ((*line_ptr).flags as c_int) & (LinedefFlag::TWOSIDED as c_int)
 }
 
+/// Returns the sector on the opposite side of `line` from `sec`, or null.
+///
+/// If `line` is one-sided (no `ML_TWOSIDED` flag), returns null.  Otherwise
+/// returns whichever of the front/back sectors is not `sec`.  Called
+/// extensively by the `P_Find*Surrounding` family of functions.
 #[no_mangle]
 pub unsafe extern "C" fn getNextSector(line: *mut line_t, sec: *mut sector_t) -> *mut sector_t {
     if ((*line).flags as c_int) & (LinedefFlag::TWOSIDED as c_int) == 0 {
@@ -305,6 +467,14 @@ pub unsafe extern "C" fn getNextSector(line: *mut line_t, sec: *mut sector_t) ->
     (*line).frontsector as *mut sector_t
 }
 
+/// Returns the lowest floor height among all sectors neighbouring `sec`.
+///
+/// Walks every line bounding `sec`, finds the sector on the other side via
+/// `getNextSector`, and returns the minimum floor height seen.  If no
+/// two-sided lines are found the current sector's own floor height is returned.
+///
+/// Heights are in fixed-point 16.16 (`fixed_t` / `c_int`).  Called from
+/// p_floor.c and p_spec.c (also called from C).
 #[no_mangle]
 pub unsafe extern "C" fn P_FindLowestFloorSurrounding(sec: *mut sector_t) -> c_int {
     let mut floor = (*sec).floorheight;
@@ -321,6 +491,14 @@ pub unsafe extern "C" fn P_FindLowestFloorSurrounding(sec: *mut sector_t) -> c_i
     floor
 }
 
+/// Returns the highest floor height among all sectors neighbouring `sec`.
+///
+/// Walks every bounding line of `sec` and returns the maximum neighbouring
+/// floor height.  If no two-sided neighbours are found returns -500 *
+/// `FRACUNIT` (the C sentinel initial value), which is effectively negative
+/// infinity for practical map heights.
+///
+/// Heights are fixed-point 16.16.  Called from p_floor.c and p_spec.c.
 #[no_mangle]
 pub unsafe extern "C" fn P_FindHighestFloorSurrounding(sec: *mut sector_t) -> c_int {
     let mut floor = -500 * FRACUNIT;
@@ -337,6 +515,23 @@ pub unsafe extern "C" fn P_FindHighestFloorSurrounding(sec: *mut sector_t) -> c_
     floor
 }
 
+/// Returns the next floor height above `currentheight` among neighbouring sectors.
+///
+/// Collects all neighbouring floor heights that exceed `currentheight` into a
+/// fixed-size array (`MAX_ADJOINING_SECTORS + 2` entries) and returns the
+/// minimum of those heights, which is the lowest floor that is still above the
+/// current one.
+///
+/// Emulates Vanilla Doom's buffer-overrun behaviour for sectors with more than
+/// 20 adjoining sectors:
+/// - At exactly 21 neighbours (`h == MAX_ADJOINING_SECTORS + 1`) the loop
+///   overwrites the `height` variable on the (virtual) stack, updating the
+///   working height.
+/// - At 22 neighbours (`h == MAX_ADJOINING_SECTORS + 2`) the game would crash
+///   in Vanilla; here `i_error!` is called instead.
+///
+/// Returns `currentheight` if no higher neighbour exists.  Heights are
+/// fixed-point 16.16.  Called from p_floor.c.
 #[no_mangle]
 pub unsafe extern "C" fn P_FindNextHighestFloor(sec: *mut sector_t, currentheight: c_int) -> c_int {
     let mut height = currentheight;
@@ -373,6 +568,13 @@ pub unsafe extern "C" fn P_FindNextHighestFloor(sec: *mut sector_t, currentheigh
     min
 }
 
+/// Returns the lowest ceiling height among all sectors neighbouring `sec`.
+///
+/// Starts from `c_int::MAX` (matching C `INT_MAX`) and walks every bounding
+/// line, returning the minimum neighbouring ceiling height.  If no two-sided
+/// neighbours exist returns `INT_MAX`.
+///
+/// Heights are fixed-point 16.16.  Called from p_ceilng.c and p_spec.c.
 #[no_mangle]
 pub unsafe extern "C" fn P_FindLowestCeilingSurrounding(sec: *mut sector_t) -> c_int {
     let mut height = c_int::MAX;
@@ -389,6 +591,12 @@ pub unsafe extern "C" fn P_FindLowestCeilingSurrounding(sec: *mut sector_t) -> c
     height
 }
 
+/// Returns the highest ceiling height among all sectors neighbouring `sec`.
+///
+/// Starts from 0 and walks every bounding line, returning the maximum
+/// neighbouring ceiling height.  If no two-sided neighbours exist returns 0.
+///
+/// Heights are fixed-point 16.16.  Called from p_ceilng.c and p_spec.c.
 #[no_mangle]
 pub unsafe extern "C" fn P_FindHighestCeilingSurrounding(sec: *mut sector_t) -> c_int {
     let mut height = 0;
@@ -405,6 +613,14 @@ pub unsafe extern "C" fn P_FindHighestCeilingSurrounding(sec: *mut sector_t) -> 
     height
 }
 
+/// Finds the next sector whose tag matches `line->tag`, searching from `start + 1`.
+///
+/// Iterates the global `sectors` array from index `start + 1` onwards and
+/// returns the index of the first sector whose `tag` equals `line->tag`.
+/// Returns -1 if no matching sector is found.
+///
+/// Used as the iterator in all tag-based action loops (donut, door, floor,
+/// ceiling, etc.).  Called from many action functions including `EV_DoDonut`.
 #[no_mangle]
 pub unsafe extern "C" fn P_FindSectorFromLineTag(line: *mut line_t, start: c_int) -> c_int {
     for i in (start + 1)..numsectors {
@@ -415,6 +631,15 @@ pub unsafe extern "C" fn P_FindSectorFromLineTag(line: *mut line_t, start: c_int
     -1
 }
 
+/// Returns the minimum light level among all sectors neighbouring `sector`,
+/// clamped to `max` from above.
+///
+/// Walks every line bounding `sector`, checks the light level of each
+/// two-sided neighbour, and returns the smallest value found.  If all
+/// neighbours have light >= `max`, returns `max`.
+///
+/// Light levels are raw `i16` values cast to `c_int`; the valid Doom range
+/// is 0-255.  Called from p_lights.c to calculate strobe and flash targets.
 #[no_mangle]
 pub unsafe extern "C" fn P_FindMinSurroundingLight(sector: *mut sector_t, max: c_int) -> c_int {
     let mut min = max;
@@ -435,6 +660,26 @@ pub unsafe extern "C" fn P_FindMinSurroundingLight(sector: *mut sector_t, max: c
 // P_CrossSpecialLine
 // ---------------------------------------------------------------------------
 
+/// Processes the special action for a linedef that a map object has just crossed.
+///
+/// Called every tic when a thing's origin crosses a line whose `special` field
+/// is non-zero.  Non-player things are filtered: projectiles (rockets, plasma,
+/// BFG balls, trooper/head/bruiser shots) are always ignored; other monsters
+/// may only activate specials 4, 10, 39, 88, 97, 125, and 126.
+///
+/// The function dispatches on `line->special`:
+/// - Specials in the lower range (2-141) fire once and clear `line->special`
+///   to 0 so they cannot trigger again (one-shot triggers).
+/// - Specials 72-129 are re-triggerable and do **not** clear `line->special`.
+/// - Special 52 exits the level; special 124 exits to the secret level.
+/// - Specials 125 and 126 are monster-only teleports (skipped if the thing
+///   has a player).
+///
+/// - `linenum`: index into the global `lines` array.
+/// - `side`: side of the line the thing is approaching from (0 = front).
+/// - `thing`: the map object that crossed the line.
+///
+/// Called from p_map.c (`P_CrossSpecialLine` is referenced by C callers).
 #[no_mangle]
 pub unsafe extern "C" fn P_CrossSpecialLine(linenum: c_int, side: c_int, thing: *mut mobj_t) {
     let line = lines.offset(linenum as isize);
@@ -722,6 +967,22 @@ pub unsafe extern "C" fn P_CrossSpecialLine(linenum: c_int, side: c_int, thing: 
 // P_ShootSpecialLine
 // ---------------------------------------------------------------------------
 
+/// Processes a linedef special triggered by a projectile or hitscan impact.
+///
+/// Handles the three impact (gun-activated) line specials:
+/// - Special 24: raise floor (one-shot, texture changes to switch).
+/// - Special 46: open door (re-triggerable; only special 46 can be activated
+///   by non-player things).
+/// - Special 47: raise platform to nearest floor and change texture (one-shot).
+///
+/// Non-player things can only activate special 46; all other specials require
+/// a player-controlled attack.
+///
+/// - `thing`: the map object whose attack hit the line.
+/// - `line`: pointer to the linedef that was hit.
+///
+/// Called from p_map.c (`PTR_ShootTraverse`) when a bullet or projectile
+/// hits a special linedef.
 #[no_mangle]
 pub unsafe extern "C" fn P_ShootSpecialLine(thing: *mut mobj_t, line: *mut line_t) {
     if (*thing).player.is_null() {
@@ -755,6 +1016,27 @@ pub unsafe extern "C" fn P_ShootSpecialLine(thing: *mut mobj_t, line: *mut line_
 // P_PlayerInSpecialSector
 // ---------------------------------------------------------------------------
 
+/// Applies the environmental effect of a special sector to the player each tic.
+///
+/// Called every tic for each player whose map-object origin is at floor level
+/// in a special sector (`mo->z == sector->floorheight`).  Players who are
+/// airborne (falling, jumping via cheats) are not affected.
+///
+/// Handled sector specials:
+/// - 5: Hellslime - 10 hp damage every 32 tics unless Radiation Suit active.
+/// - 7: Nukage - 5 hp damage every 32 tics unless Radiation Suit active.
+/// - 4 / 16: Strobe Hurt / Super Hellslime - 20 hp damage every 32 tics;
+///   Radiation Suit grants only partial protection (bypassed if `P_Random() < 5`).
+/// - 9: Secret - increments `player->secretcount` and clears `sector->special`
+///   so it fires only once.
+/// - 11: End-level damage (E1M8 finale style) - strips God Mode, deals 20 hp
+///   damage every 32 tics, and exits the level when health drops to 10 or below.
+///
+/// Calls `i_error!` for any unhandled special number, matching C `I_Error`.
+///
+/// - `player`: pointer to the player structure being updated.
+///
+/// Called from g_game.c / p_tick.c each game tic for every active player.
 #[no_mangle]
 pub unsafe extern "C" fn P_PlayerInSpecialSector(player: *mut PlayerT) {
     let mo = (*player).mo as *mut mobj_t;
@@ -827,6 +1109,28 @@ pub unsafe extern "C" fn P_PlayerInSpecialSector(player: *mut PlayerT) {
 // P_UpdateSpecials
 // ---------------------------------------------------------------------------
 
+/// Advances all time-based special effects by one tic.
+///
+/// Called once per game tic from the main thinker loop.  Performs three tasks:
+///
+/// 1. **Level timer**: if `levelTimer` is set (deathmatch time limit), decrements
+///    `levelTimeCount` and calls `G_ExitLevel` when it reaches zero.
+///
+/// 2. **Texture/flat animation**: iterates the active `anims` table and updates
+///    `texturetranslation` or `flattranslation` for each frame in every cycle.
+///    The frame index is `(leveltime / speed + i) % numpics`, giving a smooth
+///    round-robin across all frames simultaneously (each frame slot maps to a
+///    different phase).
+///
+/// 3. **Scrolling walls** (special 48): increments `textureoffset` by one
+///    `FRACUNIT` on the first side of each registered line, producing a
+///    continuous left-to-right texture scroll.
+///
+/// 4. **Timed buttons**: decrements each active button timer; when it expires,
+///    restores the original switch texture (top/mid/bottom depending on
+///    `buttonlist[i].where_`) and plays the switch sound.
+///
+/// Called from p_tick.c `P_Ticker`.
 #[no_mangle]
 pub unsafe extern "C" fn P_UpdateSpecials() {
     if levelTimer != 0 {
@@ -890,6 +1194,25 @@ pub unsafe extern "C" fn P_UpdateSpecials() {
 // Donut overrun emulation
 // ---------------------------------------------------------------------------
 
+/// Fills `*s3_floorheight` and `*s3_floorpic` with the values that Vanilla Doom
+/// would have read from address `0000:0000` when the donut s3 sector is null.
+///
+/// This replicates a real memory-access bug: in Vanilla Doom on DOS, reading
+/// `s3->floorheight` with a null `s3` reads whatever happened to be at the
+/// start of the DOS data segment.  The Chocolate Doom approach (which this port
+/// follows) is to use configurable default values (`0` and `0x16`) that match
+/// the Windows 98 memory layout, overridable with `-donut <height> <pic>`.
+///
+/// The function initialises its state only on the first call (guarded by the
+/// `first` static flag), parsing `-donut` command-line arguments at that point.
+/// Subsequent calls return the same cached values.
+///
+/// - `s3_floorheight`: output - the substitute floor height (fixed-point 16.16).
+/// - `s3_floorpic`: output - the substitute floor picture lump index.
+/// - `_line`: the triggering linedef (used only for diagnostic output in C;
+///   unused in this Rust port).
+/// - `_pillar_sector`: the inner donut sector (used only for diagnostics in C;
+///   unused in this Rust port).
 unsafe fn DonutOverrun(
     s3_floorheight: *mut c_int,
     s3_floorpic: *mut i16,
@@ -930,6 +1253,31 @@ unsafe fn DonutOverrun(
 // EV_DoDonut
 // ---------------------------------------------------------------------------
 
+/// Executes the "donut" special effect for all sectors tagged to `line`.
+///
+/// The donut effect involves three concentric sectors:
+/// - **s1** (inner, pillar): the sector directly tagged by the line.  Its floor
+///   lowers to match s3's floor height (`lowerFloor` thinker).
+/// - **s2** (ring): the sector adjacent to s1 via s1's first line.  Its floor
+///   rises to s3's height and adopts s3's floor texture (`donutRaise` thinker).
+/// - **s3** (outer): the sector adjacent to s2 that is not s1; provides the
+///   target height and texture.
+///
+/// Edge cases (matching Chocolate Doom behaviour):
+/// - If s1 already has a `specialdata` thinker running, the sector is skipped.
+/// - If s2 is null (s1's first line is one-sided), a warning is printed and the
+///   loop breaks early without spawning thinkers.
+/// - If s3 is null (s2's bounding line has no back sector), `DonutOverrun` is
+///   called to supply substitute height and texture values, emulating the
+///   vanilla memory overrun.
+///
+/// Both thinkers use `T_MoveFloor` and are allocated with `Z_Malloc(PU_LEVSPEC)`.
+/// The transmute of `T_MoveFloor` is required because the thinker function
+/// pointer is typed as `unsafe extern "C" fn(*mut c_void)` at the FFI boundary.
+///
+/// Returns 1 if at least one sector was acted upon, 0 otherwise.
+///
+/// Called from p_spec.c via C when a donut-tagged line is activated.
 #[no_mangle]
 pub unsafe extern "C" fn EV_DoDonut(line: *mut line_t) -> c_int {
     let mut secnum = -1;
@@ -1022,6 +1370,33 @@ pub unsafe extern "C" fn EV_DoDonut(line: *mut line_t) -> c_int {
 // P_SpawnSpecials
 // ---------------------------------------------------------------------------
 
+/// Scans all sectors and linedefs at map load time and spawns thinkers for specials.
+///
+/// Called once after the map is loaded (from p_spec.c / `G_DoLoadLevel`).
+/// Performs the following initialisation:
+///
+/// 1. **Deathmatch timer**: if `timelimit > 0` and `deathmatch != 0`, sets
+///    `levelTimer` and `levelTimeCount` (in tics = `timelimit * 60 * TICRATE`).
+///
+/// 2. **Sector specials**: iterates all sectors and, for non-zero `sector->special`,
+///    spawns the appropriate thinker:
+///    - 1: random light flash (`P_SpawnLightFlash`)
+///    - 2: fast strobe (`P_SpawnStrobeFlash(FASTDARK, 0)`)
+///    - 3: slow strobe (`P_SpawnStrobeFlash(SLOWDARK, 0)`)
+///    - 4: fast strobe + death slime (special reset to 4 after spawning strobe)
+///    - 8: glowing light (`P_SpawnGlowingLight`)
+///    - 9: secret sector (increments `totalsecret`)
+///    - 10: door closes in 30 s (`P_SpawnDoorCloseIn30`)
+///    - 12: slow sync strobe (`P_SpawnStrobeFlash(SLOWDARK, 1)`)
+///    - 13: fast sync strobe (`P_SpawnStrobeFlash(FASTDARK, 1)`)
+///    - 14: door raises in 5 min (`P_SpawnDoorRaiseIn5Mins`)
+///    - 17: fire flicker (`P_SpawnFireFlicker`)
+///
+/// 3. **Line specials**: scans all linedefs; lines with special 48 (first-column
+///    scroll) are registered in `linespeciallist`.  Aborts with `i_error!` if
+///    more than `MAXLINEANIMS` (64) scrolling walls are found.
+///
+/// 4. **Misc cleanup**: clears `activeceilings`, `activeplats`, and `buttonlist`.
 #[no_mangle]
 pub unsafe extern "C" fn P_SpawnSpecials() {
     if timelimit > 0 && deathmatch != 0 {
@@ -1083,6 +1458,13 @@ pub unsafe extern "C" fn P_SpawnSpecials() {
 // Link anchor
 // ---------------------------------------------------------------------------
 
+/// Forces all public symbols in this module to be included in the final binary.
+///
+/// The linker may discard `pub unsafe extern "C"` functions that are not
+/// referenced from Rust code.  This anchor function takes the address of every
+/// exported symbol to prevent dead-code elimination.  It is itself exported
+/// with C linkage and called from the C-side link anchor in p_spec.c (or the
+/// equivalent build glue).
 #[no_mangle]
 pub unsafe extern "C" fn P_Spec_Link_Anchor() {
     let _ = P_InitPicAnims as *const () as usize;
