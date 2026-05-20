@@ -55,7 +55,7 @@ conflicts resolve trivially.
 - [x] doom/p_floor.rs (597 lines, 2 docs)
 - [x] doom/p_inter.rs (992 lines, 0 docs)
 - [x] doom/p_lights.rs (456 lines, 2 docs)
-- [ ] doom/p_map.rs (1052 lines, 0 docs)
+- [~] doom/p_map.rs (1052 lines, 0 docs)
 - [x] doom/p_maputl.rs (751 lines, 0 docs)
 - [x] doom/p_mobj.rs (883 lines, 0 docs)
 - [x] doom/p_plats.rs (396 lines, 0 docs)
