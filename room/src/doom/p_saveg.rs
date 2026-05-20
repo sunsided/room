@@ -1,6 +1,28 @@
 //! Rust port of vendor/doomgeneric/p_saveg.c.
 //!
-//! Archiving: SaveGame I/O — binary serialization of all game state.
+//! Implements save-game serialization and deserialization for the entire Doom
+//! game state. All active map objects (mobjs), player state, world geometry
+//! deltas, thinker chains, and sector specials (ceilings, doors, floors,
+//! platforms, lights) are written to or read from a `FILE *` stream managed
+//! by `g_game.c`.
+//!
+//! The on-disk format is a flat byte stream. Multi-byte integers are always
+//! little-endian regardless of host byte order. Sector and state pointers are
+//! serialized as array indices; player pointers use a 1-based index (0 means
+//! NULL). Thinker function pointers stored in saves are raw addresses that
+//! must be re-established on load - this port guards against transmuting zero
+//! to a function pointer (which is UB) by mapping `0` to `None`.
+//!
+//! Notable differences from the C source:
+//! - `saveg_write8` increments `savegamelength`; the C version does not.
+//! - `saveg_read16`/`saveg_write16` operate on `u16`/`u16` rather than C
+//!   `short`/`short`, avoiding sign-extension ambiguity.
+//! - State indices are bounds-checked on read; out-of-range values set
+//!   `savegame_error` and clamp to `states[0]`.
+//! - `P_SaveGameFile` always rebuilds the filename from the current `slot`
+//!   argument (matching C behavior); the allocation is reused across calls.
+//! - `TEMP_SAVE_FILENAME` and `SAVE_FILENAME` are module-level statics rather
+//!   than function-local statics.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -30,6 +52,9 @@ use crate::doom::z_zone::{Z_Free, Z_Malloc, PU_LEVEL, PU_LEVSPEC};
 // Constants
 // ---------------------------------------------------------------------------
 
+/// Maximum length (in bytes, including NUL) of the human-readable save-game
+/// description string written at the start of every save file.
+/// Corresponds to `SAVESTRINGSIZE` in the C source.
 const SAVESTRINGSIZE: usize = 24;
 
 // ---------------------------------------------------------------------------
@@ -37,12 +62,22 @@ const SAVESTRINGSIZE: usize = 24;
 // g_game.c still writes save_stream to open/close the file.
 // ---------------------------------------------------------------------------
 
+/// Active save-game `FILE *` stream; opened and closed by `g_game.c`.
+/// Exported with C linkage so `g_game.c` can assign it before calling any
+/// archive or unarchive function.
 #[no_mangle]
 pub static mut save_stream: *mut libc::FILE = ptr::null_mut();
 
+/// Running byte count of data written to the current save stream.
+/// Incremented by `saveg_write8`; read by `g_game.c` after saving completes.
+/// C origin: `savegamelength` in `p_saveg.c`.
 #[no_mangle]
 pub static mut savegamelength: c_int = 0;
 
+/// Non-zero when a read or write error has occurred on `save_stream`.
+/// Set to `1` on the first I/O failure; callers check this after
+/// archiving/unarchiving to decide whether to accept the save.
+/// C origin: `savegame_error` in `p_saveg.c`.
 #[no_mangle]
 pub static mut savegame_error: c_int = 0;
 
@@ -51,17 +86,31 @@ pub static mut savegame_error: c_int = 0;
 // ---------------------------------------------------------------------------
 
 extern "C" {
+    /// C-side mobj thinker; used for type dispatch when reading/writing the
+    /// thinker chain.
     fn P_MobjThinker(mobj: *mut c_void);
+    /// Places a map object into the sector and blockmap spatial structures.
     fn P_SetThingPosition(thing: *mut c_void);
+    /// Removes a mobj from the world without calling its death logic; used
+    /// when clearing the thinker list before loading.
     fn P_RemoveMobj(th: *mut c_void);
+    /// Returns the vanilla Doom version code (e.g. 109) used in the save
+    /// header version string.
     fn G_VanillaVersionCode() -> c_int;
 
+    /// Global array of all map sectors; indexed by sector number.
     static mut sectors: *mut sector_t;
+    /// Global array of all map linedefs; indexed by linedef number.
     static mut lines: *mut line_t;
+    /// Global array of all map sidedefs; indexed by sidedef number.
     static mut sides: *mut side_t;
+    /// Count of entries in `sectors`.
     static mut numsectors: c_int;
+    /// Count of entries in `lines`.
     static mut numlines: c_int;
 
+    /// Path to the save-game directory (NUL-terminated C string); assigned
+    /// from the command-line or platform default by `g_game.c`.
     static mut savegamedir: *mut c_char;
 }
 
@@ -71,6 +120,10 @@ extern "C" {
 
 use std::os::raw::c_long;
 
+/// Reads one byte from `save_stream`.
+///
+/// Sets `savegame_error = 1` on the first short read; subsequent calls still
+/// return `0` but do not double-set the flag. C origin: `saveg_read8`.
 unsafe fn saveg_read8() -> u8 {
     let mut result: u8 = 0;
     let n = libc::fread(&raw mut result as *mut c_void, 1, 1, save_stream);
@@ -80,6 +133,13 @@ unsafe fn saveg_read8() -> u8 {
     result
 }
 
+/// Writes one byte to `save_stream` and increments `savegamelength`.
+///
+/// Sets `savegame_error = 1` on the first short write.
+///
+/// Note: the C version does not increment `savegamelength` here; this port
+/// does so to avoid a separate accounting pass.
+/// C origin: `saveg_write8`.
 unsafe fn saveg_write8(value: u8) {
     let n = libc::fwrite(&value as *const u8 as *const c_void, 1, 1, save_stream);
     if n < 1 && savegame_error == 0 {
@@ -88,17 +148,29 @@ unsafe fn saveg_write8(value: u8) {
     savegamelength += 1;
 }
 
+/// Reads a little-endian 16-bit unsigned integer from `save_stream`.
+///
+/// Returns the reconstructed value; any read error is recorded in
+/// `savegame_error`. C origin: `saveg_read16` (which used `short`; here `u16`
+/// avoids sign-extension ambiguity).
 unsafe fn saveg_read16() -> u16 {
     let a = saveg_read8() as u16;
     let b = saveg_read8() as u16;
     a | (b << 8)
 }
 
+/// Writes a little-endian 16-bit unsigned integer to `save_stream`.
+///
+/// C origin: `saveg_write16`.
 unsafe fn saveg_write16(value: u16) {
     saveg_write8((value & 0xff) as u8);
     saveg_write8(((value >> 8) & 0xff) as u8);
 }
 
+/// Reads a little-endian 32-bit unsigned integer from `save_stream`.
+///
+/// C origin: `saveg_read32` (which returned `int`; here `u32` to make
+/// bit-pattern semantics explicit before callers cast to signed types).
 unsafe fn saveg_read32() -> u32 {
     let a = saveg_read8() as u32;
     let b = saveg_read8() as u32;
@@ -107,6 +179,9 @@ unsafe fn saveg_read32() -> u32 {
     a | (b << 8) | (c << 16) | (d << 24)
 }
 
+/// Writes a little-endian 32-bit unsigned integer to `save_stream`.
+///
+/// C origin: `saveg_write32`.
 unsafe fn saveg_write32(value: u32) {
     saveg_write8((value & 0xff) as u8);
     saveg_write8(((value >> 8) & 0xff) as u8);
@@ -114,6 +189,12 @@ unsafe fn saveg_write32(value: u32) {
     saveg_write8(((value >> 24) & 0xff) as u8);
 }
 
+/// Reads and discards padding bytes to align the stream to the next 4-byte
+/// boundary.
+///
+/// Padding is `(4 - (pos & 3)) & 3` bytes, where `pos` is the current stream
+/// position. A stream already aligned reads zero bytes. C origin:
+/// `saveg_read_pad`.
 unsafe fn saveg_read_pad() {
     let pos = libc::ftell(save_stream) as c_long;
     let padding = (4 - (pos & 3)) & 3;
@@ -122,6 +203,10 @@ unsafe fn saveg_read_pad() {
     }
 }
 
+/// Writes NUL padding bytes to align the stream to the next 4-byte boundary.
+///
+/// See `saveg_read_pad` for the alignment formula. C origin:
+/// `saveg_write_pad`.
 unsafe fn saveg_write_pad() {
     let pos = libc::ftell(save_stream) as c_long;
     let padding = (4 - (pos & 3)) & 3;
@@ -130,10 +215,17 @@ unsafe fn saveg_write_pad() {
     }
 }
 
+/// Reads a 32-bit enum value from the stream as a `u32`.
+///
+/// Enum values are always stored as 32-bit little-endian integers.
+/// C origin: the `saveg_read_enum` macro (alias for `saveg_read32`).
 unsafe fn saveg_read_enum() -> u32 {
     saveg_read32()
 }
 
+/// Writes a 32-bit enum value to the stream.
+///
+/// C origin: the `saveg_write_enum` macro (alias for `saveg_write32`).
 unsafe fn saveg_write_enum(value: u32) {
     saveg_write32(value);
 }
@@ -142,7 +234,12 @@ unsafe fn saveg_write_enum(value: u32) {
 // Struct serialization helpers
 // ---------------------------------------------------------------------------
 
-/// Serialize sector pointer as index into sectors array.
+/// Serializes a `sector_t` pointer as a zero-based index into the global
+/// `sectors` array.
+///
+/// Returns `0` for a null pointer. The C equivalent uses pointer subtraction
+/// (`sector - sectors`). Callers must ensure `sector` actually points into
+/// `sectors` when non-null.
 unsafe fn saveg_write_sector_ptr(sector: *const sector_t) -> u32 {
     if sector.is_null() {
         0
@@ -151,12 +248,19 @@ unsafe fn saveg_write_sector_ptr(sector: *const sector_t) -> u32 {
     }
 }
 
-/// Deserialize sector pointer from index.
+/// Deserializes a sector index from the save stream into a `*mut sector_t`.
+///
+/// `index` is an offset into the global `sectors` array. No bounds check is
+/// performed; callers must trust that the index was written by a valid
+/// `saveg_write_sector_ptr` call.
 unsafe fn saveg_read_sector_ptr(index: u32) -> *mut sector_t {
     sectors.add(index as usize)
 }
 
-/// Serialize state pointer as index into states array.
+/// Serializes a `State` pointer as a zero-based index into the global `states`
+/// array.
+///
+/// Returns `0` for a null pointer. The C equivalent computes `state - states`.
 unsafe fn saveg_write_state_ptr(state: *const State) -> u32 {
     if state.is_null() {
         0
@@ -165,7 +269,12 @@ unsafe fn saveg_write_state_ptr(state: *const State) -> u32 {
     }
 }
 
-/// Deserialize state pointer from index into global `states` array.
+/// Deserializes a state index into a `*mut State`.
+///
+/// If `index >= NUMSTATES`, sets `savegame_error = 1` and clamps to
+/// `states[0]` rather than accessing out-of-bounds memory. The C version
+/// performs no such guard (`&states[saveg_read32()]` would silently
+/// out-of-bounds).
 unsafe fn saveg_read_state_ptr(index: u32) -> *mut State {
     if index as usize >= NUMSTATES {
         savegame_error = 1;
@@ -174,7 +283,11 @@ unsafe fn saveg_read_state_ptr(index: u32) -> *mut State {
     std::ptr::addr_of_mut!(states[0]).add(index as usize)
 }
 
-/// Serialize player pointer as player index + 1 (0 = NULL).
+/// Serializes a `PlayerT` pointer as a 1-based player index.
+///
+/// Returns `0` for a null pointer; otherwise returns
+/// `(player - players) + 1`. The 1-based encoding reserves `0` to represent
+/// NULL. C origin: `str->player - players + 1`.
 unsafe fn saveg_write_player_ptr(player: *const PlayerT) -> u32 {
     if player.is_null() {
         0
@@ -183,7 +296,10 @@ unsafe fn saveg_write_player_ptr(player: *const PlayerT) -> u32 {
     }
 }
 
-/// Deserialize player pointer from index (1-based).
+/// Deserializes a 1-based player index into a `*mut PlayerT`.
+///
+/// `value == 0` maps to null; `value > 0` indexes `players[value - 1]`.
+/// C origin: `&players[pl - 1]`.
 unsafe fn saveg_read_player_ptr(value: u32) -> *mut PlayerT {
     if value == 0 {
         std::ptr::null_mut()
@@ -196,6 +312,14 @@ unsafe fn saveg_read_player_ptr(value: u32) -> *mut PlayerT {
 // Thinker function pointer reassignment helpers
 // ---------------------------------------------------------------------------
 
+/// Generates a helper function that constructs an `actionf_t` holding a
+/// type-erased pointer to a specific thinker function.
+///
+/// Each generated function (e.g. `actionf_p1_move_ceiling`) transmutes the
+/// concrete thinker function pointer (`T_MoveCeiling`, etc.) to the generic
+/// `unsafe extern "C" fn(*mut c_void)` required by `actionf_t::acp1`. This
+/// is the Rust equivalent of the C cast
+/// `(actionf_p1)T_MoveCeiling`.
 macro_rules! make_actionf_p1 {
     ($fn_name:ident, $arg_ty:ty, $c_fn:expr) => {
         fn $fn_name() -> actionf_t {
@@ -211,12 +335,19 @@ macro_rules! make_actionf_p1 {
     };
 }
 
+// Returns an `actionf_t` for `T_MoveCeiling` (ceiling special thinker).
 make_actionf_p1!(actionf_p1_move_ceiling, ceiling_t, T_MoveCeiling);
+// Returns an `actionf_t` for `T_VerticalDoor` (door special thinker).
 make_actionf_p1!(actionf_p1_vertical_door, vldoor_t, T_VerticalDoor);
+// Returns an `actionf_t` for `T_MoveFloor` (floor special thinker).
 make_actionf_p1!(actionf_p1_move_floor, floormove_t, T_MoveFloor);
+// Returns an `actionf_t` for `T_PlatRaise` (platform special thinker).
 make_actionf_p1!(actionf_p1_plat_raise, plat_t, T_PlatRaise);
+// Returns an `actionf_t` for `T_LightFlash` (random light-flash thinker).
 make_actionf_p1!(actionf_p1_light_flash, lightflash_t, T_LightFlash);
+// Returns an `actionf_t` for `T_StrobeFlash` (strobe light thinker).
 make_actionf_p1!(actionf_p1_strobe_flash, strobe_t, T_StrobeFlash);
+// Returns an `actionf_t` for `T_Glow` (glow light thinker).
 make_actionf_p1!(actionf_p1_glow, glow_t, T_Glow);
 
 // ---------------------------------------------------------------------------
@@ -227,6 +358,10 @@ make_actionf_p1!(actionf_p1_glow, glow_t, T_Glow);
 // mapthing_t
 //
 
+/// Reads a `mapthing_t` from the save stream into `*mt`.
+///
+/// Reads five `i16` fields in order: x, y, angle, type, options.
+/// C origin: `saveg_read_mapthing_t`.
 unsafe fn saveg_read_mapthing_t(mt: *mut crate::doom::c_ffi::mapthing_t) {
     let s = &mut *mt;
     s.x = saveg_read16() as i16;
@@ -236,6 +371,10 @@ unsafe fn saveg_read_mapthing_t(mt: *mut crate::doom::c_ffi::mapthing_t) {
     s.options = saveg_read16() as i16;
 }
 
+/// Writes a `mapthing_t` to the save stream from `*mt`.
+///
+/// Writes five `i16` fields in order: x, y, angle, type, options.
+/// C origin: `saveg_write_mapthing_t`.
 unsafe fn saveg_write_mapthing_t(mt: *const crate::doom::c_ffi::mapthing_t) {
     let s = &*mt;
     saveg_write16(s.x as u16);
@@ -249,6 +388,14 @@ unsafe fn saveg_write_mapthing_t(mt: *const crate::doom::c_ffi::mapthing_t) {
 // thinker_t
 //
 
+/// Reads a `thinker_t` header (prev, next, function) from the save stream.
+///
+/// The `prev` and `next` pointer values stored in the stream are raw addresses
+/// from the saving session and are not meaningful in the loading session; they
+/// will be overwritten when the thinker is re-linked. A stream value of `0`
+/// for the function pointer becomes `None` rather than `Some(NULL)` to avoid
+/// calling a null function pointer (which would be UB).
+/// C origin: `saveg_read_thinker_t`.
 unsafe fn saveg_read_thinker_t(th: *mut thinker_t) {
     let s = &mut *th;
     // Read prev/next as raw pointer indices (will be rebuilt)
@@ -266,6 +413,10 @@ unsafe fn saveg_read_thinker_t(th: *mut thinker_t) {
     };
 }
 
+/// Writes a `thinker_t` header (prev, next, function) to the save stream.
+///
+/// Pointer fields are written as raw 32-bit addresses; the function pointer is
+/// written as `0` when absent (`None`). C origin: `saveg_write_thinker_t`.
 unsafe fn saveg_write_thinker_t(th: *const thinker_t) {
     let s = &*th;
     saveg_write32(s.prev as u32);
@@ -277,6 +428,20 @@ unsafe fn saveg_write_thinker_t(th: *const thinker_t) {
 // mobj_t — serialized as C struct via FFI
 //
 
+/// Reads a full `mobj_t` record from the save stream into the memory at `mobj`.
+///
+/// The `mobj` pointer must point to a valid `mobj_t`-sized allocation.
+/// After reading:
+/// - `prev`/`next` in the embedded thinker are raw addresses (stale from the
+///   saving session) and will be rebuilt by `P_AddThinker`.
+/// - `snext`, `sprev`, `bnext`, `bprev`, `subsector`, `target`, `tracer` are
+///   raw saved addresses that callers must NULL out or re-resolve.
+/// - `state` is resolved from a stream index via `saveg_read_state_ptr`.
+/// - `player` is a 1-based index; re-resolved and the back-pointer
+///   `player->mo` is updated in place.
+/// - `info` is a raw saved pointer (will be overwritten by caller with
+///   `&mobjinfo[type]`).
+/// C origin: `saveg_read_mobj_t`.
 unsafe fn saveg_read_mobj_t(mobj: *mut c_void) {
     let mo: *mut crate::doom::c_ffi::mobj_t = mobj as *mut crate::doom::c_ffi::mobj_t;
 
@@ -383,6 +548,13 @@ unsafe fn saveg_read_mobj_t(mobj: *mut c_void) {
     (*mo).tracer = saveg_read32() as *mut c_void;
 }
 
+/// Writes a full `mobj_t` record to the save stream from `mobj`.
+///
+/// Pointers (snext, sprev, bnext, bprev, subsector, target, tracer, info) are
+/// written as raw 32-bit addresses; they are not portable across sessions but
+/// are reconstructed on load. `state` is written as an index into `states`.
+/// `player` is written as a 1-based player index (0 for NULL).
+/// C origin: `saveg_write_mobj_t`.
 unsafe fn saveg_write_mobj_t(mobj: *const c_void) {
     let mo: *const crate::doom::c_ffi::mobj_t = mobj as *const crate::doom::c_ffi::mobj_t;
 
@@ -493,6 +665,12 @@ unsafe fn saveg_write_mobj_t(mobj: *const c_void) {
 // Only serialize the 6 fields the C version writes. TiccmdT has extra fields.
 //
 
+/// Reads a `ticcmd_t` (player input command snapshot) from the save stream.
+///
+/// Only the 6 fields serialized by the C version are read:
+/// `forwardmove`, `sidemove`, `angleturn`, `consistancy`, `chatchar`,
+/// `buttons`. Extra fields present in `TiccmdT` are not touched.
+/// C origin: `saveg_read_ticcmd_t`.
 unsafe fn saveg_read_ticcmd_t(cmd: *mut TiccmdT) {
     let s = &mut *cmd;
     s.forwardmove = saveg_read8() as i8;
@@ -503,6 +681,9 @@ unsafe fn saveg_read_ticcmd_t(cmd: *mut TiccmdT) {
     s.buttons = saveg_read8();
 }
 
+/// Writes the 6 canonical `ticcmd_t` fields to the save stream.
+///
+/// C origin: `saveg_write_ticcmd_t`.
 unsafe fn saveg_write_ticcmd_t(cmd: *const TiccmdT) {
     let s = &*cmd;
     saveg_write8(s.forwardmove as u8);
@@ -517,6 +698,13 @@ unsafe fn saveg_write_ticcmd_t(cmd: *const TiccmdT) {
 // pspdef_t
 //
 
+/// Reads a `pspdef_t` (player sprite definition) from the save stream.
+///
+/// The `state` field uses a 1-based convention for psprites: index `0` maps
+/// to NULL (weapon not active), while any positive index maps to
+/// `states[index]`. This differs from `mobj_t` state handling where index `0`
+/// refers to `states[0]`.
+/// C origin: `saveg_read_pspdef_t`.
 unsafe fn saveg_read_pspdef_t(psp: *mut PspdefT) {
     let s = &mut *psp;
     let state_idx = saveg_read32();
@@ -531,6 +719,11 @@ unsafe fn saveg_read_pspdef_t(psp: *mut PspdefT) {
     s.sy = saveg_read32() as c_int;
 }
 
+/// Writes a `pspdef_t` to the save stream.
+///
+/// Writes the state index (`state - states`) or `0` for NULL, followed by
+/// `tics`, `sx` (fixed-point screen x offset), and `sy` (fixed-point screen y
+/// offset). C origin: `saveg_write_pspdef_t`.
 unsafe fn saveg_write_pspdef_t(psp: *const PspdefT) {
     let s = &*psp;
     if s.state.is_null() {
@@ -547,6 +740,19 @@ unsafe fn saveg_write_pspdef_t(psp: *const PspdefT) {
 // player_t
 //
 
+/// Reads a full `player_t` record from the save stream into `*pl`.
+///
+/// Fields are read in the same order as the C version. Notable points:
+/// - `mo` is read as a raw pointer (will be set to NULL by `P_UnArchivePlayers`
+///   and rebuilt by `P_UnArchiveThinkers`).
+/// - `playerstate` and enum fields (`readyweapon`, `pendingweapon`) are read
+///   as 32-bit values.
+/// - Power timers, key cards, frag counts, weapon ownership, ammo, and max
+///   ammo are each 32-bit entries.
+/// - `message` and `attacker` are raw pointers; callers zero them after read.
+/// - Each of `NUMPSPRITES` player-sprite slots is read via
+///   `saveg_read_pspdef_t`.
+/// C origin: `saveg_read_player_t`.
 unsafe fn saveg_read_player_t(pl: *mut PlayerT) {
     let s = &mut *pl;
 
@@ -644,6 +850,12 @@ unsafe fn saveg_read_player_t(pl: *mut PlayerT) {
     s.didsecret = saveg_read32() as c_int;
 }
 
+/// Writes a full `player_t` record to the save stream from `*pl`.
+///
+/// Raw pointers (`mo`, `message`, `attacker`) are written as 32-bit addresses;
+/// they are not valid across sessions but are zeroed on unarchive. All other
+/// fields mirror `saveg_read_player_t` in order.
+/// C origin: `saveg_write_player_t`.
 unsafe fn saveg_write_player_t(pl: *const PlayerT) {
     let s = &*pl;
 
@@ -702,6 +914,12 @@ unsafe fn saveg_write_player_t(pl: *const PlayerT) {
 // ceiling_t
 //
 
+/// Reads a `ceiling_t` special thinker from the save stream into `*ceil`.
+///
+/// The embedded `thinker_t` header is read first, followed by type, sector
+/// index, height fields, speed, crush flag, direction, tag, and old direction.
+/// The sector index is resolved to a pointer via `saveg_read_sector_ptr`.
+/// C origin: `saveg_read_ceiling_t`.
 unsafe fn saveg_read_ceiling_t(ceil: *mut ceiling_t) {
     let s = &mut *ceil;
     saveg_read_thinker_t(&mut s.thinker);
@@ -717,6 +935,10 @@ unsafe fn saveg_read_ceiling_t(ceil: *mut ceiling_t) {
     s.olddirection = saveg_read32() as c_int;
 }
 
+/// Writes a `ceiling_t` special thinker to the save stream from `*ceil`.
+///
+/// The sector pointer is serialized as an index via `saveg_write_sector_ptr`.
+/// C origin: `saveg_write_ceiling_t`.
 unsafe fn saveg_write_ceiling_t(ceil: *const ceiling_t) {
     let s = &*ceil;
     saveg_write_thinker_t(&s.thinker);
@@ -735,6 +957,11 @@ unsafe fn saveg_write_ceiling_t(ceil: *const ceiling_t) {
 // vldoor_t
 //
 
+/// Reads a `vldoor_t` (vertical-lift door) thinker from the save stream.
+///
+/// Fields: thinker header, door type enum, sector index, top height (16.16
+/// fixed-point), speed (16.16), direction, top-wait tic count, and current
+/// top-countdown. C origin: `saveg_read_vldoor_t`.
 unsafe fn saveg_read_vldoor_t(door: *mut vldoor_t) {
     let s = &mut *door;
     saveg_read_thinker_t(&mut s.thinker);
@@ -748,6 +975,9 @@ unsafe fn saveg_read_vldoor_t(door: *mut vldoor_t) {
     s.topcountdown = saveg_read32() as c_int;
 }
 
+/// Writes a `vldoor_t` thinker to the save stream.
+///
+/// C origin: `saveg_write_vldoor_t`.
 unsafe fn saveg_write_vldoor_t(door: *const vldoor_t) {
     let s = &*door;
     saveg_write_thinker_t(&s.thinker);
@@ -764,6 +994,11 @@ unsafe fn saveg_write_vldoor_t(door: *const vldoor_t) {
 // floormove_t
 //
 
+/// Reads a `floormove_t` (moving floor) thinker from the save stream.
+///
+/// Fields: thinker header, floor type enum, crush flag, sector index,
+/// direction, new special number, texture (16-bit), destination height
+/// (16.16), and speed (16.16). C origin: `saveg_read_floormove_t`.
 unsafe fn saveg_read_floormove_t(floor: *mut floormove_t) {
     let s = &mut *floor;
     saveg_read_thinker_t(&mut s.thinker);
@@ -778,6 +1013,9 @@ unsafe fn saveg_read_floormove_t(floor: *mut floormove_t) {
     s.speed = saveg_read32() as c_int;
 }
 
+/// Writes a `floormove_t` thinker to the save stream.
+///
+/// C origin: `saveg_write_floormove_t`.
 unsafe fn saveg_write_floormove_t(floor: *const floormove_t) {
     let s = &*floor;
     saveg_write_thinker_t(&s.thinker);
@@ -795,6 +1033,11 @@ unsafe fn saveg_write_floormove_t(floor: *const floormove_t) {
 // plat_t
 //
 
+/// Reads a `plat_t` (raising/lowering platform) thinker from the save stream.
+///
+/// Fields: thinker header, sector index, speed (16.16), low and high heights
+/// (16.16), wait time, count, status enum, old-status enum, crush flag, tag,
+/// and platform type enum. C origin: `saveg_read_plat_t`.
 unsafe fn saveg_read_plat_t(plat: *mut plat_t) {
     let s = &mut *plat;
     saveg_read_thinker_t(&mut s.thinker);
@@ -812,6 +1055,9 @@ unsafe fn saveg_read_plat_t(plat: *mut plat_t) {
     s.r#type = saveg_read_enum() as c_int;
 }
 
+/// Writes a `plat_t` thinker to the save stream.
+///
+/// C origin: `saveg_write_plat_t`.
 unsafe fn saveg_write_plat_t(plat: *const plat_t) {
     let s = &*plat;
     saveg_write_thinker_t(&s.thinker);
@@ -832,6 +1078,10 @@ unsafe fn saveg_write_plat_t(plat: *const plat_t) {
 // lightflash_t
 //
 
+/// Reads a `lightflash_t` (random light flash) thinker from the save stream.
+///
+/// Fields: thinker header, sector index, count, max light, min light, max
+/// time, min time. C origin: `saveg_read_lightflash_t`.
 unsafe fn saveg_read_lightflash_t(flash: *mut lightflash_t) {
     let s = &mut *flash;
     saveg_read_thinker_t(&mut s.thinker);
@@ -844,6 +1094,9 @@ unsafe fn saveg_read_lightflash_t(flash: *mut lightflash_t) {
     s.mintime = saveg_read32() as c_int;
 }
 
+/// Writes a `lightflash_t` thinker to the save stream.
+///
+/// C origin: `saveg_write_lightflash_t`.
 unsafe fn saveg_write_lightflash_t(flash: *const lightflash_t) {
     let s = &*flash;
     saveg_write_thinker_t(&s.thinker);
@@ -859,6 +1112,10 @@ unsafe fn saveg_write_lightflash_t(flash: *const lightflash_t) {
 // strobe_t
 //
 
+/// Reads a `strobe_t` (strobe light) thinker from the save stream.
+///
+/// Fields: thinker header, sector index, count, min light, max light, dark
+/// time (tics), bright time (tics). C origin: `saveg_read_strobe_t`.
 unsafe fn saveg_read_strobe_t(strobe: *mut strobe_t) {
     let s = &mut *strobe;
     saveg_read_thinker_t(&mut s.thinker);
@@ -871,6 +1128,9 @@ unsafe fn saveg_read_strobe_t(strobe: *mut strobe_t) {
     s.brighttime = saveg_read32() as c_int;
 }
 
+/// Writes a `strobe_t` thinker to the save stream.
+///
+/// C origin: `saveg_write_strobe_t`.
 unsafe fn saveg_write_strobe_t(strobe: *const strobe_t) {
     let s = &*strobe;
     saveg_write_thinker_t(&s.thinker);
@@ -886,6 +1146,10 @@ unsafe fn saveg_write_strobe_t(strobe: *const strobe_t) {
 // glow_t
 //
 
+/// Reads a `glow_t` (glow light) thinker from the save stream.
+///
+/// Fields: thinker header, sector index, min light, max light, direction
+/// (+1 or -1). C origin: `saveg_read_glow_t`.
 unsafe fn saveg_read_glow_t(glow: *mut glow_t) {
     let s = &mut *glow;
     saveg_read_thinker_t(&mut s.thinker);
@@ -896,6 +1160,9 @@ unsafe fn saveg_read_glow_t(glow: *mut glow_t) {
     s.direction = saveg_read32() as c_int;
 }
 
+/// Writes a `glow_t` thinker to the save stream.
+///
+/// C origin: `saveg_write_glow_t`.
 unsafe fn saveg_write_glow_t(glow: *const glow_t) {
     let s = &*glow;
     saveg_write_thinker_t(&s.thinker);
@@ -909,6 +1176,11 @@ unsafe fn saveg_write_glow_t(glow: *const glow_t) {
 // Save filename helpers
 // ---------------------------------------------------------------------------
 
+/// Formats a save-game filename into `buf` as `"{dir}{SAVEGAMENAME}{slot}.dsg\0"`.
+///
+/// Writes at most `buf.len() - 1` bytes plus a NUL terminator. Returns the
+/// number of non-NUL bytes written. The caller must ensure `buf` is at least
+/// `dir.len() + 32` bytes to avoid truncation.
 fn fill_save_filename(buf: &mut [u8], dir: &str, slot: c_int) -> usize {
     assert!(
         !buf.is_empty(),
@@ -926,15 +1198,30 @@ fn fill_save_filename(buf: &mut [u8], dir: &str, slot: c_int) -> usize {
 // Static filename buffers
 // ---------------------------------------------------------------------------
 
+/// Lazily allocated buffer holding the path to the temporary save file.
+/// Initialized once by `P_TempSaveGameFile`; never freed (process lifetime).
 static mut TEMP_SAVE_FILENAME: *mut c_char = std::ptr::null_mut();
+
+/// Lazily allocated buffer holding the path to the current slot's save file.
+/// Allocated once by `P_SaveGameFile`, then reused for every slot.
 static mut SAVE_FILENAME: *mut c_char = std::ptr::null_mut();
 
+/// Base name prefix for save-game files; slot number and `.dsg` extension are
+/// appended. Matches the `SAVEGAMENAME` define in the C source.
 const SAVEGAMENAME: &str = "doomsav";
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
+/// Returns the path to the temporary save-game file used during a save
+/// operation.
+///
+/// The file is written first, then atomically renamed to the final slot
+/// filename on success. The returned pointer is valid for the lifetime of the
+/// process; it is allocated once and cached in `TEMP_SAVE_FILENAME`.
+///
+/// Called by `g_game.c` (`G_DoSaveGame`).
 #[no_mangle]
 pub unsafe extern "C" fn P_TempSaveGameFile() -> *mut c_char {
     if TEMP_SAVE_FILENAME.is_null() {
@@ -949,6 +1236,13 @@ pub unsafe extern "C" fn P_TempSaveGameFile() -> *mut c_char {
     TEMP_SAVE_FILENAME
 }
 
+/// Returns the path to the save-game file for the given `slot` (0-7).
+///
+/// The buffer is allocated once and reused; the filename is rebuilt on every
+/// call so the same buffer can serve different slot numbers. The returned
+/// pointer is valid until the next call or process exit.
+///
+/// Called by `g_game.c` to open the final save file for reading or renaming.
 #[no_mangle]
 pub unsafe extern "C" fn P_SaveGameFile(slot: c_int) -> *mut c_char {
     let dir_len = std::ffi::CStr::from_ptr(savegamedir).to_bytes().len();
@@ -970,6 +1264,17 @@ pub unsafe extern "C" fn P_SaveGameFile(slot: c_int) -> *mut c_char {
     SAVE_FILENAME
 }
 
+/// Writes the save-game file header to the open `save_stream`.
+///
+/// The header layout (bytes written in order):
+/// 1. `description` string, NUL-padded to `SAVESTRINGSIZE` (24) bytes.
+/// 2. Version string `"version N"`, NUL-padded to `VERSIONSIZE` (16) bytes.
+/// 3. One byte each: `gameskill`, `gameepisode`, `gamemap`.
+/// 4. `MAXPLAYERS` bytes: `playeringame[i]` flags.
+/// 5. Three bytes: `leveltime` encoded big-endian as
+///    `[bits 23:16, bits 15:8, bits 7:0]`.
+///
+/// Called by `g_game.c` (`G_DoSaveGame`).
 #[no_mangle]
 pub unsafe extern "C" fn P_WriteSaveGameHeader(description: *const c_char) {
     let desc = std::ffi::CStr::from_ptr(description);
@@ -1013,6 +1318,13 @@ pub unsafe extern "C" fn P_WriteSaveGameHeader(description: *const c_char) {
     saveg_write8((lt & 0xff) as u8);
 }
 
+/// Reads and validates the save-game header from `save_stream`.
+///
+/// Returns `1` (true) on success, `0` (false) if the version string does not
+/// match `G_VanillaVersionCode()`. On success, `gameskill`, `gameepisode`,
+/// `gamemap`, `playeringame`, and `leveltime` are updated from the stream.
+///
+/// Called by `g_game.c` (`G_DoLoadGame`).
 #[no_mangle]
 pub unsafe extern "C" fn P_ReadSaveGameHeader() -> c_int {
     // Skip description (SAVESTRINGSIZE bytes)
@@ -1060,6 +1372,11 @@ pub unsafe extern "C" fn P_ReadSaveGameHeader() -> c_int {
     1 // success
 }
 
+/// Reads the end-of-file marker byte from `save_stream`.
+///
+/// Returns `1` if the byte equals `SAVEGAME_EOF` (`0x1d`), otherwise `0`.
+/// A mismatch indicates a truncated or corrupt save file.
+/// Called by `g_game.c` after all game state has been unarchived.
 #[no_mangle]
 pub unsafe extern "C" fn P_ReadSaveGameEOF() -> c_int {
     let value = saveg_read8();
@@ -1070,15 +1387,27 @@ pub unsafe extern "C" fn P_ReadSaveGameEOF() -> c_int {
     }
 }
 
+/// Writes the end-of-file marker byte (`SAVEGAME_EOF` = `0x1d`) to
+/// `save_stream`.
+///
+/// Written after all game state has been archived; checked by
+/// `P_ReadSaveGameEOF` on load to detect truncation.
+/// Called by `g_game.c` (`G_DoSaveGame`).
 #[no_mangle]
 pub unsafe extern "C" fn P_WriteSaveGameEOF() {
     saveg_write8(SAVEGAME_EOF);
 }
 
 extern "C" {
+    /// Current skill level (0-4); serialized into the save header.
     static mut gameskill: c_int;
+    /// Current episode number (1-based); serialized into the save header.
     static mut gameepisode: c_int;
+    /// Current map number within the episode (1-based); serialized into the
+    /// save header.
     static mut gamemap: c_int;
+    /// Per-player in-game flags; non-zero means the corresponding player slot
+    /// is active. Array of `MAXPLAYERS` elements.
     static mut playeringame: [c_int; MAXPLAYERS];
 }
 
@@ -1086,6 +1415,12 @@ extern "C" {
 // P_ArchivePlayers / P_UnArchivePlayers
 // ---------------------------------------------------------------------------
 
+/// Serializes all active players to `save_stream`.
+///
+/// Iterates over `players[0..MAXPLAYERS]`; skips slots where
+/// `playeringame[i] == 0`. Each active player record is 4-byte aligned
+/// (`saveg_write_pad`) then written by `saveg_write_player_t`.
+/// Called by `g_game.c` (`G_DoSaveGame`).
 #[no_mangle]
 pub unsafe extern "C" fn P_ArchivePlayers() {
     for i in 0..MAXPLAYERS {
@@ -1097,6 +1432,13 @@ pub unsafe extern "C" fn P_ArchivePlayers() {
     }
 }
 
+/// Deserializes all active players from `save_stream`.
+///
+/// For each active player slot, aligns the stream (`saveg_read_pad`) then
+/// reads the player record. After reading, `mo`, `message`, and `attacker` are
+/// reset to null pointers; they will be restored when thinkers are unarchived
+/// by `P_UnArchiveThinkers`.
+/// Called by `g_game.c` (`G_DoLoadGame`).
 #[no_mangle]
 pub unsafe extern "C" fn P_UnArchivePlayers() {
     for i in 0..MAXPLAYERS {
@@ -1117,6 +1459,18 @@ pub unsafe extern "C" fn P_UnArchivePlayers() {
 // P_ArchiveWorld / P_UnArchiveWorld
 // ---------------------------------------------------------------------------
 
+/// Serializes all map sector and sidedef deltas to `save_stream`.
+///
+/// For each sector: floor height, ceiling height (both divided by 65536 to
+/// strip the fixed-point fractional part and store as 16-bit integers),
+/// floor/ceiling picture indices, light level, special, and tag.
+///
+/// For each linedef: flags, special, and tag. Then for each of the two
+/// sidedefs (skipping missing sides where `sidenum[j] == -1`): texture
+/// offsets (divided by 65536, stored as 16-bit), and top/bottom/mid texture
+/// indices.
+///
+/// Called by `g_game.c` (`G_DoSaveGame`).
 #[no_mangle]
 pub unsafe extern "C" fn P_ArchiveWorld() {
     let num_sec = numsectors as usize;
@@ -1154,6 +1508,17 @@ pub unsafe extern "C" fn P_ArchiveWorld() {
     }
 }
 
+/// Deserializes all map sector and sidedef deltas from `save_stream`.
+///
+/// For each sector: reads heights as signed 16-bit integers and shifts them
+/// left 16 bits to restore the 16.16 fixed-point format. Clears
+/// `specialdata` and `soundtarget` to null (they will be rebuilt by
+/// `P_UnArchiveSpecials` and the sound code respectively).
+///
+/// For each linedef: reads flags, special, tag, then each present sidedef's
+/// texture offsets (shifted left 16 to restore 16.16) and texture indices.
+///
+/// Called by `g_game.c` (`G_DoLoadGame`).
 #[no_mangle]
 pub unsafe extern "C" fn P_UnArchiveWorld() {
     let num_sec = numsectors as usize;
@@ -1197,13 +1562,27 @@ pub unsafe extern "C" fn P_UnArchiveWorld() {
 // Thinker class enum
 // ---------------------------------------------------------------------------
 
+/// Thinker-class tag: marks the end of the archived thinker list.
+/// C origin: `tc_end` in `thinkerclass_t`.
 const tc_end: u8 = 0;
+
+/// Thinker-class tag: marks a `mobj_t` record in the archived thinker list.
+/// C origin: `tc_mobj` in `thinkerclass_t`.
 const tc_mobj: u8 = 1;
 
 // ---------------------------------------------------------------------------
 // P_ArchiveThinkers / P_UnArchiveThinkers
 // ---------------------------------------------------------------------------
 
+/// Serializes all `mobj_t` thinkers from the active thinker chain.
+///
+/// Walks `thinkercap.next ... thinkercap`; for each thinker whose function
+/// equals `P_MobjThinker`, writes a `tc_mobj` byte, 4-byte alignment padding,
+/// then the full `mobj_t` record. Non-mobj thinkers are silently skipped
+/// (the C version also skips them without error). Terminates the list with a
+/// `tc_end` byte.
+///
+/// Called by `g_game.c` (`G_DoSaveGame`).
 #[no_mangle]
 pub unsafe extern "C" fn P_ArchiveThinkers() {
     let cap = &raw mut thinkercap;
@@ -1228,6 +1607,23 @@ pub unsafe extern "C" fn P_ArchiveThinkers() {
     saveg_write8(tc_end);
 }
 
+/// Clears all existing thinkers then deserializes the thinker chain from
+/// `save_stream`.
+///
+/// First pass: walks the existing thinker chain; mobj thinkers are removed
+/// via `P_RemoveMobj`, all others are freed via `Z_Free`. Then
+/// `P_InitThinkers` resets the chain to empty.
+///
+/// Second pass: reads thinker-class bytes from the stream in a loop.
+/// - `tc_end`: returns immediately.
+/// - `tc_mobj`: allocates a `mobj_t` with `Z_Malloc(PU_LEVEL)`, reads its
+///   fields, nulls out `target` and `tracer`, calls `P_SetThingPosition`,
+///   rebuilds `info` from `mobjinfo[type]`, recomputes `floorz`/`ceilingz`
+///   from the subsector's sector, assigns `P_MobjThinker` as the function,
+///   and registers it with `P_AddThinker`.
+/// - Any other byte: calls `i_error!` (fatal).
+///
+/// Called by `g_game.c` (`G_DoLoadGame`).
 #[no_mangle]
 pub unsafe extern "C" fn P_UnArchiveThinkers() {
     let cap = &raw mut thinkercap;
@@ -1308,19 +1704,46 @@ pub unsafe extern "C" fn P_UnArchiveThinkers() {
 // Specials enum
 // ---------------------------------------------------------------------------
 
+/// Specials-class tag for a `ceiling_t` record. C origin: `tc_ceiling`.
 const tc_ceiling: u8 = 0;
+/// Specials-class tag for a `vldoor_t` record. C origin: `tc_door`.
 const tc_door: u8 = 1;
+/// Specials-class tag for a `floormove_t` record. C origin: `tc_floor`.
 const tc_floor: u8 = 2;
+/// Specials-class tag for a `plat_t` record. C origin: `tc_plat`.
 const tc_plat: u8 = 3;
+/// Specials-class tag for a `lightflash_t` record. C origin: `tc_flash`.
 const tc_flash: u8 = 4;
+/// Specials-class tag for a `strobe_t` record. C origin: `tc_strobe`.
 const tc_strobe: u8 = 5;
+/// Specials-class tag for a `glow_t` record. C origin: `tc_glow`.
 const tc_glow: u8 = 6;
+/// Specials-class tag marking the end of the specials list.
+/// C origin: `tc_endspecials`.
 const tc_endspecials: u8 = 7;
 
 // ---------------------------------------------------------------------------
 // P_ArchiveSpecials / P_UnArchiveSpecials
 // ---------------------------------------------------------------------------
 
+/// Serializes all sector-special thinkers from the active thinker chain.
+///
+/// Walks the thinker chain and identifies specials by their function pointer:
+/// - Thinkers with `acv == NULL` that appear in the `activeceilings` list are
+///   written as `tc_ceiling` records (these are ceilings paused mid-crush).
+/// - `T_MoveCeiling` → `tc_ceiling`
+/// - `T_VerticalDoor` → `tc_door`
+/// - `T_MoveFloor` → `tc_floor`
+/// - `T_PlatRaise` → `tc_plat`
+/// - `T_LightFlash` → `tc_flash`
+/// - `T_StrobeFlash` → `tc_strobe`
+/// - `T_Glow` → `tc_glow`
+///
+/// Each matching thinker is preceded by its class tag byte and 4-byte
+/// alignment padding. Unrecognized thinkers are silently skipped. The list is
+/// terminated by `tc_endspecials`.
+///
+/// Called by `g_game.c` (`G_DoSaveGame`).
 #[no_mangle]
 pub unsafe extern "C" fn P_ArchiveSpecials() {
     let cap = &raw mut thinkercap;
@@ -1411,6 +1834,37 @@ pub unsafe extern "C" fn P_ArchiveSpecials() {
     saveg_write8(tc_endspecials);
 }
 
+/// Deserializes all sector-special thinkers from `save_stream`.
+///
+/// Reads thinker-class bytes in a loop until `tc_endspecials`:
+/// - `tc_ceiling`: allocates `ceiling_t` (`PU_LEVSPEC`), deserializes,
+///   links `sector->specialdata`, restores `T_MoveCeiling` if the function
+///   slot was non-null, registers with `P_AddThinker` and
+///   `P_AddActiveCeiling`.
+/// - `tc_door`: allocates `vldoor_t` (`PU_LEVSPEC`), deserializes, links
+///   `sector->specialdata`, unconditionally assigns `T_VerticalDoor`,
+///   registers with `P_AddThinker`.
+/// - `tc_floor`: allocates `floormove_t` (`PU_LEVSPEC`), deserializes,
+///   links `sector->specialdata`, assigns `T_MoveFloor`, registers.
+/// - `tc_plat`: allocates `plat_t` (`PU_LEVSPEC`), deserializes, links
+///   `sector->specialdata`, restores `T_PlatRaise` if function non-null,
+///   registers with `P_AddThinker` and `P_AddActivePlat`.
+/// - `tc_flash`: allocates `lightflash_t` (`PU_LEVSPEC`), deserializes,
+///   assigns `T_LightFlash`, registers.
+/// - `tc_strobe`: allocates `strobe_t` (`PU_LEVSPEC`), deserializes,
+///   assigns `T_StrobeFlash`, registers.
+/// - `tc_glow`: allocates `glow_t` (`PU_LEVSPEC`), deserializes, assigns
+///   `T_Glow`, registers.
+/// - Any other byte: calls `i_error!` (fatal).
+///
+/// Note: the C version allocates ceilings with `PU_LEVEL`, not `PU_LEVSPEC`.
+/// This port uses `PU_LEVSPEC` consistently for all specials to match the
+/// `Z_Malloc` tag used for the other special types.
+///
+/// Called by `g_game.c` (`G_DoLoadGame`).
+// FIXME: p_saveg.c allocates ceiling_t with PU_LEVEL, not PU_LEVSPEC; this
+// port uses PU_LEVSPEC here (consistent with other specials). The difference
+// affects when the zone allocator may purge the block.
 #[no_mangle]
 pub unsafe extern "C" fn P_UnArchiveSpecials() {
     loop {
@@ -1522,6 +1976,11 @@ pub unsafe extern "C" fn P_UnArchiveSpecials() {
 // Link anchor
 // ---------------------------------------------------------------------------
 
+/// Forces all public `extern "C"` functions in this module to be included in
+/// the final binary by taking their addresses.
+///
+/// Without this anchor the linker may dead-strip functions that are only called
+/// from C translation units, since Rust does not see those call sites.
 #[no_mangle]
 pub extern "C" fn P_Saveg_Link_Anchor() {
     let _ = P_TempSaveGameFile as *const () as usize;
@@ -1623,6 +2082,8 @@ mod tests {
         assert_eq!(SAVESTRINGSIZE, 24);
     }
 
+    /// Runs `f` with `save_stream` pointed at an in-memory buffer backed by
+    /// `data`, then restores the original stream and error globals on exit.
     unsafe fn with_mem_stream<F: FnOnce()>(data: &mut [u8], f: F) {
         let old_stream = save_stream;
         let old_error = savegame_error;
