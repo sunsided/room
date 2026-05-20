@@ -5,6 +5,14 @@
 //! attacks (`P_AimLineAttack`, `P_LineAttack`), the Use action
 //! (`P_UseLines`), radius splash damage (`P_RadiusAttack`), and sector-height
 //! change propagation (`P_ChangeSector`).
+//!
+//! ## Rust-vs-C differences
+//!
+//! The `spechit` array is declared with 20 slots (`MAXSPECIALCROSS_OVERFLOW`)
+//! rather than the vanilla Doom value of 8 (`MAXSPECIALCROSS`). `SpechitOverrun`
+//! emulates the original buffer-overrun behavior when more than 8 specials are
+//! crossed in one move, writing into adjacent globals in the same order as the
+//! vanilla binary - controlled by the `-spechit` command-line argument.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
