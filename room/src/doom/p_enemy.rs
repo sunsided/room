@@ -1,6 +1,17 @@
 //! Rust port of vendor/doomgeneric/p_enemy.c.
 //!
-//! Enemy thinking, AI, and action pointer functions.
+//! Implements monster AI, movement, and all action-pointer functions (`A_*`)
+//! that the state machine invokes via function pointers stored in `info.rs`.
+//! This covers monster pathfinding (`P_NewChaseDir`, `P_Move`, `P_TryWalk`),
+//! target acquisition (`P_LookForPlayers`, `P_NoiseAlert`), melee/missile
+//! range checks, individual monster attacks, boss-death special actions, and
+//! the icon-of-sin (brain) spawn logic.
+//!
+//! Rust-vs-C differences: `dirtype_t` is a plain `c_int` alias rather than
+//! a C enum; game-mode/version/skill constants are local `c_int` consts
+//! rather than imported enums; `Boolean` replaces the C `boolean` typedef
+//! throughout; raw pointer casts are explicit where C used implicit
+//! `(mobj_t *)` coercions.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -9,13 +20,20 @@ use std::os::raw::{c_int, c_uint};
 
 use crate::doom::sounds::Sfx;
 use crate::types::Boolean;
+/// C `size_t` equivalent; used for buffer sizes matching the C ABI.
 type size_t = usize;
+/// Binary-angle measurement type (`u32`); a full circle is `2^32` units.
 type angle_t = c_uint;
+/// State index type mirroring C `statenum_t`; indexes the `states` table in `info.rs`.
 type statenum_t = c_int;
+/// C `short` integer type alias.
 type c_short = i16;
+/// Map-object type identifier; mirrors C `mobjtype_t` (index into `mobjinfo` table).
 type mobjtype_t = c_int;
+/// Alias for `MobjInfo`; mirrors C `mobjinfo_t` typedef.
 type mobjinfo_t = MobjInfo;
 
+/// Returns the absolute value of `x`; local substitute for `stdlib.h` `abs` used in `p_enemy.c`.
 #[inline]
 fn abs(x: c_int) -> c_int {
     if x < 0 {
@@ -59,49 +77,72 @@ use crate::doom::p_switch::P_UseSpecialLine;
 use crate::doom::p_telept::mobj_t;
 use crate::doom::tables::{ANG180, ANG270, ANG90, ANGLETOFINESHIFT};
 use crate::i_error;
+/// Alias for the `c_ffi`-module `mobj_t` used in pointer casts when calling C-facing functions
+/// that expect that specific type definition.
 type CffiMobj = crate::doom::c_ffi::mobj_t;
 use crate::doom::p_tick::{thinker_t, thinkercap};
 use crate::doom::r_main::{validcount, R_PointToAngle2};
 use crate::doom::s_sound::S_StartSound;
 use crate::doom::tables::{finecosine, finesine};
 
-// Local constants
+/// Maximum melee attack range in fixed-point units (64 map units); from `p_local.h`.
 const MELEERANGE: c_int = 64 * FRACUNIT;
+/// Maximum missile attack range in fixed-point units (2048 map units); from `p_local.h`.
 const MISSILERANGE: c_int = 32 * 64 * FRACUNIT;
+/// Vertical speed at which floating monsters adjust altitude each tic (4 units/tic).
 const FLOATSPEED: c_int = FRACUNIT * 4;
+/// Maximum radius of any map object (32 units), used as a blockmap search margin.
 const MAXRADIUS: c_int = 32 * FRACUNIT;
 
-// Direction type constants
+/// Eight-direction movement type used by the monster pathfinding code; mirrors C `dirtype_t`.
 type dirtype_t = c_int;
+/// East cardinal direction index (positive X axis).
 const DI_EAST: c_int = 0;
+/// Northeast diagonal direction index.
 const DI_NORTHEAST: c_int = 1;
+/// North cardinal direction index (positive Y axis).
 const DI_NORTH: c_int = 2;
+/// Northwest diagonal direction index.
 const DI_NORTHWEST: c_int = 3;
+/// West cardinal direction index (negative X axis).
 const DI_WEST: c_int = 4;
+/// Southwest diagonal direction index.
 const DI_SOUTHWEST: c_int = 5;
+/// South cardinal direction index (negative Y axis).
 const DI_SOUTH: c_int = 6;
+/// Southeast diagonal direction index.
 const DI_SOUTHEAST: c_int = 7;
+/// Sentinel value meaning the monster has no current movement direction.
 const DI_NODIR: c_int = 8;
+/// Total number of direction values including `DI_NODIR`.
+#[allow(dead_code)]
 const NUMDIRS: c_int = 9;
 
-// Game version constants
+/// Minimum game version that introduced Ultimate Doom episode logic; mirrors `exe_ultimate` from `doomfeatures.h`.
 const exe_ultimate: c_int = 6;
 
-// Game mode constants
+/// Game mode value for Doom II (commercial); mirrors `commercial` from `doomdef.h`.
 const commercial: c_int = 2;
 
-// Skill constants
+/// Skill level index for Nightmare difficulty; mirrors `sk_nightmare` from `doomdef.h`.
 const sk_nightmare: c_int = 4;
+/// Skill level index for Easy (Hey Not Too Rough) difficulty; mirrors `sk_easy` from `doomdef.h`.
 const sk_easy: c_int = 1;
 
-// Floor/door type constants
+/// `EV_DoFloor` floor type: lower floor to the lowest adjacent floor; mirrors `lowerFloorToLowest`.
 const lowerFloorToLowest: c_int = 5;
+/// `EV_DoFloor` floor type: raise floor to nearest texture height; mirrors `raiseToTexture`.
 const raiseToTexture: c_int = 8;
+/// `EV_DoDoor` door type: blaze-open (fast open); mirrors `vld_blazeOpen`.
 const vld_blazeOpen: c_int = 5;
+/// `EV_DoDoor` door type: normal open; mirrors `vld_open`.
 const vld_open: c_int = 0;
 
+/// `mobjtype_t` index for the player map object; mirrors `MT_PLAYER` from `info.h`.
 const MT_PLAYER: c_int = 0;
+/// Angular spread (ANG90/8) used between Mancubus fire balls; mirrors `FATSPREAD` from `p_enemy.c`.
 const FATSPREAD: c_int = ANG90 as c_int / 8;
+/// Lost Soul charge speed in fixed-point units per tic (20 map units/tic); mirrors `SKULLSPEED`.
 const SKULLSPEED: c_int = 20 * FRACUNIT;
 
 use crate::doom::d_main::fastparm;
@@ -110,9 +151,14 @@ use crate::doom::p_doors::EV_DoDoor;
 use crate::doom::p_floor::EV_DoFloor;
 use crate::doom::p_pspr::A_ReFire;
 
-// Type alias for cross-module pointer cast (all #[repr(C)] identical layouts).
+/// Type alias used when casting a `line_t` pointer for `EV_DoDoor`/`EV_DoFloor` calls that
+/// require the `p_lights` module's `line_t` definition; all `line_t` variants share an
+/// identical `#[repr(C)]` layout so the cast is safe.
 type PLineThing = crate::doom::p_lights::line_t;
 
+/// Lookup table mapping each of the eight directions to its 180-degree opposite, with
+/// `DI_NODIR` mapping to `DI_NODIR`; indexed by `dirtype_t` in `P_NewChaseDir`.
+/// Has C linkage (`#[no_mangle]`); referenced from `p_enemy.c` (C test harness).
 #[no_mangle]
 pub static mut opposite: [dirtype_t; 9] = [
     DI_WEST,
@@ -125,10 +171,30 @@ pub static mut opposite: [dirtype_t; 9] = [
     DI_NORTHWEST,
     DI_NODIR,
 ];
+/// Lookup table mapping the two-bit index `(deltay<0)<<1 | (deltax>0)` to a diagonal
+/// `dirtype_t`; used by `P_NewChaseDir` to prefer diagonal movement toward the target.
+/// Has C linkage (`#[no_mangle]`); referenced from `p_enemy.c` (C test harness).
 #[no_mangle]
 pub static mut diags: [dirtype_t; 4] = [DI_NORTHWEST, DI_NORTHEAST, DI_SOUTHWEST, DI_SOUTHEAST];
+/// The monster or player whose noise triggered the current `P_RecursiveSound` traversal;
+/// written by `P_NoiseAlert`, read by `P_RecursiveSound` to stamp each sector.
+/// Has C linkage (`#[no_mangle]`); referenced directly from `p_enemy.c`.
 #[no_mangle]
 pub static mut soundtarget: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+/// Recursively floods sound through adjacent sectors, stamping each with `soundtarget`.
+///
+/// Traversal stops at sectors already visited this frame (`validcount`) and at
+/// two-sided linedefs with the `ML_SOUNDBLOCK` flag - the block flag allows one
+/// crossing (incrementing `soundblocks` from 0 to 1) but never two, so sound
+/// cannot pass through two consecutive blocking walls.
+///
+/// Called by `P_NoiseAlert` and recursively by itself.
+///
+/// # Safety
+///
+/// `sec` must point to a valid, live `sector_t`. All sector/sidedef/linedef
+/// pointers reachable from `sec` must also be valid. `soundtarget` must be null
+/// or point to a valid `mobj_t`. This function is called from C.
 #[no_mangle]
 pub unsafe extern "C" fn P_RecursiveSound(sec: *mut sector_t, soundblocks: c_int) {
     let mut i: c_int;
@@ -169,12 +235,32 @@ pub unsafe extern "C" fn P_RecursiveSound(sec: *mut sector_t, soundblocks: c_int
         i += 1;
     }
 }
+/// Alerts monsters in earshot that a target (typically the player) has made noise.
+///
+/// Sets the global `soundtarget`, increments `validcount` to mark a new traversal
+/// frame, then calls `P_RecursiveSound` starting from the sector containing `emmiter`.
+/// Called by `p_inter.rs` and `p_map.rs` whenever a shot, explosion, or door fires.
+///
+/// # Safety
+///
+/// `target` and `emmiter` must both be non-null, valid `mobj_t` pointers. `emmiter`
+/// must have a valid `subsector` with a valid `sector`. This function is called from C.
 #[no_mangle]
 pub unsafe extern "C" fn P_NoiseAlert(target: *mut mobj_t, emmiter: *mut mobj_t) {
     soundtarget = target;
     validcount += 1;
     P_RecursiveSound((*(*emmiter).subsector).sector as *mut sector_t, 0 as c_int);
 }
+/// Returns `TRUE` when `actor`'s target is within melee striking range and line of sight.
+///
+/// Range test: approximate distance must be less than `MELEERANGE - 20 + target.radius`.
+/// Returns `FALSE` immediately if `actor->target` is null, if the distance check fails,
+/// or if `P_CheckSight` reports no clear line of sight.
+///
+/// # Safety
+///
+/// `actor` must be a valid, non-null `mobj_t`. If `actor->target` is non-null it must
+/// also point to a valid `mobj_t` with a valid `info` pointer. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn P_CheckMeleeRange(actor: *mut mobj_t) -> Boolean {
     if (*actor).target.is_null() {
@@ -190,6 +276,21 @@ pub unsafe extern "C" fn P_CheckMeleeRange(actor: *mut mobj_t) -> Boolean {
     }
     Boolean::TRUE
 }
+/// Returns `TRUE` when `actor` is permitted to fire a missile at its current target.
+///
+/// Checks line of sight first; immediately grants permission if the actor was just hit
+/// (`MF_JUSTHIT`, clears the flag). Blocks attacks during `reactiontime` countdown.
+/// Distance is scaled to a 0-200 range and compared against a random threshold so
+/// closer targets are more reliably hit. Per-monster special cases:
+/// - Archvile (`MT_VILE`): blocked beyond 14*64 units.
+/// - Revenant (`MT_UNDEAD`): blocked below 196 units (prefers melee); range halved.
+/// - Cyberdemon, Spider Mastermind, Lost Soul: effective range halved and capped at 160
+///   (Cyberdemon) or 200 (others).
+///
+/// # Safety
+///
+/// `actor` must be non-null and have a valid `target`, `info`, and `reactiontime`.
+/// Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn P_CheckMissileRange(actor: *mut mobj_t) -> Boolean {
     let mut dist: fixed_t;
@@ -240,6 +341,9 @@ pub unsafe extern "C" fn P_CheckMissileRange(actor: *mut mobj_t) -> Boolean {
     }
     Boolean::TRUE
 }
+/// Per-direction X-axis speed multiplier table indexed by `dirtype_t` (0=East..7=Southeast).
+/// Each entry is a fixed-point unit (FRACUNIT or ~0.718*FRACUNIT for diagonals).
+/// Has C linkage (`#[no_mangle]`); referenced from `p_enemy.c` (C test harness).
 #[no_mangle]
 pub static mut xspeed: [fixed_t; 8] = [
     FRACUNIT,
@@ -251,6 +355,9 @@ pub static mut xspeed: [fixed_t; 8] = [
     0 as c_int,
     47000 as c_int,
 ];
+/// Per-direction Y-axis speed multiplier table indexed by `dirtype_t` (0=East..7=Southeast).
+/// Each entry is a fixed-point unit (FRACUNIT or ~0.718*FRACUNIT for diagonals).
+/// Has C linkage (`#[no_mangle]`); referenced from `p_enemy.c` (C test harness).
 #[no_mangle]
 pub static mut yspeed: [fixed_t; 8] = [
     0 as c_int,
@@ -262,6 +369,22 @@ pub static mut yspeed: [fixed_t; 8] = [
     -FRACUNIT,
     -47000 as c_int,
 ];
+/// Attempts to advance `actor` one step in its current `movedir`.
+///
+/// Returns `FALSE` if `movedir` is `DI_NODIR`. Computes the target position using
+/// `xspeed`/`yspeed` scaled by the actor's `info->speed`, then calls `P_TryMove`.
+/// On success, clears `MF_INFLOAT` and snaps non-floating actors to the floor.
+/// On failure:
+/// - If the actor has `MF_FLOAT` and `floatok` is set, adjusts Z by `FLOATSPEED`
+///   toward `tmfloorz` and sets `MF_INFLOAT`, returning `TRUE`.
+/// - Otherwise iterates `spechit` in reverse, calling `P_UseSpecialLine` on each;
+///   returns `TRUE` if any special line was successfully activated.
+///
+/// # Safety
+///
+/// `actor` must be a non-null, valid `mobj_t` with valid `info`. All globals
+/// `floatok`, `tmfloorz`, `numspechit`, and `spechit` must be consistent with the
+/// most recent `P_TryMove` call. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn P_Move(actor: *mut mobj_t) -> Boolean {
     let mut ld: *mut line_t;
@@ -319,6 +442,15 @@ pub unsafe extern "C" fn P_Move(actor: *mut mobj_t) -> Boolean {
     }
     Boolean::TRUE
 }
+/// Attempts to move `actor` in its current direction; on success randomises `movecount`.
+///
+/// Calls `P_Move`; returns `FALSE` immediately if blocked. On success sets
+/// `actor->movecount` to a random value in 0..=15, giving the monster a random
+/// number of tics before it reconsiders its direction.
+///
+/// # Safety
+///
+/// `actor` must be a non-null, valid `mobj_t`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn P_TryWalk(actor: *mut mobj_t) -> Boolean {
     if P_Move(actor).is_false() {
@@ -327,6 +459,22 @@ pub unsafe extern "C" fn P_TryWalk(actor: *mut mobj_t) -> Boolean {
     (*actor).movecount = P_Random() & 15 as c_int;
     Boolean::TRUE
 }
+/// Selects a new movement direction for `actor` based on the vector to its target.
+///
+/// Algorithm (mirrors `P_NewChaseDir` in `p_enemy.c`):
+/// 1. Compute axis-aligned directions toward the target (`d[1]`, `d[2]`).
+/// 2. Prefer the diagonal that combines both axes; try it first if not a U-turn.
+/// 3. With 20% probability (or if |dy|>|dx|) swap x/y preference.
+/// 4. Filter out the reverse direction and try each axis individually.
+/// 5. Fall back to continuing the previous direction.
+/// 6. Last resort: sweep all eight directions (randomly forward or backward).
+/// 7. If still blocked, set `movedir = DI_NODIR`.
+///
+/// Panics (via `i_error!`) if `actor->target` is null.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid, non-null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn P_NewChaseDir(actor: *mut mobj_t) {
     let mut d: [dirtype_t; 3] = [DI_EAST; 3];
@@ -422,6 +570,19 @@ pub unsafe extern "C" fn P_NewChaseDir(actor: *mut mobj_t) {
     }
     (*actor).movedir = DI_NODIR as c_int;
 }
+/// Scans active players to find a visible target for `actor`; returns `TRUE` if one is found.
+///
+/// Iterates up to four player slots starting from `actor->lastlook`, cycling with `& 3`.
+/// Stops after examining two live players or looping back to the starting slot.
+/// Skips dead players and players with no line of sight.
+/// If `allaround` is `FALSE`, also skips players that are more than 90 degrees behind
+/// the actor (angle difference in ANG90..ANG270) unless they are within melee range.
+/// On success sets `actor->target` to the found player's map object.
+///
+/// # Safety
+///
+/// `actor` must be a non-null, valid `mobj_t`. The global `players` array and
+/// `playeringame` flags must be consistent. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn P_LookForPlayers(actor: *mut mobj_t, allaround: Boolean) -> Boolean {
     let mut c: c_int;
@@ -473,6 +634,17 @@ pub unsafe extern "C" fn P_LookForPlayers(actor: *mut mobj_t, allaround: Boolean
         (*actor).lastlook = ((*actor).lastlook + 1 as c_int) & 3 as c_int;
     }
 }
+/// Action function for Commander Keen's death (Doom II map 32 special).
+///
+/// Calls `A_Fall` to make the corpse non-solid, then scans all thinkers; if any other
+/// Keen of the same type is still alive the function returns early. When the last Keen
+/// dies it synthesises a `line_t` with `tag = 666` and calls `EV_DoDoor` with
+/// `vld_open` to open the tagged door, allowing exit from the secret level.
+///
+/// # Safety
+///
+/// `mo` must be a non-null, valid `mobj_t`. The thinker list (`thinkercap`) must be
+/// consistent. Called from C via the state-machine action pointer.
 #[no_mangle]
 pub unsafe extern "C" fn A_KeenDie(mo: *mut mobj_t) {
     let mut th: *mut thinker_t;
@@ -519,6 +691,18 @@ pub unsafe extern "C" fn A_KeenDie(mo: *mut mobj_t) {
     junk.tag = 666 as c_short;
     EV_DoDoor(&mut junk as *mut line_t as *mut PLineThing, vld_open);
 }
+/// State-machine action: monster idle look, waiting to spot a player.
+///
+/// Resets `threshold` to 0 so any hit will wake it. First checks the sector's
+/// `soundtarget`; if a shootable target is present the monster wakes immediately
+/// (ambush monsters additionally require line of sight). Falls back to
+/// `P_LookForPlayers`. On waking, plays the monster's `seesound` (randomised for
+/// Former Human and Demon variants) and transitions to `seestate`.
+///
+/// # Safety
+///
+/// `actor` must be a non-null, valid `mobj_t` with valid `subsector`, `info`, and
+/// `flags`. Called from C via state-machine action pointer.
 #[no_mangle]
 pub unsafe extern "C" fn A_Look(actor: *mut mobj_t) {
     (*actor).threshold = 0 as c_int;
@@ -559,6 +743,24 @@ pub unsafe extern "C" fn A_Look(actor: *mut mobj_t) {
         (*((*actor).info as *mut MobjInfo)).seestate as statenum_t,
     );
 }
+/// State-machine action: monster actively chases its target and attacks when able.
+///
+/// Each call:
+/// 1. Decrements `reactiontime` if non-zero (initial delay after spawning).
+/// 2. Decrements `threshold` toward zero (persistence on current target).
+/// 3. Snaps `angle` toward the current `movedir` (±ANG90/2 per tic).
+/// 4. If the target is gone/dead, searches for a new player; falls back to `spawnstate`.
+/// 5. If `MF_JUSTATTACKED` is set, clears it and redirects movement (except Nightmare).
+/// 6. Triggers melee attack if in range (`meleestate`).
+/// 7. Triggers missile attack if in range and the cooldown permits (`missilestate`).
+/// 8. In netgame, may switch targets if the current one is out of sight.
+/// 9. Advances movement; calls `P_NewChaseDir` if blocked or `movecount` expired.
+/// 10. Occasionally plays `activesound` (random < 3).
+///
+/// # Safety
+///
+/// `actor` must be a non-null, valid `mobj_t` with valid `info`. All referenced
+/// globals (`gameskill`, `fastparm`, `netgame`) must be initialised. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_Chase(actor: *mut mobj_t) {
     let delta: c_int;
@@ -645,6 +847,15 @@ pub unsafe extern "C" fn A_Chase(actor: *mut mobj_t) {
         );
     }
 }
+/// Turns `actor` to face its `target` and clears the `MF_AMBUSH` flag.
+///
+/// If the target has `MF_SHADOW` (partial invisibility), the facing angle is
+/// perturbed by a random ±21-bit BAM value to simulate aim confusion.
+/// Returns immediately if `actor->target` is null.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_FaceTarget(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
@@ -663,6 +874,14 @@ pub unsafe extern "C" fn A_FaceTarget(actor: *mut mobj_t) {
             .wrapping_add(((P_Random() - P_Random()) << 21 as c_int) as angle_t);
     }
 }
+/// Attack action for the Former Human (Zombieman): single hitscan shot.
+///
+/// Faces the target, aims with `P_AimLineAttack`, plays `sfx_pistol`, then fires one
+/// hitscan ray with horizontal spread of ±20 bits and damage of `(rnd%5+1)*3` (3-15).
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_PosAttack(actor: *mut mobj_t) {
     let mut angle: c_int;
@@ -685,6 +904,14 @@ pub unsafe extern "C" fn A_PosAttack(actor: *mut mobj_t) {
         damage,
     );
 }
+/// Attack action for the Shotgun Guy (Sergeant): three-pellet spread shot.
+///
+/// Plays `sfx_shotgn`, faces the target, aims once, then fires three independent
+/// hitscan rays each with ±20-bit spread and `(rnd%5+1)*3` damage.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_SPosAttack(actor: *mut mobj_t) {
     let mut i: c_int;
@@ -715,6 +942,15 @@ pub unsafe extern "C" fn A_SPosAttack(actor: *mut mobj_t) {
         i += 1;
     }
 }
+/// Attack action for the Heavy Weapon Dude (Chaingunner): single-pellet burst fire.
+///
+/// Plays `sfx_shotgn`, faces the target, aims once, then fires one hitscan ray with
+/// ±20-bit spread and `(rnd%5+1)*3` damage. The state machine calls this repeatedly
+/// each tic to simulate chaingun fire; `A_CPosRefire` decides when to stop.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_CPosAttack(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
@@ -735,6 +971,15 @@ pub unsafe extern "C" fn A_CPosAttack(actor: *mut mobj_t) {
         damage,
     );
 }
+/// Refire check for the Chaingunner: keeps firing unless the target is gone or hidden.
+///
+/// Faces the target. With a 40/256 chance returns early (keeps firing regardless).
+/// Otherwise, if the target is null, dead, or out of sight, transitions back to
+/// `seestate` to stop the burst.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid `info`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_CPosRefire(actor: *mut mobj_t) {
     A_FaceTarget(actor);
@@ -751,6 +996,14 @@ pub unsafe extern "C" fn A_CPosRefire(actor: *mut mobj_t) {
         );
     }
 }
+/// Refire check for the Spider Mastermind: keeps firing unless the target is gone or hidden.
+///
+/// Same logic as `A_CPosRefire` but with a lower 10/256 early-return chance, making the
+/// Spider Mastermind more persistent.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid `info`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_SpidRefire(actor: *mut mobj_t) {
     A_FaceTarget(actor);
@@ -767,6 +1020,11 @@ pub unsafe extern "C" fn A_SpidRefire(actor: *mut mobj_t) {
         );
     }
 }
+/// Attack action for the Arachnotron: launches one `MT_ARACHPLAZ` plasma ball.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_BspiAttack(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
@@ -775,6 +1033,14 @@ pub unsafe extern "C" fn A_BspiAttack(actor: *mut mobj_t) {
     A_FaceTarget(actor);
     P_SpawnMissile(actor, (*actor).target, MT_ARACHPLAZ);
 }
+/// Attack action for the Imp: claw swipe in melee range, fireball at distance.
+///
+/// If in melee range plays `sfx_claw` and deals `(rnd%8+1)*3` damage (3-24).
+/// Otherwise launches a `MT_TROOPSHOT` fireball.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_TroopAttack(actor: *mut mobj_t) {
     let damage: c_int;
@@ -791,6 +1057,13 @@ pub unsafe extern "C" fn A_TroopAttack(actor: *mut mobj_t) {
     }
     P_SpawnMissile(actor, (*actor).target, MT_TROOPSHOT);
 }
+/// Attack action for the Demon (Sarg): melee-only bite dealing `(rnd%10+1)*4` damage (4-40).
+///
+/// Only damages the target when within melee range; no ranged fallback.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_SargAttack(actor: *mut mobj_t) {
     let damage: c_int;
@@ -804,6 +1077,13 @@ pub unsafe extern "C" fn A_SargAttack(actor: *mut mobj_t) {
         P_DamageMobj((*actor).target, actor, actor, damage);
     }
 }
+/// Attack action for the Cacodemon: bite in melee range, fireball at distance.
+///
+/// Melee deals `(rnd%6+1)*10` damage (10-60). Ranged fires `MT_HEADSHOT`.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_HeadAttack(actor: *mut mobj_t) {
     let damage: c_int;
@@ -819,6 +1099,11 @@ pub unsafe extern "C" fn A_HeadAttack(actor: *mut mobj_t) {
     }
     P_SpawnMissile(actor, (*actor).target, MT_HEADSHOT);
 }
+/// Attack action for the Cyberdemon: launches one `MT_ROCKET`.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_CyberAttack(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
@@ -827,6 +1112,14 @@ pub unsafe extern "C" fn A_CyberAttack(actor: *mut mobj_t) {
     A_FaceTarget(actor);
     P_SpawnMissile(actor, (*actor).target, MT_ROCKET);
 }
+/// Attack action for the Baron of Hell / Hell Knight: claw in melee, plasma ball at distance.
+///
+/// Melee plays `sfx_claw` and deals `(rnd%8+1)*10` damage (10-80). Ranged fires
+/// `MT_BRUISERSHOT`.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_BruisAttack(actor: *mut mobj_t) {
     let damage: c_int;
@@ -842,6 +1135,15 @@ pub unsafe extern "C" fn A_BruisAttack(actor: *mut mobj_t) {
     }
     P_SpawnMissile(actor, (*actor).target, MT_BRUISERSHOT);
 }
+/// Attack action for the Revenant: launches a homing `MT_TRACER` missile.
+///
+/// Temporarily raises the actor's Z by 16 units so the missile spawns at shoulder
+/// height. After spawning, advances the missile one tic forward and stores the
+/// current target in `tracer` so `A_Tracer` can home in.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_SkelMissile(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
@@ -855,8 +1157,24 @@ pub unsafe extern "C" fn A_SkelMissile(actor: *mut mobj_t) {
     (*mo).y += (*mo).momy;
     (*mo).tracer = (*actor).target;
 }
+/// Maximum angular correction applied per active tic by `A_Tracer` (approx 11.25 degrees in BAM).
+/// Has C linkage (`#[no_mangle]`); referenced from `p_enemy.c` (C test harness).
 #[no_mangle]
 pub static mut TRACEANGLE: c_int = 0xc000000 as c_int;
+/// Per-tic homing update for the Revenant's tracer missile.
+///
+/// Only executes on tics where `gametic & 3 == 0` (every fourth tic). Each active tic:
+/// 1. Spawns a smoke puff at the current position and a `MT_SMOKE` particle behind it.
+/// 2. Steers the missile angle toward `tracer` by at most `TRACEANGLE` per tic, snapping
+///    exactly when the correction would overshoot.
+/// 3. Recomputes `momx`/`momy` from the new angle and the missile's `info->speed`.
+/// 4. Adjusts `momz` by ±`FRACUNIT/8` to converge on `tracer->z + 40` units.
+/// Returns immediately if `tracer` is null or dead.
+///
+/// # Safety
+///
+/// `actor` must be a non-null, valid `mobj_t` with valid `info`. If `actor->tracer` is
+/// non-null it must point to a valid `mobj_t`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_Tracer(actor: *mut mobj_t) {
     let mut exact: angle_t;
@@ -917,6 +1235,11 @@ pub unsafe extern "C" fn A_Tracer(actor: *mut mobj_t) {
         (*actor).momz += FRACUNIT / 8 as c_int;
     };
 }
+/// Revenant melee wind-up: faces the target and plays the whoosh sound.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_SkelWhoosh(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
@@ -925,6 +1248,13 @@ pub unsafe extern "C" fn A_SkelWhoosh(actor: *mut mobj_t) {
     A_FaceTarget(actor);
     S_StartSound(actor as *mut c_void, Sfx::Skeswg as c_int);
 }
+/// Revenant melee strike: deals `(rnd%10+1)*6` damage (6-60) when in melee range.
+///
+/// Plays `sfx_skepch` on a successful hit.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_SkelFist(actor: *mut mobj_t) {
     let damage: c_int;
@@ -939,14 +1269,32 @@ pub unsafe extern "C" fn A_SkelFist(actor: *mut mobj_t) {
         P_DamageMobj((*actor).target, actor, actor, damage);
     }
 }
+/// The corpse most recently selected by `PIT_VileCheck` for resurrection; written by
+/// `PIT_VileCheck`, read and mutated by `A_VileChase`. Has C linkage.
 #[no_mangle]
 pub static mut corpsehit: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+/// The Archvile actor currently searching for a corpse to raise; set by `A_VileChase`
+/// before calling `P_BlockThingsIterator`. Has C linkage.
 #[no_mangle]
 pub static mut vileobj: *mut mobj_t = std::ptr::null_mut::<mobj_t>();
+/// X coordinate of the position the Archvile is moving toward, used as the centre of the
+/// corpse search radius in `PIT_VileCheck`. Has C linkage.
 #[no_mangle]
 pub static mut viletryx: fixed_t = 0;
+/// Y coordinate of the position the Archvile is moving toward. Has C linkage.
 #[no_mangle]
 pub static mut viletryy: fixed_t = 0;
+/// Blockmap iterator callback: tests whether `thing` is a raiseable corpse near the Archvile.
+///
+/// Returns `TRUE` (keep iterating) unless `thing` is a fully-settled corpse (`MF_CORPSE`,
+/// `tics == -1`) with a valid `raisestate`, within `thing->radius + MT_VILE->radius` of
+/// (`viletryx`, `viletryy`), and with enough headroom to stand at full height. If all
+/// conditions are met, stores `thing` in `corpsehit` and returns `FALSE` to stop iteration.
+///
+/// # Safety
+///
+/// `thing` must be a non-null, valid `mobj_t`. `viletryx`/`viletryy` and `vileobj` must
+/// have been set by `A_VileChase`. Called from C via `P_BlockThingsIterator`.
 #[no_mangle]
 pub unsafe extern "C" fn PIT_VileCheck(thing: *mut mobj_t) -> Boolean {
     if (*thing).flags & MF_CORPSE as c_int == 0 {
@@ -980,6 +1328,16 @@ pub unsafe extern "C" fn PIT_VileCheck(thing: *mut mobj_t) -> Boolean {
     }
     Boolean::FALSE
 }
+/// Chase action for the Archvile: hunts for corpses to resurrect while pursuing the player.
+///
+/// If the actor has a movement direction, computes a look-ahead position and searches the
+/// surrounding blockmap with `PIT_VileCheck`. When a raiseable corpse is found, the Archvile
+/// faces it, enters `S_VILE_HEAL1`, plays the resurrection sound, restores the corpse's
+/// flags/health/height, and clears its `target`. Then falls through to `A_Chase`.
+///
+/// # Safety
+///
+/// `actor` must be non-null with valid `info` and `movedir`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_VileChase(actor: *mut mobj_t) {
     let xl: c_int;
@@ -1048,20 +1406,45 @@ pub unsafe extern "C" fn A_VileChase(actor: *mut mobj_t) {
     }
     A_Chase(actor);
 }
+/// Archvile attack wind-up: plays the attack start sound (`sfx_vilatk`).
+///
+/// # Safety
+///
+/// `actor` must be non-null. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_VileStart(actor: *mut mobj_t) {
     S_StartSound(actor as *mut c_void, Sfx::Vilatk as c_int);
 }
+/// Archvile fire start: plays the flame start sound then positions the fire object.
+///
+/// # Safety
+///
+/// `actor` must be non-null with valid `tracer` and `target` fields (or null). Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_StartFire(actor: *mut mobj_t) {
     S_StartSound(actor as *mut c_void, Sfx::Flamst as c_int);
     A_Fire(actor);
 }
+/// Archvile fire crackle: plays the sustained flame sound then repositions the fire object.
+///
+/// # Safety
+///
+/// `actor` must be non-null with valid `tracer` and `target` fields (or null). Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_FireCrackle(actor: *mut mobj_t) {
     S_StartSound(actor as *mut c_void, Sfx::Flame as c_int);
     A_Fire(actor);
 }
+/// Repositions the Archvile fire object 24 units in front of its tracer (the victim).
+///
+/// Does nothing if `actor->tracer` is null. Checks sight from the Archvile's `target`
+/// to the tracer; if the vile lost sight of its victim, the fire does not move.
+/// Uses `P_UnsetThingPosition`/`P_SetThingPosition` to maintain blockmap consistency.
+///
+/// # Safety
+///
+/// `actor` must be non-null. `actor->tracer` if non-null must be a valid `mobj_t`.
+/// `actor->target` if non-null must be a valid `mobj_t`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_Fire(actor: *mut mobj_t) {
     let dest: *mut mobj_t = (*actor).tracer;
@@ -1079,12 +1462,27 @@ pub unsafe extern "C" fn A_Fire(actor: *mut mobj_t) {
     (*actor).z = (*dest).z;
     P_SetThingPosition(actor as *mut CffiMobj);
 }
+/// Archvile attack setup: spawns the `MT_FIRE` hellfire object at the target's location.
+///
+/// Links the fire into the Archvile/target triangle: `actor->tracer = fire`,
+/// `fire->target = actor`, `fire->tracer = actor->target`, then calls `A_Fire` to
+/// position it immediately.
+///
+/// Note: the C source passes `actor->target->x` for both X and Y of `P_SpawnMobj`,
+/// which is a vanilla Doom bug (Y should be `actor->target->y`). This port
+/// faithfully reproduces the original behavior.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_VileTarget(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
         return;
     }
     A_FaceTarget(actor);
+    // FIXME: p_enemy.c passes `actor->target->x` for the Y argument instead of
+    // `actor->target->y` - this is a vanilla Doom bug reproduced faithfully here.
     let fog: *mut mobj_t = P_SpawnMobj(
         (*(*actor).target).x,
         (*(*actor).target).x,
@@ -1096,6 +1494,16 @@ pub unsafe extern "C" fn A_VileTarget(actor: *mut mobj_t) {
     (*fog).tracer = (*actor).target;
     A_Fire(fog);
 }
+/// Archvile attack payload: direct damage plus radius explosion via the fire object.
+///
+/// Faces the target; aborts if line of sight is lost. Deals 20 direct damage and
+/// applies an upward momentum impulse of `1000*FRACUNIT / target->mass` to the target.
+/// Repositions the fire object 24 units behind the target (opposite the Archvile's angle)
+/// and calls `P_RadiusAttack` with radius 70 to inflict blast damage in the area.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target` and `tracer`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_VileAttack(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
@@ -1119,11 +1527,25 @@ pub unsafe extern "C" fn A_VileAttack(actor: *mut mobj_t) {
     (*fire).y = (*(*actor).target).y - FixedMul(24 as fixed_t * FRACUNIT, finesine[an as usize]);
     P_RadiusAttack(fire as *mut CffiMobj, actor as *mut CffiMobj, 70 as c_int);
 }
+/// Mancubus raise/taunt: faces the target and plays the attack preparation sound.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_FatRaise(actor: *mut mobj_t) {
     A_FaceTarget(actor);
     S_StartSound(actor as *mut c_void, Sfx::Manatk as c_int);
 }
+/// Mancubus attack phase 1: two `MT_FATSHOT` fireballs spread to the right.
+///
+/// Rotates the actor's angle by `+FATSPREAD` (ANG90/8), fires one shot directly,
+/// then fires a second shot additionally rotated by `+FATSPREAD` with velocity
+/// recomputed from the new angle.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_FatAttack1(actor: *mut mobj_t) {
     A_FaceTarget(actor);
@@ -1142,6 +1564,14 @@ pub unsafe extern "C" fn A_FatAttack1(actor: *mut mobj_t) {
         finesine[an as usize],
     );
 }
+/// Mancubus attack phase 2: two `MT_FATSHOT` fireballs spread to the left.
+///
+/// Rotates the actor's angle by `-FATSPREAD`, fires one shot directly, then fires a
+/// second shot additionally rotated by `-2*FATSPREAD` with velocity recomputed.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_FatAttack2(actor: *mut mobj_t) {
     A_FaceTarget(actor);
@@ -1162,6 +1592,14 @@ pub unsafe extern "C" fn A_FatAttack2(actor: *mut mobj_t) {
         finesine[an as usize],
     );
 }
+/// Mancubus attack phase 3: two `MT_FATSHOT` fireballs spread symmetrically ±FATSPREAD/2.
+///
+/// Fires one shot rotated `-FATSPREAD/2` and a second at `+FATSPREAD/2`; velocities are
+/// recomputed for each so they actually travel in the spread directions.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_FatAttack3(actor: *mut mobj_t) {
     let mut mo: *mut mobj_t;
@@ -1197,6 +1635,15 @@ pub unsafe extern "C" fn A_FatAttack3(actor: *mut mobj_t) {
         finesine[an as usize],
     );
 }
+/// Lost Soul charge attack: sets `MF_SKULLFLY` and launches the actor as a living missile.
+///
+/// Sets horizontal momentum from `SKULLSPEED` scaled by the angle's fine-trig values.
+/// Computes vertical momentum to reach the midpoint of the target's height over the
+/// flight time (`dist / SKULLSPEED` tics, minimum 1).
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target` and valid `info`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_SkullAttack(actor: *mut mobj_t) {
     let mut dist: c_int;
@@ -1223,6 +1670,17 @@ pub unsafe extern "C" fn A_SkullAttack(actor: *mut mobj_t) {
         - (*actor).z as c_int)
         / dist) as fixed_t;
 }
+/// Spawns a Lost Soul (`MT_SKULL`) at `angle` from `actor` and launches it at the target.
+///
+/// Counts all live `MT_SKULL` thinkers; if more than 20 already exist, does nothing.
+/// Computes the spawn point `prestep` units ahead (4 + 1.5 * combined radii) to avoid
+/// spawning inside the Pain Elemental. If the skull cannot move at its spawn point
+/// (`P_TryMove` fails), it is instantly killed with 10000 damage instead. On success,
+/// the skull inherits `actor->target` and immediately calls `A_SkullAttack`.
+///
+/// # Safety
+///
+/// `actor` must be non-null with valid `info` and a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_PainShootSkull(actor: *mut mobj_t, angle: angle_t) {
     let mut count: c_int;
@@ -1265,6 +1723,11 @@ pub unsafe extern "C" fn A_PainShootSkull(actor: *mut mobj_t, angle: angle_t) {
     (*newmobj).target = (*actor).target;
     A_SkullAttack(newmobj);
 }
+/// Pain Elemental attack: spawns a Lost Soul in the direction the actor is facing.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid or null `target`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_PainAttack(actor: *mut mobj_t) {
     if (*actor).target.is_null() {
@@ -1273,6 +1736,14 @@ pub unsafe extern "C" fn A_PainAttack(actor: *mut mobj_t) {
     A_FaceTarget(actor);
     A_PainShootSkull(actor, (*actor).angle);
 }
+/// Pain Elemental death: drops to the ground and spits three Lost Souls in cardinal directions.
+///
+/// Calls `A_Fall` to clear `MF_SOLID`, then spawns skulls at `angle+90`, `angle+180`,
+/// and `angle+270` relative to the current facing direction.
+///
+/// # Safety
+///
+/// `actor` must be non-null. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_PainDie(actor: *mut mobj_t) {
     A_Fall(actor);
@@ -1280,6 +1751,15 @@ pub unsafe extern "C" fn A_PainDie(actor: *mut mobj_t) {
     A_PainShootSkull(actor, (*actor).angle.wrapping_add(ANG180));
     A_PainShootSkull(actor, (*actor).angle.wrapping_add(ANG270));
 }
+/// Plays the monster's death scream; randomises for multi-variant sound monsters.
+///
+/// Zombie Pig (Podth variants) picks randomly from three sounds; Demon (Bgdth variants)
+/// from two. Cyberdemon and Spider Mastermind play at full (global) volume; all others
+/// play positioned at the actor.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid `info`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_Scream(actor: *mut mobj_t) {
     let sound = match (*((*actor).info as *mut MobjInfo)).deathsound {
@@ -1296,10 +1776,20 @@ pub unsafe extern "C" fn A_Scream(actor: *mut mobj_t) {
         S_StartSound(actor as *mut c_void, sound);
     };
 }
+/// Plays the player/monster gibbing scream (`sfx_slop`) positioned at the actor.
+///
+/// # Safety
+///
+/// `actor` must be non-null. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_XScream(actor: *mut mobj_t) {
     S_StartSound(actor as *mut c_void, Sfx::Slop as c_int);
 }
+/// Plays the monster's pain sound if it has one.
+///
+/// # Safety
+///
+/// `actor` must be non-null with a valid `info`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_Pain(actor: *mut mobj_t) {
     if (*((*actor).info as *mut MobjInfo)).painsound != Sfx::None {
@@ -1309,10 +1799,24 @@ pub unsafe extern "C" fn A_Pain(actor: *mut mobj_t) {
         );
     }
 }
+/// Clears `MF_SOLID` so the falling corpse can be walked over.
+///
+/// # Safety
+///
+/// `actor` must be non-null. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_Fall(actor: *mut mobj_t) {
     (*actor).flags &= !(MF_SOLID as c_int);
 }
+/// Triggers a 128-unit radius blast centred on `thingy`, sourced from `thingy->target`.
+///
+/// Used by rockets and barrel explosions. Calls `P_RadiusAttack` which damages all
+/// shootable things within range proportional to distance.
+///
+/// # Safety
+///
+/// `actor` (`thingy`) must be non-null; `thingy->target` may be null (passed directly
+/// to `P_RadiusAttack`). Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_Explode(thingy: *mut mobj_t) {
     P_RadiusAttack(
@@ -1321,6 +1825,19 @@ pub unsafe extern "C" fn A_Explode(thingy: *mut mobj_t) {
         128 as c_int,
     );
 }
+/// Determines whether the death of a monster of type `motype` should trigger episode-end effects.
+///
+/// Pre-v1.9 (before `exe_ultimate`): only triggers on map 8; Barons on episodes 2+ are ignored.
+/// `exe_ultimate` and later: episode-specific logic introduced with Ultimate Doom episode 4 support:
+/// - Ep 1 map 8: Barons.
+/// - Ep 2 map 8: Cyberdemon.
+/// - Ep 3 map 8: Spider Mastermind.
+/// - Ep 4 map 6: Cyberdemon; map 8: Spider Mastermind.
+/// - All other episodes: map 8 unconditionally.
+///
+/// # Safety
+///
+/// Reads `gameversion`, `gameepisode`, and `gamemap` globals which must be initialised.
 unsafe extern "C" fn CheckBossEnd(motype: mobjtype_t) -> Boolean {
     if (gameversion as c_uint) < exe_ultimate as c_int as c_uint {
         if gamemap != 8 as c_int {
@@ -1343,6 +1860,19 @@ unsafe extern "C" fn CheckBossEnd(motype: mobjtype_t) -> Boolean {
         }
     }
 }
+/// Triggers map-special effects when a boss monster dies (if all bosses of the same type are dead).
+///
+/// Dispatch logic:
+/// - Doom II (`commercial`), map 7: Mancubus death lowers floor tag 666;
+///   Arachnotron death raises floor tag 667.
+/// - Doom I episodes: calls `CheckBossEnd`; on success triggers `EV_DoFloor`/`EV_DoDoor`
+///   with a synthetic `line_t` (tag 666) or falls through to `G_ExitLevel`.
+/// Returns early if any player is dead, or if another live boss of the same type exists.
+///
+/// # Safety
+///
+/// `mo` must be non-null with a valid `mobjtype`. The thinker list and game-state globals
+/// must be consistent. Called from C via state-machine action pointer.
 #[no_mangle]
 pub unsafe extern "C" fn A_BossDeath(mo: *mut mobj_t) {
     let mut th: *mut thinker_t;
@@ -1455,40 +1985,84 @@ pub unsafe extern "C" fn A_BossDeath(mo: *mut mobj_t) {
     }
     G_ExitLevel();
 }
+/// Cyberdemon footstep: plays `sfx_hoof` then advances via `A_Chase`.
+///
+/// # Safety
+///
+/// `mo` must be non-null with a valid `info`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_Hoof(mo: *mut mobj_t) {
     S_StartSound(mo as *mut c_void, Sfx::Hoof as c_int);
     A_Chase(mo);
 }
+/// Spider Mastermind footstep: plays `sfx_metal` then advances via `A_Chase`.
+///
+/// # Safety
+///
+/// `mo` must be non-null with a valid `info`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_Metal(mo: *mut mobj_t) {
     S_StartSound(mo as *mut c_void, Sfx::Metal as c_int);
     A_Chase(mo);
 }
+/// Arachnotron footstep: plays `sfx_bspwlk` then advances via `A_Chase`.
+///
+/// # Safety
+///
+/// `mo` must be non-null with a valid `info`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_BabyMetal(mo: *mut mobj_t) {
     S_StartSound(mo as *mut c_void, Sfx::Bspwlk as c_int);
     A_Chase(mo);
 }
+/// Super Shotgun open action: plays the barrel-break sound (`sfx_dbopn`) for the player.
+///
+/// # Safety
+///
+/// `player` must be non-null with a valid `mo`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_OpenShotgun2(player: *mut PlayerT, _psp: *mut PspdefT) {
     S_StartSound((*player).mo as *mut c_void, Sfx::Dbopn as c_int);
 }
+/// Super Shotgun load action: plays the shell-load sound (`sfx_dbload`) for the player.
+///
+/// # Safety
+///
+/// `player` must be non-null with a valid `mo`. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_LoadShotgun2(player: *mut PlayerT, _psp: *mut PspdefT) {
     S_StartSound((*player).mo as *mut c_void, Sfx::Dbload as c_int);
 }
+/// Super Shotgun close action: plays the close sound (`sfx_dbcls`) then checks for refire.
+///
+/// # Safety
+///
+/// `player` must be non-null with a valid `mo`; `psp` must be non-null. Called from C.
 #[no_mangle]
 pub unsafe extern "C" fn A_CloseShotgun2(player: *mut PlayerT, psp: *mut PspdefT) {
     S_StartSound((*player).mo as *mut c_void, Sfx::Dbcls as c_int);
     A_ReFire(player, psp);
 }
+/// Array of `MT_BOSSTARGET` map objects (Icon of Sin target spots) populated by `A_BrainAwake`.
+/// The brain cycles through these to choose spawn destinations. Has C linkage.
 #[no_mangle]
 pub static mut braintargets: [*mut mobj_t; 32] = [std::ptr::null_mut::<mobj_t>(); 32];
+/// Count of valid entries in `braintargets`; set by `A_BrainAwake`. Has C linkage.
 #[no_mangle]
 pub static mut numbraintargets: c_int = 0;
+/// Round-robin index into `braintargets` for the next cube launch; advanced by `A_BrainSpit`.
+/// Has C linkage.
 #[no_mangle]
 pub static mut braintargeton: c_int = 0 as c_int;
+/// Icon of Sin wake-up: scans the thinker list for `MT_BOSSTARGET` spots and plays `sfx_bossit`.
+///
+/// Populates `braintargets` and resets `numbraintargets`/`braintargeton` to 0.
+/// The target spots are placed by the level designer in the map; the brain cycles
+/// through them to choose where to spit monster cubes.
+///
+/// # Safety
+///
+/// The thinker list must be consistent. Called from C via state-machine action pointer.
 #[no_mangle]
 pub unsafe extern "C" fn A_BrainAwake(_mo: *mut mobj_t) {
     let mut thinker: *mut thinker_t;
@@ -1517,10 +2091,25 @@ pub unsafe extern "C" fn A_BrainAwake(_mo: *mut mobj_t) {
     }
     S_StartSound(std::ptr::null_mut::<c_void>(), Sfx::Bossit as c_int);
 }
+/// Icon of Sin pain reaction: plays `sfx_bospn` at full (global) volume.
+///
+/// # Safety
+///
+/// Called from C. No pointer dereference; safe with any (even null) `_mo`.
 #[no_mangle]
 pub unsafe extern "C" fn A_BrainPain(_mo: *mut mobj_t) {
     S_StartSound(std::ptr::null_mut::<c_void>(), Sfx::Bospn as c_int);
 }
+/// Icon of Sin death scream: spawns a row of exploding rockets across the brain's width.
+///
+/// Spawns `MT_ROCKET` objects every 8 units from `mo->x - 196` to `mo->x + 320`,
+/// each at a random height and with a random upward `momz`. Each rocket is immediately
+/// set to `S_BRAINEXPLODE1` with a randomised tic count for visual variety.
+/// Plays `sfx_bosdth` at full volume to conclude.
+///
+/// # Safety
+///
+/// `mo` must be non-null. Called from C via state-machine action pointer.
 #[no_mangle]
 pub unsafe extern "C" fn A_BrainScream(mo: *mut mobj_t) {
     let mut x: c_int;
@@ -1546,6 +2135,16 @@ pub unsafe extern "C" fn A_BrainScream(mo: *mut mobj_t) {
     }
     S_StartSound(std::ptr::null_mut::<c_void>(), Sfx::Bosdth as c_int);
 }
+/// Individual brain explosion particle: spawns one `MT_ROCKET` at a random horizontal offset.
+///
+/// Called repeatedly by the `S_BRAINEXPLODE` state chain. Each invocation spawns a rocket
+/// with random X offset (±`P_Random*2048`) at the same Y as `mo`, at a random height
+/// (128 + `P_Random*2*FRACUNIT`). The rocket transitions immediately to `S_BRAINEXPLODE1`
+/// with a randomised tic count.
+///
+/// # Safety
+///
+/// `mo` must be non-null. Called from C via state-machine action pointer.
 #[no_mangle]
 pub unsafe extern "C" fn A_BrainExplode(mo: *mut mobj_t) {
     let x: c_int = (*mo).x as c_int + (P_Random() - P_Random()) * 2048 as c_int;
@@ -1559,10 +2158,26 @@ pub unsafe extern "C" fn A_BrainExplode(mo: *mut mobj_t) {
         (*th).tics = 1 as c_int;
     }
 }
+/// Icon of Sin death: ends the level via `G_ExitLevel`.
+///
+/// # Safety
+///
+/// Called from C. No pointer dereference beyond the ignored `_mo`.
 #[no_mangle]
 pub unsafe extern "C" fn A_BrainDie(_mo: *mut mobj_t) {
     G_ExitLevel();
 }
+/// Icon of Sin attack: launches a monster cube (`MT_SPAWNSHOT`) toward the next target spot.
+///
+/// Alternates with a static `easy` flag so on easy skill every other attack is skipped.
+/// Picks `braintargets[braintargeton]` as the destination and advances `braintargeton`
+/// modulo `numbraintargets`. Sets the cube's `reactiontime` to the travel time (in state
+/// tics) so `A_SpawnFly` knows when to materialize the monster. Plays `sfx_bospit` globally.
+///
+/// # Safety
+///
+/// `mo` must be non-null. `braintargets` must have been populated by `A_BrainAwake` and
+/// `numbraintargets` must be > 0. Called from C via state-machine action pointer.
 #[no_mangle]
 pub unsafe extern "C" fn A_BrainSpit(mo: *mut mobj_t) {
     static mut easy: c_int = 0 as c_int;
@@ -1579,11 +2194,30 @@ pub unsafe extern "C" fn A_BrainSpit(mo: *mut mobj_t) {
         / (*((*newmobj).state as *mut State)).tics;
     S_StartSound(std::ptr::null_mut::<c_void>(), Sfx::Bospit as c_int);
 }
+/// In-flight cube sound: plays `sfx_boscub` while the cube travels, then calls `A_SpawnFly`.
+///
+/// # Safety
+///
+/// `mo` must be non-null. Called from C via state-machine action pointer.
 #[no_mangle]
 pub unsafe extern "C" fn A_SpawnSound(mo: *mut mobj_t) {
     S_StartSound(mo as *mut c_void, Sfx::Boscub as c_int);
     A_SpawnFly(mo);
 }
+/// Monster cube arrival: materializes a random monster at the target spot when `reactiontime` hits 0.
+///
+/// Decrements `reactiontime` each tic; returns immediately while still > 0. On arrival:
+/// 1. Spawns a `MT_SPAWNFIRE` teleport fog with `sfx_telept` at the target's location.
+/// 2. Picks a random monster type via weighted probability table (Imp 50/256 through
+///    Baron of Hell for top range).
+/// 3. Spawns the monster, calls `P_LookForPlayers` to awaken it.
+/// 4. Calls `P_TeleportMove` to telefrág anything at the spawn point.
+/// 5. Removes the cube (`mo`) via `P_RemoveMobj`.
+///
+/// # Safety
+///
+/// `mo` must be non-null with a valid `target`. `mo->target` must point to a valid
+/// `mobj_t` (the boss target spot). Called from C via state-machine action pointer.
 #[no_mangle]
 pub unsafe extern "C" fn A_SpawnFly(mo: *mut mobj_t) {
     let type_0: mobjtype_t;
@@ -1629,6 +2263,14 @@ pub unsafe extern "C" fn A_SpawnFly(mo: *mut mobj_t) {
     P_TeleportMove(newmobj as *mut CffiMobj, (*newmobj).x, (*newmobj).y);
     P_RemoveMobj(mo);
 }
+/// Plays the player death scream; uses the gibbing scream in Doom II when health is below -50.
+///
+/// Default sound is `sfx_pldeth`. In commercial mode, if `mo->health < -50`, plays
+/// `sfx_pdiehi` (the "squish" gib scream) instead.
+///
+/// # Safety
+///
+/// `mo` must be non-null. Called from C via state-machine action pointer.
 #[no_mangle]
 pub unsafe extern "C" fn A_PlayerScream(mo: *mut mobj_t) {
     let mut sound: c_int = Sfx::Pldeth as c_int;

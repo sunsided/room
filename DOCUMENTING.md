@@ -51,7 +51,7 @@ conflicts resolve trivially.
 
 - [x] doom/p_ceilng.rs (318 lines, 0 docs)
 - [x] doom/p_doors.rs (590 lines, 2 docs)
-- [~] doom/p_enemy.rs (1639 lines, 0 docs)
+- [x] doom/p_enemy.rs (1639 lines, 0 docs)
 - [x] doom/p_floor.rs (597 lines, 2 docs)
 - [x] doom/p_inter.rs (992 lines, 0 docs)
 - [x] doom/p_lights.rs (456 lines, 2 docs)
