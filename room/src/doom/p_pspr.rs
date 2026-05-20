@@ -1,6 +1,8 @@
-//! Rust port of vendor/doomgeneric/p_pspr.c.
+//! Rust port of `vendor/doomgeneric/p_pspr.c`.
 //!
 //! Weapon sprite animation, weapon objects, and action functions for weapons.
+//! Each player has a two-slot psprite array (weapon overlay + muzzle flash)
+//! driven by the same state machine used for map objects.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -23,42 +25,65 @@ use crate::doom::s_sound::S_StartSound;
 use crate::doom::tables::{finecosine, finesine, FINEANGLES, FINEMASK};
 
 // Weapon type constants (from doomdef.h)
+/// Weapon slot index for the fist (melee, no ammo).
 const wp_fist: c_int = 0;
+/// Weapon slot index for the pistol.
 const wp_pistol: c_int = 1;
+/// Weapon slot index for the shotgun.
 const wp_shotgun: c_int = 2;
+/// Weapon slot index for the chaingun.
 const wp_chaingun: c_int = 3;
+/// Weapon slot index for the rocket launcher.
 const wp_missile: c_int = 4;
+/// Weapon slot index for the plasma rifle.
 const wp_plasma: c_int = 5;
+/// Weapon slot index for the BFG 9000.
 const wp_bfg: c_int = 6;
+/// Weapon slot index for the chainsaw (no ammo).
 const wp_chainsaw: c_int = 7;
+/// Weapon slot index for the super shotgun (Doom II only).
 const wp_supershotgun: c_int = 8;
+/// Sentinel value meaning no pending weapon change is queued.
 const wp_nochange: c_int = NUMWEAPONS as c_int;
 
 // Ammo type constants
+/// Ammo type index meaning the weapon uses no ammo.
 const am_noammo: c_int = 5;
+/// Ammo type index for bullets (clip).
 const am_clip: c_int = 0;
+/// Ammo type index for shells.
 const am_shell: c_int = 1;
+/// Ammo type index for cells (plasma / BFG).
 const am_cell: c_int = 2;
+/// Ammo type index for missiles (rockets).
 const am_misl: c_int = 3;
 
 // Power type constants
+/// Power-up slot index for Berserk (strength); multiplies fist damage by 10.
 const pw_strength: usize = 1;
 
 // Button constants
+/// Bit mask in `ticcmd_t::buttons` that signals the attack button is held.
 const BT_ATTACK: u8 = 1;
 
 // Player state constants
+/// Player state value for a dead player (`PST_DEAD`).
 const PST_DEAD: c_int = 1;
 
 // Angle constants
+/// Binary-angle for 90 degrees (0x40000000).
 const ANG90: u32 = 0x40000000;
+/// Binary-angle for 180 degrees (0x80000000).
 const ANG180: u32 = 0x80000000;
 
 // Range constants (from p_local.h)
+/// Maximum reach for melee attacks, in fixed-point world units (64 map units).
 const MELEERANGE: c_int = 64 * FRACUNIT;
+/// Maximum range for hitscan (bullet) attacks (32 * 64 map units).
 const MISSILERANGE: c_int = 32 * 64 * FRACUNIT;
 
 // Dehacked default
+/// Default number of cells consumed per BFG shot (Dehacked-patchable in C; hardcoded here).
 const DEH_DEFAULT_BFG_CELLS_PER_SHOT: c_int = 40;
 
 use crate::doom::p_enemy::P_NoiseAlert;
@@ -67,22 +92,31 @@ use crate::doom::p_map::{linetarget, P_AimLineAttack, P_LineAttack};
 use crate::doom::p_mobj::{P_SetMobjState, P_SpawnMobj, P_SpawnPlayerMissile};
 use crate::doom::r_main::R_PointToAngle2;
 
-// Type aliases for cross-module pointer casts (all #[repr(C)] identical layouts).
+/// Type alias used for cross-module pointer casts where both sides are `#[repr(C)]`-identical.
 type CffiMobj = crate::doom::c_ffi::mobj_t;
 
-/// Horizontal weapon-bob offset; updated each tic by P_CalcSwing.
+/// Horizontal weapon-bob offset; updated each tic by `P_CalcSwing`.
 #[no_mangle]
 pub static mut swingx: fixed_t = 0;
 
-/// Vertical weapon-bob offset; updated each tic by P_CalcSwing.
+/// Vertical weapon-bob offset; updated each tic by `P_CalcSwing`.
 #[no_mangle]
 pub static mut swingy: fixed_t = 0;
 
-/// Slope set by P_BulletSlope for near-miss aiming.
+/// Slope set by `P_BulletSlope` for near-miss aiming; read by `P_GunShot`.
 #[no_mangle]
 pub static mut bulletslope: fixed_t = 0;
 
-/// Set a psprite to a given state.
+/// Transition a psprite slot to a new state, running action functions until a
+/// non-zero tic count is reached or the state chain ends.
+///
+/// Mirrors `P_SetPsprite` in `p_pspr.c`.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
+/// `position` must be in `0..NUMPSPRITES`.  `stnum` must be a valid state
+/// index or `S_NULL` (0).
 #[no_mangle]
 pub unsafe extern "C" fn P_SetPsprite(player: *mut PlayerT, position: c_int, stnum: c_int) {
     let psp = (*player).psprites.as_mut_ptr().add(position as usize);
@@ -122,7 +156,12 @@ pub unsafe extern "C" fn P_SetPsprite(player: *mut PlayerT, position: c_int, stn
     }
 }
 
-/// Calculate weapon swing offsets.
+/// Recompute the horizontal (`swingx`) and vertical (`swingy`) weapon-bob
+/// offsets for the current tic using the player's `bob` amplitude.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn P_CalcSwing(player: *mut PlayerT) {
     let swing = (*player).bob;
@@ -134,7 +173,12 @@ pub unsafe extern "C" fn P_CalcSwing(player: *mut PlayerT) {
     swingy = -FixedMul(swingx, finesine[angle as usize]);
 }
 
-/// Start bringing the pending weapon up from the bottom of the screen.
+/// Begin the raise animation for the pending weapon by setting the weapon
+/// psprite to its `upstate` and positioning it at `WEAPONBOTTOM`.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn P_BringUpWeapon(player: *mut PlayerT) {
     if (*player).pendingweapon == wp_nochange {
@@ -153,7 +197,13 @@ pub unsafe extern "C" fn P_BringUpWeapon(player: *mut PlayerT) {
     P_SetPsprite(player, 0, newstate);
 }
 
-/// Returns true if there is enough ammo to shoot.
+/// Return `1` if the player has enough ammo to fire the ready weapon, `0`
+/// otherwise.  When out of ammo, selects the next best weapon and begins
+/// lowering the current one.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn P_CheckAmmo(player: *mut PlayerT) -> c_int {
     let ammo = weaponinfo[(*player).readyweapon as usize].ammo;
@@ -222,7 +272,14 @@ pub unsafe extern "C" fn P_CheckAmmo(player: *mut PlayerT) -> c_int {
     0
 }
 
-/// Fire the current weapon.
+/// Check ammo and, if sufficient, put the player mobj into the attack state
+/// and transition the weapon psprite to its attack state.  Also alerts nearby
+/// monsters via `P_NoiseAlert`.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn P_FireWeapon(player: *mut PlayerT) {
     if P_CheckAmmo(player) == 0 {
@@ -235,7 +292,11 @@ pub unsafe extern "C" fn P_FireWeapon(player: *mut PlayerT) {
     P_NoiseAlert((*player).mo as *mut mobj_t, (*player).mo as *mut mobj_t);
 }
 
-/// Player died, so put the weapon away.
+/// Begin lowering the current weapon (called on player death or weapon switch).
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn P_DropWeapon(player: *mut PlayerT) {
     P_SetPsprite(
@@ -245,7 +306,15 @@ pub unsafe extern "C" fn P_DropWeapon(player: *mut PlayerT) {
     );
 }
 
-/// The player can fire the weapon or change to another weapon at this time.
+/// Weapon action: idle state — bob the weapon, check for fire or weapon
+/// change, and return the player mobj to the walking state if it is still in
+/// an attack state.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.  `psp` must point to the
+/// weapon psprite slot.
 #[no_mangle]
 pub unsafe extern "C" fn A_WeaponReady(player: *mut PlayerT, psp: *mut PspdefT) {
     let mo = (*player).mo as *mut mobj_t;
@@ -291,7 +360,14 @@ pub unsafe extern "C" fn A_WeaponReady(player: *mut PlayerT, psp: *mut PspdefT) 
     (*psp).sy = WEAPONTOP + FixedMul((*player).bob, finesine[angle as usize]);
 }
 
-/// The player can re-fire the weapon without lowering it entirely.
+/// Weapon action: allow re-firing without fully lowering the weapon.
+///
+/// If the attack button is still held and no weapon change is pending, increment
+/// `refire` and call `P_FireWeapon`; otherwise reset `refire` and check ammo.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn A_ReFire(player: *mut PlayerT, _psp: *mut PspdefT) {
     if (*player).cmd.buttons & BT_ATTACK != 0
@@ -306,13 +382,28 @@ pub unsafe extern "C" fn A_ReFire(player: *mut PlayerT, _psp: *mut PspdefT) {
     }
 }
 
-/// Check if ammo is sufficient; switch weapons if not.
+/// Weapon action: check ammo and switch weapons if insufficient.
+///
+/// Used by the super shotgun after firing to ensure the player still has
+/// shells before returning to the ready state.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn A_CheckReload(player: *mut PlayerT, _psp: *mut PspdefT) {
     P_CheckAmmo(player);
 }
 
-/// Lowers current weapon and changes weapon at bottom.
+/// Weapon action: scroll the weapon psprite down by `LOWERSPEED` each tic.
+///
+/// When the sprite reaches `WEAPONBOTTOM`, switches to the pending weapon
+/// (or parks the weapon off-screen if the player is dead).
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
+/// `psp` must point to the weapon psprite slot.
 #[no_mangle]
 pub unsafe extern "C" fn A_Lower(player: *mut PlayerT, psp: *mut PspdefT) {
     (*psp).sy += LOWERSPEED;
@@ -339,7 +430,15 @@ pub unsafe extern "C" fn A_Lower(player: *mut PlayerT, psp: *mut PspdefT) {
     P_BringUpWeapon(player);
 }
 
-/// Raises current weapon.
+/// Weapon action: scroll the weapon psprite up by `RAISESPEED` each tic.
+///
+/// When the sprite reaches `WEAPONTOP`, transitions to the weapon's ready
+/// state.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
+/// `psp` must point to the weapon psprite slot.
 #[no_mangle]
 pub unsafe extern "C" fn A_Raise(player: *mut PlayerT, psp: *mut PspdefT) {
     (*psp).sy -= RAISESPEED;
@@ -354,7 +453,13 @@ pub unsafe extern "C" fn A_Raise(player: *mut PlayerT, psp: *mut PspdefT) {
     P_SetPsprite(player, 0, newstate);
 }
 
-/// Show gun flash and set player to attack state 2.
+/// Weapon action: set the player mobj to attack state 2 and activate the
+/// muzzle-flash psprite.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn A_GunFlash(player: *mut PlayerT, _psp: *mut PspdefT) {
     let mo = (*player).mo as *mut mobj_t;
@@ -366,7 +471,15 @@ pub unsafe extern "C" fn A_GunFlash(player: *mut PlayerT, _psp: *mut PspdefT) {
     );
 }
 
-/// Fire fist punch.
+/// Weapon action: perform a fist punch in the player's facing direction.
+///
+/// Damage is 2-20 (×10 with Berserk).  If a target is hit, the player turns
+/// to face it.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn A_Punch(player: *mut PlayerT, _psp: *mut PspdefT) {
     let mo = (*player).mo as *mut mobj_t;
@@ -394,7 +507,15 @@ pub unsafe extern "C" fn A_Punch(player: *mut PlayerT, _psp: *mut PspdefT) {
     }
 }
 
-/// Fire chainsaw.
+/// Weapon action: perform a chainsaw attack.
+///
+/// Uses `MELEERANGE + 1` so the hit-puff does not skip the saw flash.  If
+/// a target is hit, the player's angle is guided toward it gradually.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn A_Saw(player: *mut PlayerT, _psp: *mut PspdefT) {
     let mo = (*player).mo as *mut mobj_t;
@@ -438,7 +559,14 @@ pub unsafe extern "C" fn A_Saw(player: *mut PlayerT, _psp: *mut PspdefT) {
     (*mo).flags |= MF_JUSTATTACKED;
 }
 
-/// Decrease ammo, with Doom's original array-overflow emulation for ammo > NUMAMMO.
+/// Subtract `amount` from the player's ammo for slot `ammonum`, emulating
+/// the original C array-overflow behaviour: if `ammonum >= NUMAMMO` the
+/// excess indexes into `maxammo` instead (Dehacked compatibility).
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
+/// `ammonum` may legally exceed `NUMAMMO - 1`; the function handles that case.
 unsafe fn DecreaseAmmo(player: *mut PlayerT, ammonum: c_int, amount: c_int) {
     if ammonum < NUMAMMO as c_int {
         (*player).ammo[ammonum as usize] -= amount;
@@ -447,7 +575,12 @@ unsafe fn DecreaseAmmo(player: *mut PlayerT, ammonum: c_int, amount: c_int) {
     }
 }
 
-/// Fire rocket.
+/// Weapon action: consume one rocket and spawn an `MT_ROCKET` projectile.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn A_FireMissile(player: *mut PlayerT, _psp: *mut PspdefT) {
     let mo = (*player).mo as *mut mobj_t;
@@ -455,7 +588,13 @@ pub unsafe extern "C" fn A_FireMissile(player: *mut PlayerT, _psp: *mut PspdefT)
     P_SpawnPlayerMissile(mo, MT_ROCKET);
 }
 
-/// Fire BFG.
+/// Weapon action: consume `DEH_DEFAULT_BFG_CELLS_PER_SHOT` cells and spawn
+/// an `MT_BFG` projectile.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn A_FireBFG(player: *mut PlayerT, _psp: *mut PspdefT) {
     let mo = (*player).mo as *mut mobj_t;
@@ -467,7 +606,13 @@ pub unsafe extern "C" fn A_FireBFG(player: *mut PlayerT, _psp: *mut PspdefT) {
     P_SpawnPlayerMissile(mo, MT_BFG);
 }
 
-/// Fire plasma.
+/// Weapon action: consume one cell, randomise the flash frame, and spawn an
+/// `MT_PLASMA` projectile.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn A_FirePlasma(player: *mut PlayerT, _psp: *mut PspdefT) {
     let mo = (*player).mo as *mut mobj_t;
@@ -482,7 +627,13 @@ pub unsafe extern "C" fn A_FirePlasma(player: *mut PlayerT, _psp: *mut PspdefT) 
     P_SpawnPlayerMissile(mo, MT_PLASMA);
 }
 
-/// Sets a slope so a near miss is at approximately the height of the intended target.
+/// Compute `bulletslope` by aiming in the player's facing direction and two
+/// small side offsets so that near-miss shots stay roughly at the intended
+/// target's height.
+///
+/// # Safety
+///
+/// `mo` must be a valid, non-null pointer to an initialised `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn P_BulletSlope(mo: *mut mobj_t) {
     let mut an = (*mo).angle;
@@ -498,7 +649,15 @@ pub unsafe extern "C" fn P_BulletSlope(mo: *mut mobj_t) {
     }
 }
 
-/// Fire a single bullet.
+/// Fire a single hitscan bullet from `mo`, using the pre-computed
+/// `bulletslope`.  If `accurate` is zero, a random horizontal spread is
+/// applied.
+///
+/// # Safety
+///
+/// `mo` must be a valid, non-null pointer to an initialised `mobj_t`.
+/// `P_BulletSlope` must have been called before this function so that
+/// `bulletslope` is valid.
 #[no_mangle]
 pub unsafe extern "C" fn P_GunShot(mo: *mut mobj_t, accurate: c_int) {
     let damage = 5 * ((P_Random() % 3) + 1);
@@ -517,7 +676,12 @@ pub unsafe extern "C" fn P_GunShot(mo: *mut mobj_t, accurate: c_int) {
     );
 }
 
-/// Fire pistol.
+/// Weapon action: fire the pistol (one accurate bullet, then spread on refire).
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn A_FirePistol(player: *mut PlayerT, _psp: *mut PspdefT) {
     let mo = (*player).mo as *mut mobj_t;
@@ -536,7 +700,12 @@ pub unsafe extern "C" fn A_FirePistol(player: *mut PlayerT, _psp: *mut PspdefT) 
     P_GunShot(mo, ((*player).refire == 0) as c_int);
 }
 
-/// Fire shotgun.
+/// Weapon action: fire the shotgun (7 inaccurate pellets, 1 shell consumed).
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn A_FireShotgun(player: *mut PlayerT, _psp: *mut PspdefT) {
     let mo = (*player).mo as *mut mobj_t;
@@ -558,7 +727,13 @@ pub unsafe extern "C" fn A_FireShotgun(player: *mut PlayerT, _psp: *mut PspdefT)
     }
 }
 
-/// Fire super shotgun.
+/// Weapon action: fire the super shotgun (20 pellets with extra spread, 2
+/// shells consumed).
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn A_FireShotgun2(player: *mut PlayerT, _psp: *mut PspdefT) {
     let mo = (*player).mo as *mut mobj_t;
@@ -589,7 +764,15 @@ pub unsafe extern "C" fn A_FireShotgun2(player: *mut PlayerT, _psp: *mut PspdefT
     }
 }
 
-/// Fire chaingun.
+/// Weapon action: fire one chaingun bullet, alternating the flash frame
+/// between `S_CHAIN1` and `S_CHAIN2` to match the current psprite state.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.  `psp` must point to the
+/// weapon psprite slot which must currently be in state `S_CHAIN1` or
+/// `S_CHAIN2`.
 #[no_mangle]
 pub unsafe extern "C" fn A_FireCGun(player: *mut PlayerT, psp: *mut PspdefT) {
     let mo = (*player).mo as *mut mobj_t;
@@ -613,25 +796,48 @@ pub unsafe extern "C" fn A_FireCGun(player: *mut PlayerT, psp: *mut PspdefT) {
     P_GunShot(mo, ((*player).refire == 0) as c_int);
 }
 
-/// Set extralight to 0.
+/// Weapon action: clear the extra-light boost (normal sector lighting).
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn A_Light0(player: *mut PlayerT, _psp: *mut PspdefT) {
     (*player).extralight = 0;
 }
 
-/// Set extralight to 1.
+/// Weapon action: set the extra-light boost to +1 (used by pistol/shotgun
+/// muzzle flash).
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn A_Light1(player: *mut PlayerT, _psp: *mut PspdefT) {
     (*player).extralight = 1;
 }
 
-/// Set extralight to 2.
+/// Weapon action: set the extra-light boost to +2 (used by plasma / BFG
+/// muzzle flash).
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn A_Light2(player: *mut PlayerT, _psp: *mut PspdefT) {
     (*player).extralight = 2;
 }
 
-/// Spawn a BFG explosion on every monster in view.
+/// Mobj action: spray the BFG tracers across a 90-degree arc centered on the
+/// BFG ball's angle, dealing between 15 and 120 damage to each visible enemy.
+///
+/// Iterates 40 evenly-spaced angles, aims from `mo->target` (the originating
+/// player), and spawns an `MT_EXTRABFG` explosion object on every hit target.
+///
+/// # Safety
+///
+/// `mo` must be a valid, non-null pointer to an `mobj_t` whose `target` field
+/// points to a valid player `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn A_BFGSpray(mo: *mut mobj_t) {
     for i in 0..40 {
@@ -668,13 +874,24 @@ pub unsafe extern "C" fn A_BFGSpray(mo: *mut mobj_t) {
     }
 }
 
-/// Play BFG firing sound.
+/// Weapon action: play the BFG charging sound.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`
+/// whose `mo` field points to a valid `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn A_BFGsound(player: *mut PlayerT, _psp: *mut PspdefT) {
     S_StartSound((*player).mo as *mut c_void, Sfx::Bfg as c_int);
 }
 
-/// Called at start of level for each player.
+/// Initialise the player's psprite slots and begin raising the current weapon.
+///
+/// Called at the start of each level for every active player.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn P_SetupPsprites(player: *mut PlayerT) {
     for i in 0..NUMPSPRITES {
@@ -685,7 +902,12 @@ pub unsafe extern "C" fn P_SetupPsprites(player: *mut PlayerT) {
     P_BringUpWeapon(player);
 }
 
-/// Called every tic by player thinking routine.
+/// Advance the psprite state machine for all slots each tic and copy the
+/// weapon slot's position to the flash slot.
+///
+/// # Safety
+///
+/// `player` must be a valid, non-null pointer to an initialised `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn P_MovePsprites(player: *mut PlayerT) {
     let mut psp = (*player).psprites.as_mut_ptr();
@@ -709,7 +931,11 @@ pub unsafe extern "C" fn P_MovePsprites(player: *mut PlayerT) {
     (*player).psprites[1].sy = (*player).psprites[0].sy;
 }
 
-/// Anchor function referenced to ensure all exports survive link-time DCE.
+/// Dummy function whose body references every `#[no_mangle]` symbol exported
+/// by this module so that link-time dead-code elimination cannot strip them.
+///
+/// Must be reachable from at least one path the linker considers live; it is
+/// never actually called at runtime.
 #[no_mangle]
 pub extern "C" fn P_Pspr_Link_Anchor() {
     unsafe {

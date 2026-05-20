@@ -1,6 +1,7 @@
-//! Rust port of vendor/doomgeneric/p_mobj.c.
+//! Rust port of `vendor/doomgeneric/p_mobj.c`.
 //!
-//! Map object (mobj) creation, movement, spawning, and thinker.
+//! Map object (mobj) lifecycle: creation, movement, state-machine updates,
+//! spawning from map data, and item-respawn in deathmatch mode.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -29,21 +30,36 @@ use crate::doom::s_sound::{MobjStub, S_StartSound, S_StopSound};
 use crate::doom::tables::{finecosine, finesine, ANG45, ANGLETOFINESHIFT};
 use crate::doom::z_zone::PU_LEVEL;
 
+/// Momentum magnitude below which an object's XY velocity is snapped to zero.
 const STOPSPEED: c_int = 0x1000;
+/// Multiplicative XY friction applied each tic when an object is on the floor
+/// (0xe800 / 0x10000 ≈ 0.906).
 const FRICTION: c_int = 0xe800;
+/// Maximum XY momentum per tic; momentum is clamped to this before integration.
 const MAXMOVE: c_int = 30 * FRACUNIT;
+/// Gravitational acceleration applied to falling objects each tic (1 fixed unit).
 const GRAVITY: c_int = FRACUNIT;
+/// Vertical speed at which floating monsters adjust their altitude each tic.
 const FLOATSPEED: c_int = FRACUNIT * 4;
+/// Sentinel Z value meaning "place on the floor of the current sector".
 const ONFLOORZ: c_int = i32::MIN;
+/// Sentinel Z value meaning "place on the ceiling of the current sector".
 const ONCEILINGZ: c_int = i32::MAX;
+/// Default eye height above the floor for a live player (41 fixed units).
 const VIEWHEIGHT: c_int = 41 * FRACUNIT;
+/// Maximum reach for melee contact checks (64 map units in fixed-point).
 const MELEERANGE: c_int = 64 * FRACUNIT;
 
+/// Thing-flag option bit: the thing was placed in ambush mode in the map editor.
 const MTF_AMBUSH: c_int = 8;
 
+/// Player state: alive and playing.
 const PST_LIVE: c_int = 0;
+/// Player state: needs to respawn (set after death, cleared by `P_SpawnPlayer`).
 const PST_REBORN: c_int = 2;
 
+/// Game-version threshold at or above which the Lost Soul floor-bounce bug is
+/// corrected (corresponds to Ultimate Doom / `exe_ultimate`).
 const exe_ultimate: c_int = 6;
 
 use crate::doom::d_main::nomonsters;
@@ -62,10 +78,17 @@ use crate::doom::r_sky::skyflatnum;
 use crate::doom::st_stuff::ST_Start;
 use crate::doom::z_zone::Z_Malloc;
 
-// Type aliases for cross-module pointer casts (all #[repr(C)] identical layouts).
+/// Type alias used for cross-module pointer casts where both sides are
+/// `#[repr(C)]`-identical `mobj_t` definitions.
 type CffiMobj = crate::doom::c_ffi::mobj_t;
+/// Type alias for the `mapthing_t` definition from `p_setup`, used when
+/// writing directly to the deathmatch-starts array.
 type SetupMapThing = crate::doom::p_setup::mapthing_t;
 
+/// Circular queue of map-thing spawn records for items that need to respawn.
+///
+/// The queue is indexed by `iquehead` (write) and `iquetail` (read), both
+/// modulo `ITEMQUESIZE`.
 #[no_mangle]
 pub static mut itemrespawnque: [mapthing_t; ITEMQUESIZE] = [mapthing_t {
     x: 0,
@@ -75,23 +98,43 @@ pub static mut itemrespawnque: [mapthing_t; ITEMQUESIZE] = [mapthing_t {
     options: 0,
 }; ITEMQUESIZE];
 
+/// Level-time stamps recording when each item in `itemrespawnque` was removed.
+///
+/// An item is eligible to respawn once `leveltime - itemrespawntime[iquetail]`
+/// exceeds 30 * `TICRATE`.
 #[no_mangle]
 pub static mut itemrespawntime: [c_int; ITEMQUESIZE] = [0; ITEMQUESIZE];
 
+/// Write index (head) of the item-respawn circular queue.
 #[no_mangle]
 pub static mut iquehead: c_int = 0;
 
+/// Read index (tail) of the item-respawn circular queue.
 #[no_mangle]
 pub static mut iquetail: c_int = 0;
 
+/// Construct the sentinel `actionf_t` value used to detect that a thinker has
+/// been removed mid-tick (all-ones function pointer).
 fn sentinel_ac() -> Option<unsafe extern "C" fn()> {
     Some(unsafe { core::mem::transmute::<usize, unsafe extern "C" fn()>(usize::MAX) })
 }
 
+/// Return `true` if `f` is the removal-sentinel value, meaning the mobj was
+/// freed during the current tick.
 fn is_sentinel(f: actionf_t) -> bool {
     unsafe { f.acv == sentinel_ac() }
 }
 
+/// Transition `mobj` to state `state`, running zero-tic chain states
+/// immediately.  Returns `1` if the mobj is still alive after the transition,
+/// `0` if it removed itself (`S_NULL`).
+///
+/// Mirrors `P_SetMobjState` in `p_mobj.c`.
+///
+/// # Safety
+///
+/// `mobj` must be a valid, non-null pointer to an initialised `mobj_t`.
+/// `state` must be a valid state-table index or `S_NULL`.
 #[no_mangle]
 pub unsafe extern "C" fn P_SetMobjState(mobj: *mut mobj_t, state: c_int) -> c_int {
     let mobj = &mut *mobj;
@@ -119,6 +162,13 @@ pub unsafe extern "C" fn P_SetMobjState(mobj: *mut mobj_t, state: c_int) -> c_in
     1
 }
 
+/// Detonate a missile: zero its momentum, transition to its death state,
+/// randomise the initial tic count slightly, clear `MF_MISSILE`, and play the
+/// death sound.
+///
+/// # Safety
+///
+/// `mo` must be a valid, non-null pointer to an `mobj_t` with `MF_MISSILE` set.
 #[no_mangle]
 pub unsafe extern "C" fn P_ExplodeMissile(mo: *mut mobj_t) {
     let mo = &mut *mo;
@@ -140,6 +190,14 @@ pub unsafe extern "C" fn P_ExplodeMissile(mo: *mut mobj_t) {
     }
 }
 
+/// Apply one tic of XY momentum to `mo`, sub-stepping when the move exceeds
+/// `MAXMOVE / 2`.  Handles player sliding, missile explosion against walls
+/// and the sky, and floor friction / stopping.
+///
+/// # Safety
+///
+/// `mo` must be a valid, non-null pointer to an `mobj_t` that is part of the
+/// active thinker list.
 #[no_mangle]
 pub unsafe extern "C" fn P_XYMovement(mo: *mut mobj_t) {
     let mo = &mut *mo;
@@ -253,6 +311,16 @@ pub unsafe extern "C" fn P_XYMovement(mo: *mut mobj_t) {
     }
 }
 
+/// Apply one tic of Z (vertical) movement to `mo`.
+///
+/// Handles player view-height smoothing on step-ups, floating-monster altitude
+/// tracking, gravity, floor and ceiling collisions, and Lost Soul bounce
+/// (with version-correct bug emulation for the original v1.9 desync).
+///
+/// # Safety
+///
+/// `mo` must be a valid, non-null pointer to an `mobj_t` that is part of the
+/// active thinker list.
 #[no_mangle]
 pub unsafe extern "C" fn P_ZMovement(mo: *mut mobj_t) {
     let mo = &mut *mo;
@@ -325,6 +393,16 @@ pub unsafe extern "C" fn P_ZMovement(mo: *mut mobj_t) {
     }
 }
 
+/// Respawn a Nightmare-mode monster at its original spawn point.
+///
+/// Checks that the spawn point is unobstructed, spawns teleport fog at the
+/// old and new positions, spawns a fresh copy of the monster, and removes the
+/// old corpse.
+///
+/// # Safety
+///
+/// `mobj` must be a valid, non-null pointer to an `mobj_t` that has
+/// `MF_COUNTKILL` set and whose `spawnpoint` field is valid.
 #[no_mangle]
 pub unsafe extern "C" fn P_NightmareRespawn(mobj: *mut mobj_t) {
     let mobj = &mut *mobj;
@@ -364,6 +442,16 @@ pub unsafe extern "C" fn P_NightmareRespawn(mobj: *mut mobj_t) {
     P_RemoveMobj(mobj as *mut mobj_t);
 }
 
+/// Per-tic thinker for every active map object.
+///
+/// Runs XY and Z movement, advances the state machine, and initiates
+/// Nightmare-mode respawn for eligible dead monsters.  Detects mid-tick
+/// removal via the sentinel function pointer.
+///
+/// # Safety
+///
+/// `mobj` must be a valid, non-null pointer to an `mobj_t` that is currently
+/// linked into the thinker list.
 #[no_mangle]
 pub unsafe extern "C" fn P_MobjThinker(mobj: *mut mobj_t) {
     let mobj = &mut *mobj;
@@ -407,6 +495,19 @@ pub unsafe extern "C" fn P_MobjThinker(mobj: *mut mobj_t) {
     }
 }
 
+/// Allocate, initialise, and link a new map object of type `type_` at world
+/// position (`x`, `y`, `z`).
+///
+/// The initial state, sprite, and tic count are taken from `mobjinfo`.
+/// `P_MobjThinker` is registered as the thinker.  Use `ONFLOORZ` / `ONCEILINGZ`
+/// for `z` to snap to the sector floor or ceiling respectively.
+///
+/// Returns a pointer to the newly created `mobj_t`.
+///
+/// # Safety
+///
+/// Must be called only while a level is active (zone memory must be
+/// initialised).  `type_` must be a valid `mobjtype_t` index.
 #[no_mangle]
 pub unsafe extern "C" fn P_SpawnMobj(x: c_int, y: c_int, z: c_int, type_: c_int) -> *mut mobj_t {
     let mobj = Z_Malloc(
@@ -463,6 +564,17 @@ pub unsafe extern "C" fn P_SpawnMobj(x: c_int, y: c_int, z: c_int, type_: c_int)
     mobj
 }
 
+/// Unlink `mobj` from the sector/block lists, stop any playing sound, and
+/// remove its thinker.
+///
+/// If the mobj is a collectable special item (not dropped and not an
+/// invulnerability sphere / invisibility sphere), its spawn record is pushed
+/// onto the item-respawn queue for potential deathmatch respawn.
+///
+/// # Safety
+///
+/// `mobj` must be a valid, non-null pointer to an `mobj_t` that is currently
+/// linked into the world.
 #[no_mangle]
 pub unsafe extern "C" fn P_RemoveMobj(mobj: *mut mobj_t) {
     let mobj = &mut *mobj;
@@ -484,6 +596,15 @@ pub unsafe extern "C" fn P_RemoveMobj(mobj: *mut mobj_t) {
     P_RemoveThinker(&mut mobj.thinker as *mut thinker_t);
 }
 
+/// Respawn the oldest queued special item if deathmatch mode 2 is active and
+/// the item has been gone for at least 30 seconds.
+///
+/// Spawns an item-fog effect at the respawn location, then spawns the item
+/// itself and advances the queue tail.
+///
+/// # Safety
+///
+/// Must be called only during an active level tick.
 #[no_mangle]
 pub unsafe extern "C" fn P_RespawnSpecials() {
     if deathmatch != 2 {
@@ -525,6 +646,16 @@ pub unsafe extern "C" fn P_RespawnSpecials() {
     iquetail = (iquetail + 1) & (ITEMQUESIZE as c_int - 1);
 }
 
+/// Spawn the player mobj for the player indicated by `mthing->type` (1-4).
+///
+/// Reborns the player if necessary, initialises all HUD state, and sets up
+/// weapon psprites.  Skips the slot if the player is not in the current game.
+///
+/// # Safety
+///
+/// `mthing` must be a valid, non-null pointer to a `mapthing_t` whose `type`
+/// field is in `0..=4`.  Must be called only during level load with zone
+/// memory active.
 #[no_mangle]
 pub unsafe extern "C" fn P_SpawnPlayer(mthing: *mut mapthing_t) {
     let mthing = &mut *mthing;
@@ -578,6 +709,17 @@ pub unsafe extern "C" fn P_SpawnPlayer(mthing: *mut mapthing_t) {
     }
 }
 
+/// Spawn one thing from the map's THINGS lump.
+///
+/// Handles deathmatch start positions (type 11), player starts (types 1-4),
+/// skill-level and network-mode filtering, and the `-nomonsters` flag.
+/// Calls `P_SpawnMobj` for all other thing types after looking up the
+/// `mobjinfo` entry by `doomednum`.
+///
+/// # Safety
+///
+/// `mthing` must be a valid, non-null pointer to a `mapthing_t` with host
+/// byte order fields.  Must be called during level load.
 #[no_mangle]
 pub unsafe extern "C" fn P_SpawnMapThing(mthing: *mut mapthing_t) {
     let mthing = &mut *mthing;
@@ -675,6 +817,13 @@ pub unsafe extern "C" fn P_SpawnMapThing(mthing: *mut mapthing_t) {
     }
 }
 
+/// Spawn a bullet-puff visual effect at (`x`, `y`, `z`), randomising the Z
+/// slightly and the initial tic count.  Skips to the melee-contact frame
+/// (`S_PUFF3`) when the attack was at melee range so punches do not spark.
+///
+/// # Safety
+///
+/// Must be called during an active level tick with zone memory available.
 #[no_mangle]
 pub unsafe extern "C" fn P_SpawnPuff(x: c_int, y: c_int, z: c_int) {
     let z = z + ((P_Random() - P_Random()) << 10);
@@ -689,6 +838,15 @@ pub unsafe extern "C" fn P_SpawnPuff(x: c_int, y: c_int, z: c_int) {
     }
 }
 
+/// Spawn a blood-splat visual effect at (`x`, `y`, `z`).
+///
+/// The initial state is chosen based on `damage`: heavy hits use the default
+/// `MT_BLOOD` spawn state, medium hits start at `S_BLOOD2`, and weak hits
+/// start at `S_BLOOD3` (smaller splat).
+///
+/// # Safety
+///
+/// Must be called during an active level tick with zone memory available.
 #[no_mangle]
 pub unsafe extern "C" fn P_SpawnBlood(x: c_int, y: c_int, z: c_int, damage: c_int) {
     let z = z + ((P_Random() - P_Random()) << 10);
@@ -705,6 +863,14 @@ pub unsafe extern "C" fn P_SpawnBlood(x: c_int, y: c_int, z: c_int, damage: c_in
     }
 }
 
+/// Validate a newly spawned missile: jitter its tic count, nudge it half a
+/// step forward along its trajectory, and explode it immediately if that
+/// initial position is blocked.
+///
+/// # Safety
+///
+/// `th` must be a valid, non-null pointer to an `mobj_t` with `MF_MISSILE`
+/// set and non-zero momentum.
 #[no_mangle]
 pub unsafe extern "C" fn P_CheckMissileSpawn(th: *mut mobj_t) {
     let th = &mut *th;
@@ -720,6 +886,18 @@ pub unsafe extern "C" fn P_CheckMissileSpawn(th: *mut mobj_t) {
     }
 }
 
+/// Return `mobj` unchanged, or a pointer to a zeroed dummy `mobj_t` if
+/// `mobj` is null.
+///
+/// This substitution avoids null-pointer crashes in code that assumes the
+/// pointer is always valid, emulating the original Vanilla Doom behaviour
+/// where unchecked null dereferences "worked" due to the absence of memory
+/// protection.
+///
+/// # Safety
+///
+/// The returned dummy pointer is valid only until the next call to this
+/// function from the same thread; callers must not store it across ticks.
 #[no_mangle]
 pub unsafe extern "C" fn P_SubstNullMobj(mobj: *mut mobj_t) -> *mut mobj_t {
     if mobj.is_null() {
@@ -733,6 +911,18 @@ pub unsafe extern "C" fn P_SubstNullMobj(mobj: *mut mobj_t) -> *mut mobj_t {
     mobj
 }
 
+/// Launch a projectile of type `type_` from `source` toward `dest`.
+///
+/// The missile is spawned 32 units above `source`'s origin, aimed directly at
+/// `dest`'s centre (with random spread if `dest` has `MF_SHADOW`).  Vertical
+/// momentum is computed from the Z distance divided by travel time.
+///
+/// Returns a pointer to the spawned missile `mobj_t`.
+///
+/// # Safety
+///
+/// `source` and `dest` must be valid, non-null pointers to `mobj_t` instances.
+/// `type_` must be a valid `mobjtype_t` index with `MF_MISSILE` in its flags.
 #[no_mangle]
 pub unsafe extern "C" fn P_SpawnMissile(
     source: *mut mobj_t,
@@ -766,6 +956,14 @@ pub unsafe extern "C" fn P_SpawnMissile(
     th
 }
 
+/// Launch a projectile of type `type_` from the player's `source` mobj,
+/// auto-aiming within a 90-degree cone and then two additional angle offsets
+/// before giving up and firing straight ahead.
+///
+/// # Safety
+///
+/// `source` must be a valid, non-null pointer to a player `mobj_t`.
+/// `type_` must be a valid `mobjtype_t` index with `MF_MISSILE` in its flags.
 #[no_mangle]
 pub unsafe extern "C" fn P_SpawnPlayerMissile(source: *mut mobj_t, type_: c_int) {
     let source = &mut *source;
