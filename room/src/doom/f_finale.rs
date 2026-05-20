@@ -1,6 +1,23 @@
 //! Rust port of vendor/doomgeneric/f_finale.c.
 //!
 //! Game completion, final screen animation.
+//!
+//! Handles three distinct finale stages driven by the `FinaleStage` enum:
+//! scrolling text printed character-by-character over a flat background
+//! (`Text`), a full-screen art image with optional bunny scroll (`ArtScreen`),
+//! and the cast-of-characters roll (`Cast`) used at the end of Doom II.
+//! Episode/map matching is performed against the `TEXTSCREENS` table to
+//! select the appropriate text string and background flat.
+//!
+//! Notable Rust-vs-C differences:
+//! - Episode/map dispatch uses a `for` loop over `TEXTSCREENS` instead of
+//!   a series of `if`/`else if` blocks.
+//! - The C `goto stopattack` in `F_CastTicker` is refactored into the helper
+//!   `goto_stopattack`.
+//! - `FinaleStage` replaces the bare `finalestage` integer, improving
+//!   exhaustiveness checking in `match` expressions.
+//! - Finale text strings and cast names that the C source takes from
+//!   `d_englsh.h` are inlined as `const` C-string literals.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -23,95 +40,171 @@ use crate::DEH_snprintf;
 use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 use crate::doom::z_zone::{PU_CACHE, PU_LEVEL};
 
+/// Number of game ticks a single text character takes to appear on screen.
+///
+/// C origin: `TEXTSPEED` in f_finale.c.
 const TEXTSPEED: c_int = 3;
+
+/// Number of extra ticks to wait after all text has been displayed before
+/// advancing to the art-screen stage.
+///
+/// C origin: `TEXTWAIT` in f_finale.c.
 const TEXTWAIT: c_int = 250;
 
+/// `gamestate` value that indicates the finale is active.
+///
+/// Mirrors `GS_FINALE` from `g_game.h`; kept local to avoid a circular
+/// dependency.
 const GS_FINALE: c_int = 2;
+
+/// `gameaction` value meaning "do nothing".
+///
+/// C origin: `ga_nothing` in `g_game.h`.
 const ga_nothing: c_int = 0;
+
+/// `gameaction` value that triggers loading the next level/world.
+///
+/// C origin: `ga_worlddone` in `g_game.h`.
 const ga_worlddone: c_int = 8;
+
+/// `event_t.type_` value for key-down events.
+///
+/// C origin: `ev_keydown` in `d_event.h`.
 const ev_keydown: c_int = 0;
 
+/// Mask applied to a sprite-frame index to strip the full-bright flag.
+///
+/// C origin: `FF_FRAMEMASK` in f_finale.c.
 const FF_FRAMEMASK: c_int = 0x7fff;
 
+/// Maximum number of simultaneously active players.
+///
+/// C origin: `MAXPLAYERS` in `doomdef.h`.
 const MAXPLAYERS: usize = 4;
 
 // ---------------------------------------------------------------------------
 // Finale text strings (from d_englsh.h)
 // ---------------------------------------------------------------------------
 
+/// Helper that appends a NUL byte and returns a `*mut c_char` to the literal.
 macro_rules! cstr {
     ($s:literal) => {
         concat!($s, "\0").as_ptr() as *mut c_char
     };
 }
 
+/// Episode 1 finale text shown after defeating the boss on E1M8.
 const E1TEXT: *mut c_char = cstr!("Once you beat the big badasses and\nclean out the moon base you're supposed\nto win, aren't you? Aren't you? Where's\nyour fat reward and ticket home? What\nthe hell is this? It's not supposed to\nend this way!\n\nIt stinks like rotten meat, but looks\nlike the lost Deimos base.  Looks like\nyou're stuck on The Shores of Hell.\nThe only way out is through.\n\nTo continue the DOOM experience, play\nThe Shores of Hell and its amazing\nsequel, Inferno!");
 
+/// Episode 2 finale text shown after defeating the boss on E2M8.
 const E2TEXT: *mut c_char = cstr!("You've done it! The hideous cyber-\ndemon lord that ruled the lost Deimos\nmoon base has been slain and you\ntriumph over the hordes of hell.\nThe mission is not complete, however.\nThe loathsome vomit of hell still\noozes from the nether regions of\nDeimos.\n\nThe demon spawner, the source of the\nhellish invasion, remains active.\nYou must find it and shut it down.\n\nTo continue the DOOM experience,\nplay Inferno!");
 
+/// Episode 3 finale text shown after defeating the boss on E3M8.
 const E3TEXT: *mut c_char = cstr!("The loathsome spiderdemon that\nmaster-minded the invasion of the moon\nbase and caused so much death has had\nits ass kicked for all time.\n\nA hidden doorway opens and you begin\nthe long trek back to the surface.\nThe sensual scent of flowers tickles\nyour nose and you smile.\n\nBut wait! The gateway is open, and\nthe demons of hell are pouring\nthrough! You wonder how you'll ever\nget home.\n\nA demon consumes your flesh.\n\nThe End.\n\n(Well, not really.  To continue the\nDOOM experience, play Thy Flesh\nConsumed!)");
 
+/// Episode 4 finale text shown after defeating the boss on E4M8.
 const E4TEXT: *mut c_char = cstr!("The spider mastermind must have sent forth\nits legions of hellspawn before your\nfinal confrontation with that terrible\nbeast from netherworld.  But you stepped\nforward and brought forth eternal damnation\nand suffering upon the horde as a true\nhero would in the face of something so\nevil.\n\nBesides, someone was gonna pay for what\nhappened to daisy, your pet rabbit.\n\nBut now, you see spread before you more\npotential pain and gibbitude as a nation\nof demons run amok among our cities.\n\nNext stop, hell on earth!");
 
+/// Doom II level 6 inter-level text (first story block).
 const C1TEXT: *mut c_char = cstr!("YOU HAVE ENTERED DEEPLY INTO THE INFESTED\nSTARPORT. BUT SOMETHING IS WRONG. THE\nMONSTERS HAVE BROUGHT THEIR OWN REALITY\nWITH THEM, AND THE STARPORT'S TECHNOLOGY\nIS BEING SUBVERTED BY THEIR PRESENCE.\n\nAHEAD, YOU SEE AN OUTPOST OF HELL, A\nFORTIFIED ZONE. IF YOU CAN GET PAST IT,\nYOU CAN PENETRATE INTO THE HAUNTED HEART\nOF THE STARBASE AND FIND THE CONTROLLING\nSWITCH WHICH HOLDS EARTH'S POPULATION\nHOSTAGE.");
 
+/// Doom II level 11 inter-level text.
 const C2TEXT: *mut c_char = cstr!("YOU HAVE WON! YOUR VICTORY HAS ENABLED\nHUMANKIND TO EVACUATE EARTH AND ESCAPE\nTHE NIGHTMARE.  NOW YOU ARE THE ONLY\nHUMAN LEFT ON THE FACE OF THE PLANET.\nCAN YOU FIND YOUR WAY BACK TO HAPPY\nREALITY?\n\nOR ARE YOU DOOMED TO ROAM ETERNAL\nAMONG THE DEMONS?");
 
+/// Doom II level 20 inter-level text.
 const C3TEXT: *mut c_char = cstr!("YOU ARE AT THE CORRUPT HEART OF THE CITY,\nSURROUNDED BY THE CORPSES OF YOUR ENEMIES.\nYOU SEE NO WAY TO ESCAPE FROM THIS FUTURE\nHELL, BUT YOU MAY DELAY THE DAMNATION OF\nHUMANITY BY THROWING YOURSELF INTO THE\nPORTAL, AND HEADING OFF THE DEMONIC\nINVASION AT ITS SOURCE.");
 
+/// Doom II level 30 inter-level text.
 const C4TEXT: *mut c_char = cstr!("SENSIBLE, NO?\n\nTHERE WAS NO WAY YOU COULD SURVIVE THIS\nHELL, BUT YOU HAVE SUCCEEDED IN SPOILING\nTHE DEMONS' PLANS.  THE HAZARDOUS-WASTE\nFACILITY HAS BEEN DESTROYED AND HELL'S\nPORTAL HAS BEEN SEALED.\n\nYOU ARE THE ONLY SURVIVOR, BUT THE BATTLE\nCONTINUES ELSEWHERE.  EARTH REMAINS UNDER\nSIEGE, AND THE HELLSPAWN PROWL THE\nSTREETS IN SEARCH OF MORE PREY.\n\nTHE INVASION IS FAR FROM OVER.");
 
+/// Doom II level 15 (secret exit) inter-level text.
 const C5TEXT: *mut c_char = cstr!("BUT WAIT!  THERE'S MORE!\n\nIT'S BACK TO THE PITS OF HELL FOR YOU,\nTO FACE MORE DEMONS, MORE HELLSPAWN, AND\nMORE HIDEOUS ACTS OF EVIL.\n\nIT'S A DIRTY JOB, BUT SOMEONE'S GOT TO\nDO IT.  AND THAT SOMEONE IS YOU.");
 
+/// Doom II level 31 inter-level text.
 const C6TEXT: *mut c_char = cstr!("CONGRATULATIONS!\n\nYOU HAVE FOUND THE SECRET LEVEL!\n\nHOPEFULLY YOU FOUND THE PLASMA GUN.\n\nTHE DEMON HORDE IS ABOUT TO GET A WAKE-UP\nCALL.");
 
+/// TNT: Evilution level 6 inter-level text.
 const T1TEXT: *mut c_char = cstr!("You've fought your way out of the infested\nexperimental labs.   It seems that UAC has\nonce again gulped it down.  Ahead lies\ntheir central complex, now firmly in the\ngrasp of the demon hordes.  Perhaps by\nsabotaging their primary teleporter you\ncan halt the invasion.");
 
+/// TNT: Evilution level 11 inter-level text.
 const T2TEXT: *mut c_char = cstr!("The demon spawner you've found appears to\nhave been activated.  The Demons are\npouring through in endless waves.  You\nneed to find a way to deactivate it,\nfast!");
 
+/// TNT: Evilution level 20 inter-level text.
 const T3TEXT: *mut c_char = cstr!("The river of blood spills over into the\nnext area.  It seems your arrival hasn't\ngone unnoticed.  Ahead lies the most\ninfested region of the complex.  You must\nfind a way to stem the tide of demons, or\ndie trying.");
 
+/// TNT: Evilution level 30 inter-level text.
 const T4TEXT: *mut c_char = cstr!("The stench of rotten flesh and sulfur\nfills the air.  You have reached the\nheart of the infested complex.  Somewhere\nbeyond the next portal lies the Demon\nSpawner itself.  If you can survive long\nenough to find it, you may be able to turn\nthe tide of this war.");
 
+/// TNT: Evilution level 15 inter-level text.
 const T5TEXT: *mut c_char = cstr!("You've done it!  The hideous Spiderdemon\nthat masterminded the invasion is dead.\nBut the demon spawner still remains,\nand the forces of hell are still pouring\nthrough.  You need to find the primary\nteleporter and destroy it.");
 
+/// TNT: Evilution level 31 inter-level text.
 const T6TEXT: *mut c_char = cstr!("The primary teleporter is destroyed, but\nthe forces of hell are still pouring in.\nYou need to find the secondary teleporter\nand shut it down.  The fate of Earth\ndepends on it.");
 
+/// Plutonia Experiment level 6 inter-level text.
 const P1TEXT: *mut c_char = cstr!("You gloat over the steaming carcass of the\nGuardian.  With its death, you've wrested\nthe Accelerator from the stinking claws\nof Hell.  You relax and glance around\nthe room.  Damn!  There was supposed to\nbe a bridge around here somewhere!  Did\nthe Invaders sense your victory and\nwithdraw the bridge to prevent your\nescape?\n\nYou hear the sound of claws on stone.\nYou frantically grab your pistol and\ndive for the door, but it's too late.\nThe Demons have arrived.");
 
+/// Plutonia Experiment level 11 inter-level text.
 const P2TEXT: *mut c_char = cstr!("You did it!  The hideous Spiderdemon\nthat masterminded the invasion is dead.\nBut the demon spawner still remains,\nand the forces of hell are still pouring\nthrough.  You need to find the primary\nteleporter and destroy it.");
 
+/// Plutonia Experiment level 20 inter-level text.
 const P3TEXT: *mut c_char = cstr!("The Vile presence fades.  You feel a\nsense of relief, but it is short lived.\nYou still must find the demon spawner\nand shut it down.  Time is running out.");
 
+/// Plutonia Experiment level 30 inter-level text.
 const P4TEXT: *mut c_char = cstr!("The demon spawner lies in ruins before\nyou.  The forces of hell are in full\nretreat, and the invasion is stopped.\nYou step onto the teleporter, eager to\nreturn home and bask in the glory of\nyour victory.");
 
-const P5TEXT: *mut c_char = cstr!("You have survived the horrors of the\ninfested complex and emerged victorious.\nThe demon spawner lies in ruins, and the\nforces of hell have been driven back.\nYou step onto the teleporter, ready to\nreturn to Earth and face whatever\nchallenges lie ahead.");
+/// Plutonia Experiment level 15 inter-level text.
+const P5TEXT: *mut c_char = cstr!("You have survived the horrors of the\ninfested complex and emerged victorious.\nThe demon spawner lies in ruins, and the\nforces of hell have been driven back.\nYou step onto the teleporter, ready to\nreturn Earth and face whatever\nchallenges lie ahead.");
 
+/// Plutonia Experiment level 31 inter-level text.
 const P6TEXT: *mut c_char = cstr!("The primary teleporter is destroyed, but\nthe forces of hell are still pouring in.\nYou need to find the secondary teleporter\nand shut it down.  The fate of Earth\ndepends on it.");
 
 // Cast names (from d_englsh.h)
+
+/// Cast-roll name for the Zombieman.
 const CC_ZOMBIE: *mut c_char = cstr!("ZOMBIEMAN");
+/// Cast-roll name for the Shotgun Guy.
 const CC_SHOTGUN: *mut c_char = cstr!("SHOTGUN GUY");
+/// Cast-roll name for the Heavy Weapon Dude (chaingunner).
 const CC_HEAVY: *mut c_char = cstr!("HEAVY WEAPON DUDE");
+/// Cast-roll name for the Imp.
 const CC_IMP: *mut c_char = cstr!("IMP");
+/// Cast-roll name for the Demon.
 const CC_DEMON: *mut c_char = cstr!("DEMON");
+/// Cast-roll name for the Lost Soul.
 const CC_LOST: *mut c_char = cstr!("LOST SOUL");
+/// Cast-roll name for the Cacodemon.
 const CC_CACO: *mut c_char = cstr!("CACODEMON");
+/// Cast-roll name for the Hell Knight.
 const CC_HELL: *mut c_char = cstr!("HELL KNIGHT");
+/// Cast-roll name for the Baron of Hell.
 const CC_BARON: *mut c_char = cstr!("BARON OF HELL");
+/// Cast-roll name for the Arachnotron.
 const CC_ARACH: *mut c_char = cstr!("ARACHNOTRON");
+/// Cast-roll name for the Pain Elemental.
 const CC_PAIN: *mut c_char = cstr!("PAIN ELEMENTAL");
+/// Cast-roll name for the Revenant.
 const CC_REVEN: *mut c_char = cstr!("REVENANT");
+/// Cast-roll name for the Mancubus.
 const CC_MANCU: *mut c_char = cstr!("MANCUBUS");
+/// Cast-roll name for the Arch-Vile.
 const CC_ARCH: *mut c_char = cstr!("ARCH-VILE");
+/// Cast-roll name for the Spider Mastermind.
 const CC_SPIDER: *mut c_char = cstr!("THE SPIDER MASTERMIND");
+/// Cast-roll name for the Cyberdemon.
 const CC_CYBER: *mut c_char = cstr!("THE CYBERDEMON");
+/// Cast-roll name for the player character.
 const CC_HERO: *mut c_char = cstr!("OUR HERO");
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
+/// Mirrors the C `spriteframe_t` structure from `r_things.h`.
+///
+/// `rotate` is non-zero if the sprite has rotations.  `lump` gives the WAD
+/// lump number for each of the 8 rotation angles; `flip` indicates whether
+/// each angle should be drawn mirrored.
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct spriteframe_t {
@@ -120,31 +213,57 @@ struct spriteframe_t {
     pub flip: [u8; 8],
 }
 
+/// Mirrors the C `spritedef_t` structure from `r_things.h`.
+///
+/// Describes all frames for a single sprite.  `spriteframes` points to an
+/// array of `numframes` [`spriteframe_t`] entries.
 #[repr(C)]
 struct spritedef_t {
     pub numframes: c_int,
     pub spriteframes: *mut spriteframe_t,
 }
 
+/// The three stages a finale sequence passes through in order.
+///
+/// Replaces the bare `int finalestage` from the C source with an enum for
+/// exhaustive `match` coverage.
 #[derive(Clone, Copy)]
 enum FinaleStage {
+    /// Scrolling text printed over a tiling background flat.
     Text,
+    /// Full-screen art image (or bunny scroll for episode 3).
     ArtScreen,
+    /// Cast-of-characters roll (Doom II only).
     Cast,
 }
 
+/// Maps an (mission, episode, level) tuple to the background flat name and
+/// text string displayed after completing that level.
+///
+/// C origin: `textscreens[]` in f_finale.c.
 #[repr(C)]
 struct TextScreen {
+    /// Which game mission this entry applies to (e.g. `d_mode::doom`).
     pub mission: c_int,
+    /// Which episode this entry applies to (Doom only; Doom II uses episode 1 for all).
     pub episode: c_int,
+    /// The map number after which this text appears.
     pub level: c_int,
+    /// Name of the WAD flat lump used as the tiling background.
     pub background: *mut c_char,
+    /// The NUL-terminated text string to display.
     pub text: *mut c_char,
 }
 
+/// Pairs a cast-roll display name with the `mobjtype_t` index of the enemy.
+///
+/// The last entry in [`CASTORDER`] has a null `name` pointer as a sentinel.
+/// C origin: `castinfo_t` / `castorder[]` in f_finale.c.
 #[repr(C)]
 struct CastInfo {
+    /// NUL-terminated display name shown at the bottom of the cast screen.
     pub name: *mut c_char,
+    /// `mobjtype_t` index into `mobjinfo[]`; selects sprite and state machine.
     pub type_: c_int,
 }
 
@@ -153,8 +272,9 @@ struct CastInfo {
 // ---------------------------------------------------------------------------
 
 extern "C" {
-    // libc
+    /// C standard library: convert a character to upper-case.
     fn toupper(c: c_int) -> c_int;
+    /// C standard library: return the length of a NUL-terminated string.
     fn strlen(s: *const c_char) -> usize;
 }
 
@@ -193,6 +313,11 @@ use crate::doom::sounds::Mus;
 // Local helpers
 // ---------------------------------------------------------------------------
 
+/// Return the effective game mission, collapsing Chex Quest and HacX into
+/// their base missions.
+///
+/// Chex Quest maps to `doom`; HacX maps to `doom2`; all others are returned
+/// unchanged.  C origin: `logical_gamemission()` in f_finale.c.
 unsafe fn logical_gamemission() -> c_int {
     if gamemission == d_mode::pack_chex {
         d_mode::doom
@@ -213,6 +338,12 @@ unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
 // Data tables
 // ---------------------------------------------------------------------------
 
+/// Episode/level to text-screen mapping for all supported IWADs.
+///
+/// Searched linearly in [`F_StartFinale`] to find the matching entry for the
+/// current game mission, episode, and map.  The Chex Quest hack adjusts
+/// matching level from 8 to 5 inline.  C origin: `textscreens[]` in
+/// f_finale.c.
 const TEXTSCREENS: [TextScreen; 22] = [
     TextScreen {
         mission: d_mode::doom,
@@ -370,6 +501,10 @@ const TEXTSCREENS: [TextScreen; 22] = [
     },
 ];
 
+/// Ordered list of enemies shown in the Doom II cast-of-characters roll.
+///
+/// The last entry is a sentinel with a null `name` pointer.  C origin:
+/// `castorder[]` in f_finale.c.
 const CASTORDER: [CastInfo; 18] = [
     CastInfo {
         name: CC_ZOMBIE,
@@ -449,37 +584,92 @@ const CASTORDER: [CastInfo; 18] = [
 // Exported globals
 // ---------------------------------------------------------------------------
 
+/// Pointer to the NUL-terminated text string being displayed in the Text stage.
+///
+/// Set by [`F_StartFinale`] to the matching `TEXTSCREENS` entry; null when
+/// no text-screen applies.  Read by C code in `f_finale.c` and `g_game.c`.
+/// C origin: `finaletext` in f_finale.c.
 #[no_mangle]
 pub static mut finaletext: *mut c_char = ptr::null_mut();
 
+/// Name of the WAD flat lump used as the tiling background in the Text stage.
+///
+/// Set by [`F_StartFinale`].  Null when no text-screen applies.
+/// C origin: `finaleflat` in f_finale.c.
 #[no_mangle]
 pub static mut finaleflat: *mut c_char = ptr::null_mut();
 
+/// Index into `CASTORDER` for the enemy currently shown in the cast roll.
+///
+/// Incremented by [`F_CastTicker`] when the current enemy finishes its death
+/// animation.  C origin: `castnum` in f_finale.c.
 #[no_mangle]
 pub static mut castnum: c_int = 0;
 
+/// Remaining ticks before the cast animation advances to the next state.
+///
+/// Decremented each game tick by [`F_CastTicker`].
+/// C origin: `casttics` in f_finale.c.
 #[no_mangle]
 pub static mut casttics: c_int = 0;
 
+/// Non-zero while the current cast enemy is playing its death animation.
+///
+/// Set by [`F_CastResponder`] when the player presses a key; cleared when the
+/// next enemy begins.  C origin: `castdeath` in f_finale.c.
 #[no_mangle]
 pub static mut castdeath: c_int = 0;
 
+/// Number of animation frames the current cast enemy has displayed so far.
+///
+/// Used to decide when to trigger an attack sequence (at frame 12) and when to
+/// stop one (at frame 24).  C origin: `castframes` in f_finale.c.
 #[no_mangle]
 pub static mut castframes: c_int = 0;
 
+/// Alternates between 0 and 1 to select melee vs. ranged attack during the
+/// cast roll.
+///
+/// C origin: `castonmelee` in f_finale.c.
 #[no_mangle]
 pub static mut castonmelee: c_int = 0;
 
+/// Non-zero while a cast enemy is in an attack animation.
+///
+/// C origin: `castattacking` in f_finale.c.
 #[no_mangle]
 pub static mut castattacking: c_int = 0;
 
+/// Current stage of the finale sequence.
+///
+/// Drives the dispatch in [`F_Ticker`] and [`F_Drawer`].
+/// C origin: `int finalestage` in f_finale.c.
 static mut FINALE_STAGE: FinaleStage = FinaleStage::Text;
+
+/// Tick counter incremented each game tick while the finale is active.
+///
+/// Controls text reveal speed, art-screen timing, and bunny-scroll position.
+/// C origin: `int finalecount` in f_finale.c.
 static mut FINALE_COUNT: c_uint = 0;
 
 // ---------------------------------------------------------------------------
 // Functions
 // ---------------------------------------------------------------------------
 
+/// Begin a new finale sequence for the current episode and map.
+///
+/// Resets game state (`gameaction`, `gamestate`, `viewactive`,
+/// `automapactive`), selects and starts the appropriate music, searches
+/// `TEXTSCREENS` to find the matching text string and background flat, and
+/// initialises the internal stage to `Text`.
+///
+/// Postcondition: `FINALE_STAGE` is `Text`, `FINALE_COUNT` is 0, and
+/// `finaletext`/`finaleflat` point to the selected screen data (or null if
+/// none matched).
+///
+/// Called from C code in `g_game.c` when `gameaction == ga_completed` and the
+/// appropriate episode/map conditions are met.  C origin: `F_StartFinale` in
+/// f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_StartFinale() {
     unsafe {
@@ -533,6 +723,12 @@ pub extern "C" fn F_StartFinale() {
     }
 }
 
+/// Forward input events to the cast responder while in the Cast stage.
+///
+/// Returns 1 if the event was consumed, 0 otherwise.  All non-Cast stage
+/// events are ignored at this level.
+///
+/// Called from C code in `g_game.c`.  C origin: `F_Responder` in f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_Responder(event: *mut event_t) -> c_int {
     unsafe {
@@ -544,6 +740,17 @@ pub extern "C" fn F_Responder(event: *mut event_t) -> c_int {
     }
 }
 
+/// Advance the finale state machine by one game tick.
+///
+/// In commercial mode (`gamemode == commercial`), checks whether any player
+/// has pressed a button to skip; on map 30 this starts the cast roll, otherwise
+/// it triggers `ga_worlddone`.  Increments `FINALE_COUNT`; delegates to
+/// [`F_CastTicker`] during the Cast stage.  In non-commercial mode, advances
+/// from Text to ArtScreen when the text has been fully displayed and the wait
+/// period has expired (triggering a wipe and, for episode 3, the bunny music).
+///
+/// Called from C code in `g_game.c` once per game tick.
+/// C origin: `F_Ticker` in f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_Ticker() {
     unsafe {
@@ -586,6 +793,15 @@ pub extern "C" fn F_Ticker() {
     }
 }
 
+/// Tile the background flat across the screen and draw the finale text,
+/// revealing characters one at a time based on `FINALE_COUNT`.
+///
+/// The flat is tiled as 64x64 blocks; text is rendered using the HUD font
+/// starting at pixel `(10, 10)` with a line height of 11.  Characters are
+/// revealed at the rate of one per `TEXTSPEED` ticks (with a 10-tick lead-in).
+/// Unknown characters advance the cursor by 4 pixels.
+///
+/// Called from [`F_Drawer`].  C origin: `F_TextWrite` in f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_TextWrite() {
     unsafe {
@@ -649,6 +865,14 @@ pub extern "C" fn F_TextWrite() {
     }
 }
 
+/// Start the Doom II cast-of-characters roll.
+///
+/// Triggers a wipe (`wipegamestate = -1`), resets the cast index to 0,
+/// initialises the first monster's see-state animation, and starts the
+/// "evil" music track.
+///
+/// Called by [`F_Ticker`] when the player presses fire on map 30.
+/// C origin: `F_StartCast` in f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_StartCast() {
     unsafe {
@@ -668,10 +892,26 @@ pub extern "C" fn F_StartCast() {
     }
 }
 
-// Provide a `caststate` symbol for any remaining C code that reads it.
+/// Pointer to the current animation state for the cast-roll entity.
+///
+/// Exported with `#[no_mangle]` so that any remaining C code that reads
+/// `caststate` can still resolve the symbol.  C origin: `caststate` in
+/// f_finale.c.
 #[no_mangle]
 pub static mut caststate: *mut State = ptr::null_mut();
 
+/// Advance the cast-roll animation by one game tick.
+///
+/// Decrements `casttics`; when it reaches zero either advances to the next
+/// animation state (playing attack-sound effects at specific states) or, when
+/// the current enemy's death animation has finished, moves on to the next
+/// entry in `CASTORDER`.  At frame 12 an attack sequence (melee or missile,
+/// alternating) is triggered; at frame 24 or when the enemy returns to its
+/// see-state the attack is cancelled via the `stopattack` logic (refactored
+/// into `goto_stopattack`).
+///
+/// Called by [`F_Ticker`] each game tick while in the Cast stage.
+/// C origin: `F_CastTicker` in f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_CastTicker() {
     unsafe {
@@ -777,7 +1017,19 @@ pub extern "C" fn F_CastTicker() {
     }
 }
 
-// Work-around for the goto in F_CastTicker.
+/// Cancel the current cast attack and return to the see-state animation.
+///
+/// Extracted from a `goto stopattack` label in the original C source.
+/// Resets `castattacking` and `castframes`, jumps `caststate` back to the
+/// current enemy's `seestate`, and reloads `casttics`.  If `tics == -1` (a
+/// looping state with no fixed duration), defaults to 15 ticks.
+///
+/// C origin: the `stopattack:` label inside `F_CastTicker` in f_finale.c.
+///
+/// # Safety
+///
+/// All cast globals (`caststate`, `castnum`, etc.) must be in a consistent
+/// state, as established by [`F_StartCast`].
 unsafe fn goto_stopattack() {
     castattacking = 0;
     castframes = 0;
@@ -791,6 +1043,14 @@ unsafe fn goto_stopattack() {
     }
 }
 
+/// Handle a key-down event during the cast roll.
+///
+/// On the first key press, triggers the current enemy's death animation and
+/// plays its death sound.  Subsequent key presses while `castdeath != 0` are
+/// consumed but ignored.  Returns 1 if the event was consumed, 0 otherwise.
+///
+/// Called by [`F_Responder`] while in the Cast stage.
+/// C origin: `F_CastResponder` in f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_CastResponder(ev: *mut event_t) -> c_int {
     unsafe {
@@ -815,6 +1075,13 @@ pub extern "C" fn F_CastResponder(ev: *mut event_t) -> c_int {
     }
 }
 
+/// Compute the pixel width of `text` using the HUD font, then draw it
+/// horizontally centred at y=180.
+///
+/// Characters not present in the HUD font advance the cursor by 4 pixels.
+/// The text is drawn with `V_DrawPatch` at the calculated x-offset.
+///
+/// Called by [`F_CastDrawer`].  C origin: `F_CastPrint` in f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_CastPrint(text: *mut c_char) {
     unsafe {
@@ -867,6 +1134,15 @@ pub extern "C" fn F_CastPrint(text: *mut c_char) {
     }
 }
 
+/// Draw the current cast-roll frame: BOSSBACK background, centred enemy sprite,
+/// and the enemy name at the bottom.
+///
+/// The sprite frame is selected from `caststate.sprite` and
+/// `caststate.frame & FF_FRAMEMASK`, using rotation 0.  If the frame's flip
+/// flag is set, `V_DrawPatchFlipped` is used.
+///
+/// Called from [`F_Drawer`] during the Cast stage.
+/// C origin: `F_CastDrawer` in f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_CastDrawer() {
     unsafe {
@@ -893,6 +1169,12 @@ pub extern "C" fn F_CastDrawer() {
     }
 }
 
+/// Draw a single column `col` of `patch` to column `x` of the video buffer,
+/// stretching vertically according to the patch's column offsets.
+///
+/// Used by [`F_BunnyScroll`] to implement the horizontal scroll effect.
+/// The patch column is read as a standard Doom post-format column (topdelta /
+/// length / pixel data).  C origin: `F_DrawPatchCol` in f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_DrawPatchCol(x: c_int, patch: *mut patch_t, col: c_int) {
     unsafe {
@@ -917,6 +1199,14 @@ pub extern "C" fn F_DrawPatchCol(x: c_int, patch: *mut patch_t, col: c_int) {
     }
 }
 
+/// Draw the episode-3 bunny-scroll art-screen.
+///
+/// Horizontally scrolls two 320-wide patches (`PFUB2` then `PFUB1`) to the
+/// left, starting after tick 230.  After tick 1130 an animated `END*` patch
+/// sequence is overlaid in the centre of the screen, one new frame every 5
+/// ticks (up to frame 6), with a pistol sound on each new frame.
+///
+/// Called by [`F_ArtScreenDrawer`].  C origin: `F_BunnyScroll` in f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_BunnyScroll() {
     unsafe {
@@ -968,8 +1258,19 @@ pub extern "C" fn F_BunnyScroll() {
     }
 }
 
+/// The last `END*` animation frame shown during the bunny scroll.
+///
+/// Prevents a pistol sound from firing on every redraw of the same frame.
+/// C origin: `laststage` (static local) in `F_BunnyScroll` in f_finale.c.
 static mut LAST_STAGE: c_int = 0;
 
+/// Draw the art-screen for the current episode (non-Cast, non-Text stage).
+///
+/// Episode 3 delegates to [`F_BunnyScroll`].  Episodes 1 (retail: CREDIT,
+/// otherwise HELP2), 2 (VICTORY2), and 4 (ENDPIC) draw a full-screen patch.
+/// Other episode numbers are silently ignored.
+///
+/// Called from [`F_Drawer`].  C origin: `F_ArtScreenDrawer` in f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_ArtScreenDrawer() {
     unsafe {
@@ -999,6 +1300,10 @@ pub extern "C" fn F_ArtScreenDrawer() {
     }
 }
 
+/// Dispatch to the appropriate draw function based on the current finale stage.
+///
+/// Called from C code in `g_game.c` every frame while `gamestate == GS_FINALE`.
+/// C origin: `F_Drawer` in f_finale.c.
 #[no_mangle]
 pub extern "C" fn F_Drawer() {
     unsafe {
@@ -1014,6 +1319,16 @@ pub extern "C" fn F_Drawer() {
 // Link anchor
 // ---------------------------------------------------------------------------
 
+/// Ensures all exported symbols are retained by the linker.
+///
+/// Calls every public `extern "C"` function in this module with null/zero
+/// arguments.  Never intended to be called at runtime.
+/// C origin: not present in f_finale.c; added for the Rust link model.
+///
+/// # Safety
+///
+/// This function must never be called at runtime; it exists solely to prevent
+/// the linker from discarding exported symbols during dead-code elimination.
 #[no_mangle]
 pub unsafe extern "C" fn F_Finale_Link_Anchor() {
     F_StartFinale();

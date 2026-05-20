@@ -71,9 +71,9 @@ conflicts resolve trivially.
 
 ## HUD / UI (`hu_*`, `st_*`, `wi_*`, `am_map`, `f_*`, `m_menu`)
 
-- [ ] doom/am_map.rs (1429 lines, 0 docs)
-- [ ] doom/f_finale.rs (1108 lines, 1 doc)
-- [ ] doom/f_wipe.rs (258 lines, 2 docs)
+- [x] doom/am_map.rs (1429 lines, 0 docs)
+- [x] doom/f_finale.rs (1108 lines, 1 doc)
+- [x] doom/f_wipe.rs (258 lines, 2 docs)
 - [ ] doom/hu_lib.rs (606 lines, 6 docs)
 - [ ] doom/hu_stuff.rs (625 lines, 2 docs)
 - [ ] doom/m_menu.rs (1731 lines, 0 docs)
