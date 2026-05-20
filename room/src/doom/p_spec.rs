@@ -310,11 +310,13 @@ use crate::doom::p_telept::EV_Teleport;
 use crate::doom::w_wad::W_CheckNumForName;
 use crate::doom::z_zone::Z_Malloc;
 
-// Type aliases for casting c_ffi pointers to the local types used by the
-// modules imported above (all are #[repr(C)] with identical field layouts).
+/// `line_t` as seen by `p_lights` - `#[repr(C)]` layout identical to `c_ffi::line_t`.
 type LightsLine = crate::doom::p_lights::line_t;
+/// `sector_t` as seen by `p_lights` - `#[repr(C)]` layout identical to `c_ffi::sector_t`.
 type LightsSector = crate::doom::p_lights::sector_t;
+/// `line_t` as seen by `p_telept` - `#[repr(C)]` layout identical to `c_ffi::line_t`.
 type TeleptLine = crate::doom::p_telept::line_t;
+/// `mobj_t` as seen by `p_telept` - `#[repr(C)]` layout identical to `c_ffi::mobj_t`.
 type TeleptMobj = crate::doom::p_telept::mobj_t;
 
 // ---------------------------------------------------------------------------
@@ -328,6 +330,12 @@ type TeleptMobj = crate::doom::p_telept::mobj_t;
 /// Dehacked patch string.  Because this port does not support Dehacked, the
 /// shim simply returns its argument so that all call sites compile without
 /// conditional compilation guards.
+///
+/// # Safety
+///
+/// `s` must be a valid, non-null pointer to a NUL-terminated C string for the
+/// duration of the call (the pointer is returned unchanged and must remain valid
+/// for however long the caller uses it).
 #[inline(always)]
 unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
     s
@@ -1213,6 +1221,11 @@ pub unsafe extern "C" fn P_UpdateSpecials() {
 ///   unused in this Rust port).
 /// - `_pillar_sector`: the inner donut sector (used only for diagnostics in C;
 ///   unused in this Rust port).
+///
+/// # Safety
+///
+/// `s3_floorheight` and `s3_floorpic` must be valid, non-null, writable
+/// pointers. They are written unconditionally on every call.
 unsafe fn DonutOverrun(
     s3_floorheight: *mut c_int,
     s3_floorpic: *mut i16,
