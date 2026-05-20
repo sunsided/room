@@ -1,7 +1,18 @@
 //! Rust port of vendor/doomgeneric/wi_stuff.c.
 //!
-//! Intermission / victory screen logic: stats counting, animated backgrounds,
-//! level-name display, and state-machine transitions.
+//! Intermission / victory screen: kill/item/secret percentages, par time, animated
+//! episode map backgrounds, and level-entry/exit animations. Supports single-player,
+//! cooperative netgame, and deathmatch scoring modes for up to 4 players.
+//!
+//! Notable Rust-vs-C differences:
+//! - The C `anim_t` struct is split here into an immutable `anim_config_t`
+//!   (compile-time data) and a mutable `anim_state_t` (runtime state), stored in
+//!   separate `static` arrays. This avoids the need for `static mut` on the config
+//!   data and makes borrowing semantics clearer.
+//! - `AnimStateTable` wraps `UnsafeCell` to give interior mutability to the state
+//!   arrays, which must be `Sync` for use as module-level statics.
+//! - `DEH_String` and `SHORT` are identity shims (Dehacked and endianness
+//!   conversion are not yet active in this port).
 
 #![allow(
     non_upper_case_globals,
@@ -42,104 +53,175 @@ use crate::{c_write, DEH_snprintf};
 // Constants
 // ---------------------------------------------------------------------------
 
+/// Number of Doom episodes (E1-E4, matches C `NUMEPISODES`).
 const NUMEPISODES: usize = 4;
+/// Maps per episode (1-9, matches C `NUMMAPS`).
 const NUMMAPS: usize = 9;
 
+/// Screen y coordinate of the level-name title patch (matches C `WI_TITLEY`).
 const WI_TITLEY: c_int = 2;
+/// Vertical pixel spacing between player rows in the netgame and deathmatch views (matches C `WI_SPACINGY`).
 const WI_SPACINGY: c_int = 33;
 
+/// Screen x of the stats column in single-player view (matches C `SP_STATSX`).
 const SP_STATSX: c_int = 50;
+/// Screen y of the stats area in single-player view (matches C `SP_STATSY`).
 const SP_STATSY: c_int = 50;
+/// Screen x of the time display in single-player view (matches C `SP_TIMEX`).
 const SP_TIMEX: c_int = 16;
+/// Screen y of the time display in single-player view (matches C `SP_TIMEY`).
 const SP_TIMEY: c_int = SCREENHEIGHT - 32;
 
+/// Screen y of the stats header row in netgame view (matches C `NG_STATSY`).
 const NG_STATSY: c_int = 50;
+/// Horizontal pixel spacing between stat columns in netgame view (matches C `NG_SPACINGX`).
 const NG_SPACINGX: c_int = 64;
 
+/// Screen x of the frag matrix top-left in deathmatch view (matches C `DM_MATRIXX`).
 const DM_MATRIXX: c_int = 42;
+/// Screen y of the frag matrix top in deathmatch view (matches C `DM_MATRIXY`).
 const DM_MATRIXY: c_int = 68;
+/// Horizontal spacing between columns in the deathmatch frag matrix (matches C `DM_SPACINGX`).
 const DM_SPACINGX: c_int = 40;
+/// Screen x of the "Totals" column in deathmatch view (matches C `DM_TOTALSX`).
 const DM_TOTALSX: c_int = 269;
+/// Screen x of the "Killers" label in deathmatch view (matches C `DM_KILLERSX`).
 const DM_KILLERSX: c_int = 10;
+/// Screen y of the "Killers" label in deathmatch view (matches C `DM_KILLERSY`).
 const DM_KILLERSY: c_int = 100;
+/// Screen x of the "Victims" label in deathmatch view (matches C `DM_VICTIMSX`).
 const DM_VICTIMSX: c_int = 5;
+/// Screen y of the "Victims" label in deathmatch view (matches C `DM_VICTIMSY`).
 const DM_VICTIMSY: c_int = 50;
 
+/// Number of seconds (in `TICRATE` units) the "Show Next Location" map is displayed (matches C `SHOWNEXTLOCDELAY`).
 const SHOWNEXTLOCDELAY: c_int = 4;
 
 // ---------------------------------------------------------------------------
 // Types that must match C layout (g_game.c is still C)
 // ---------------------------------------------------------------------------
 
+/// Per-player intermission data passed in from the game loop (C typedef `wbplayerstruct_t`).
+///
+/// Layout must be ABI-identical to the C struct because `g_game.c` populates it.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct wbplayerstruct_t {
+    /// Non-zero if this player slot is in use.
     pub in_: c_int,
+    /// Number of kills this player scored on the level.
     pub skills: c_int,
+    /// Number of items this player collected.
     pub sitems: c_int,
+    /// Number of secrets this player found.
     pub ssecret: c_int,
+    /// Elapsed level time in tics.
     pub stime: c_int,
+    /// Frag counts against each of the 4 possible players.
     pub frags: [c_int; 4],
+    /// Unused score field (carried from the C struct for ABI compatibility).
     pub score: c_int,
 }
 
+/// Overall intermission input record passed from `G_WorldDone` (C typedef `wbstartstruct_t`).
+///
+/// Layout must be ABI-identical to the C struct; `#[repr(C)]` ensures this.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct wbstartstruct_t {
+    /// Episode index (0-based).
     pub epsd: c_int,
+    /// Non-zero if the player found the secret level on this episode.
     pub didsecret: c_int,
+    /// Index of the map the player just completed (0-based).
     pub last: c_int,
+    /// Index of the map the player is going to next (0-based).
     pub next: c_int,
+    /// Total killable monsters on the level (denominator for kill percentage).
     pub maxkills: c_int,
+    /// Total collectible items on the level (denominator for item percentage).
     pub maxitems: c_int,
+    /// Total secrets on the level (denominator for secret percentage).
     pub maxsecret: c_int,
+    /// Maximum frag count (not used in single-player).
     pub maxfrags: c_int,
+    /// Par time for the level in tics.
     pub partime: c_int,
+    /// Console player number (0-based).
     pub pnum: c_int,
+    /// Per-player stats for up to `MAXPLAYERS` players.
     pub plyr: [wbplayerstruct_t; MAXPLAYERS],
 }
 
+/// Intermission state machine states (C `stateenum_t` in `wi_stuff.c`).
 #[derive(Clone, Copy, PartialEq)]
 enum stateenum_t {
+    /// Transitioning to the next level; brief pause before `G_WorldDone`.
     NoState = -1,
+    /// Counting up kill/item/secret/time statistics.
     StatCount,
+    /// Showing the episode map with the "you are here" pointer.
     ShowNextLoc,
 }
 
+/// Screen coordinate pair used for level-node positions and animation locations (C `point_t`).
 #[derive(Clone, Copy)]
 struct point_t {
+    /// Horizontal screen pixel.
     x: c_int,
+    /// Vertical screen pixel.
     y: c_int,
 }
 
+/// Animation playback mode for background animations (C `animenum_t`).
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum animenum_t {
+    /// Play every `period` tics regardless of game state.
     ANIM_ALWAYS,
+    /// Play randomly with a delay between cycles.
     ANIM_RANDOM,
+    /// Play only when the "next" map index matches `data1`.
     ANIM_LEVEL,
 }
 
 /// Immutable per-animation configuration (set at compile time, never written at runtime).
+///
+/// Corresponds to the read-only fields of C `anim_t` in `wi_stuff.c`.
 #[derive(Clone, Copy)]
 struct anim_config_t {
+    /// Playback mode: always, random, or level-triggered.
     type_: animenum_t,
+    /// Tics between frame advances (or between random retriggers for `ANIM_RANDOM`).
     period: c_int,
+    /// Number of patch frames in this animation (1-3).
     nanims: c_int,
+    /// Screen position where the animation is drawn.
     loc: point_t,
+    /// For `ANIM_LEVEL`: the map index that triggers playback.
+    /// For `ANIM_RANDOM`: the max additional delay (in tics) before the next play.
     data1: c_int,
+    /// For `ANIM_RANDOM`: the minimum delay (in tics) before the next play.
     data2: c_int,
 }
 
 /// Mutable per-animation runtime state (zeroed at startup, written every frame).
+///
+/// Corresponds to the mutable fields of C `anim_t` in `wi_stuff.c`.
 #[derive(Clone, Copy)]
 struct anim_state_t {
+    /// Cached patch pointers for each frame; loaded by `WI_loadData`.
     p: [*mut patch_t; 3],
+    /// Game tic on which the next frame advance is scheduled.
     nexttic: c_int,
+    /// Frame index drawn on the previous tic (unused in this port; kept for layout parity).
     lastdrawn: c_int,
+    /// Current frame index within `p` (-1 = not yet started).
     ctr: c_int,
+    /// Internal sub-state for `ANIM_RANDOM` sequencing.
     state: c_int,
 }
 
+/// Zero-initialised animation state used to fill state tables at program start.
 const ZERO_STATE: anim_state_t = anim_state_t {
     p: [ptr::null_mut(); 3],
     nexttic: 0,
@@ -158,6 +240,7 @@ unsafe impl<const N: usize> Sync for AnimStateTable<N> {}
 // Static data tables
 // ---------------------------------------------------------------------------
 
+/// Level-node screen positions for Episode 1 (Knee-Deep in the Dead) map graphic.
 static LNODESEPSD0: [point_t; NUMMAPS] = [
     point_t { x: 185, y: 164 },
     point_t { x: 148, y: 143 },
@@ -170,6 +253,7 @@ static LNODESEPSD0: [point_t; NUMMAPS] = [
     point_t { x: 71, y: 24 },
 ];
 
+/// Level-node screen positions for Episode 2 (The Shores of Hell) map graphic.
 static LNODESEPSD1: [point_t; NUMMAPS] = [
     point_t { x: 254, y: 25 },
     point_t { x: 97, y: 50 },
@@ -182,6 +266,7 @@ static LNODESEPSD1: [point_t; NUMMAPS] = [
     point_t { x: 235, y: 158 },
 ];
 
+/// Level-node screen positions for Episode 3 (Inferno) map graphic.
 static LNODESEPSD2: [point_t; NUMMAPS] = [
     point_t { x: 156, y: 168 },
     point_t { x: 48, y: 154 },
@@ -194,15 +279,21 @@ static LNODESEPSD2: [point_t; NUMMAPS] = [
     point_t { x: 281, y: 136 },
 ];
 
+/// Level-node positions for Episode 4 (Thy Flesh Consumed) - all zeroed; no map graphic used.
 static LNODESEPSD3: [point_t; NUMMAPS] = [point_t { x: 0, y: 0 }; NUMMAPS];
 
+/// Combined level-node position table indexed by `[episode][map]` (C `lnodes` in `wi_stuff.c`).
 static LNODES: [[point_t; NUMMAPS]; NUMEPISODES] =
     [LNODESEPSD0, LNODESEPSD1, LNODESEPSD2, LNODESEPSD3];
 
+/// Number of animated patches in Episode 1's background (matches C `NUMANIMS[0]`).
 pub(crate) const EPSD0_NANIM: usize = 10;
+/// Number of animated patches in Episode 2's background (matches C `NUMANIMS[1]`).
 pub(crate) const EPSD1_NANIM: usize = 9;
+/// Number of animated patches in Episode 3's background (matches C `NUMANIMS[2]`).
 pub(crate) const EPSD2_NANIM: usize = 6;
 
+/// Animation configurations for Episode 1's background overlay (C `epsd0animinfo`).
 static EPSD0_CONFIG: [anim_config_t; EPSD0_NANIM] = [
     anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
@@ -286,6 +377,7 @@ static EPSD0_CONFIG: [anim_config_t; EPSD0_NANIM] = [
     },
 ];
 
+/// Animation configurations for Episode 2's background overlay (C `epsd1animinfo`).
 static EPSD1_CONFIG: [anim_config_t; EPSD1_NANIM] = [
     anim_config_t {
         type_: animenum_t::ANIM_LEVEL,
@@ -361,6 +453,7 @@ static EPSD1_CONFIG: [anim_config_t; EPSD1_NANIM] = [
     },
 ];
 
+/// Animation configurations for Episode 3's background overlay (C `epsd2animinfo`).
 static EPSD2_CONFIG: [anim_config_t; EPSD2_NANIM] = [
     anim_config_t {
         type_: animenum_t::ANIM_ALWAYS,
@@ -412,13 +505,19 @@ static EPSD2_CONFIG: [anim_config_t; EPSD2_NANIM] = [
     },
 ];
 
+/// Mutable runtime animation states for Episode 1's background animations.
 static EPSD0_STATE: AnimStateTable<EPSD0_NANIM> =
     AnimStateTable(UnsafeCell::new([ZERO_STATE; EPSD0_NANIM]));
+/// Mutable runtime animation states for Episode 2's background animations.
 static EPSD1_STATE: AnimStateTable<EPSD1_NANIM> =
     AnimStateTable(UnsafeCell::new([ZERO_STATE; EPSD1_NANIM]));
+/// Mutable runtime animation states for Episode 3's background animations.
 static EPSD2_STATE: AnimStateTable<EPSD2_NANIM> =
     AnimStateTable(UnsafeCell::new([ZERO_STATE; EPSD2_NANIM]));
 
+/// Return a reference to the compile-time animation configuration for entry `j` in episode `epsd`.
+///
+/// Panics if `epsd` is out of range (0-2).
 fn anim_config(epsd: usize, j: usize) -> &'static anim_config_t {
     match epsd {
         0 => &EPSD0_CONFIG[j],
@@ -467,6 +566,8 @@ unsafe fn anim_state_ptr(epsd: usize, j: usize) -> *mut anim_state_t {
     }
 }
 
+/// Count of background animations per episode, indexed by episode number (C `numanims`).
+/// Episode 3 (index 3) has no animations (0).
 static NUMANIMS: [c_int; NUMEPISODES] = [
     EPSD0_NANIM as c_int,
     EPSD1_NANIM as c_int,
@@ -478,61 +579,111 @@ static NUMANIMS: [c_int; NUMEPISODES] = [
 // Internal globals
 // ---------------------------------------------------------------------------
 
+/// Non-zero when the player pressed fire/use to skip the current count-up animation.
 static mut acceleratestage: c_int = 0;
+/// Console player index (0-based); set from `wbs.pnum` by `WI_initVariables`.
 static mut me: c_int = 0;
+/// Current intermission state machine state.
 static mut state: stateenum_t = stateenum_t::NoState;
+/// Pointer to the level-start record filled by `G_WorldDone`; valid for the duration of the intermission.
 static mut wbs: *mut wbstartstruct_t = ptr::null_mut();
+/// Pointer to `wbs.plyr[0]`; used to index per-player stats by offset.
 static mut plrs: *mut wbplayerstruct_t = ptr::null_mut();
+/// Generic countdown used in `NoState` and `ShowNextLoc` states.
 static mut cnt: c_int = 0;
+/// Background animation beat counter; incremented every tic by `WI_Ticker`.
 static mut bcnt: c_int = 0;
+/// Non-zero on the first draw call after `WI_Start`, triggers a full background blit.
 static mut firstrefresh: c_int = 0;
 
+/// Running kill-percentage display values (count up toward actual percentage).
 static mut cnt_kills: [c_int; MAXPLAYERS] = [0; MAXPLAYERS];
+/// Running item-percentage display values.
 static mut cnt_items: [c_int; MAXPLAYERS] = [0; MAXPLAYERS];
+/// Running secret-percentage display values.
 static mut cnt_secret: [c_int; MAXPLAYERS] = [0; MAXPLAYERS];
+/// Running displayed level time in seconds (counts up from 0).
 static mut cnt_time: c_int = 0;
+/// Running displayed par time in seconds (counts up from 0).
 static mut cnt_par: c_int = 0;
+/// Tic countdown used as a pause between successive stat reveals.
 static mut cnt_pause: c_int = 0;
 
+/// Number of Doom II maps to load level-name patches for (32 for the retail release).
 static mut NUMCMAPS: c_int = 0;
 
-// Graphics
+// ---------------------------------------------------------------------------
+// Cached WAD patches (loaded by WI_loadData, released by WI_unloadData)
+// ---------------------------------------------------------------------------
+
+/// "You Are Here" arrow patches (2 frames, `WIURH0`/`WIURH1`); third slot unused.
 static mut yah: [*mut patch_t; 3] = [ptr::null_mut(); 3];
+/// Completed-level splat patches (`WISPLAT`); second slot unused.
 static mut splat: [*mut patch_t; 2] = [ptr::null_mut(); 2];
+/// Percent sign patch (`WIPCNT`).
 static mut percent: *mut patch_t = ptr::null_mut();
+/// Colon separator patch (`WICOLON`) for time display.
 static mut colon: *mut patch_t = ptr::null_mut();
+/// Digit patches 0-9 (`WINUM0`-`WINUM9`).
 static mut num: [*mut patch_t; 10] = [ptr::null_mut(); 10];
+/// Minus sign patch (`WIMINUS`) for negative frag counts.
 static mut wiminus: *mut patch_t = ptr::null_mut();
+/// "Finished" label patch (`WIF`).
 static mut finished: *mut patch_t = ptr::null_mut();
+/// "Entering" label patch (`WIENTER`).
 static mut entering: *mut patch_t = ptr::null_mut();
+/// Single-player secret label patch (`WISCRT2`).
 static mut sp_secret: *mut patch_t = ptr::null_mut();
+/// Kills column header patch (`WIOSTK`).
 static mut kills: *mut patch_t = ptr::null_mut();
+/// Secrets column header patch (`WIOSTS`).
 static mut secret: *mut patch_t = ptr::null_mut();
+/// Items column header patch (`WIOSTI` or `WIOBJ` in co-op).
 static mut items: *mut patch_t = ptr::null_mut();
+/// Frags column header patch (`WIFRGS`).
 static mut frags: *mut patch_t = ptr::null_mut();
+/// Time label patch (`WITIME`).
 static mut timepatch: *mut patch_t = ptr::null_mut();
+/// Par-time label patch (`WIPAR`).
 static mut par: *mut patch_t = ptr::null_mut();
+/// "Sucks" patch displayed when the level time exceeds the representable maximum (`WISUCKS`).
 static mut sucks: *mut patch_t = ptr::null_mut();
+/// "Killers" row label patch (`WIKILRS`) used in deathmatch view.
 static mut killers: *mut patch_t = ptr::null_mut();
+/// "Victims" column label patch (`WIVCTMS`) used in deathmatch view.
 static mut victims: *mut patch_t = ptr::null_mut();
+/// "Total" column header patch (`WIMSTT`) used in deathmatch view.
 static mut total: *mut patch_t = ptr::null_mut();
+/// "You are here" star patch (`STFST01`) marking the local player in netgame view.
 static mut star: *mut patch_t = ptr::null_mut();
+/// Dead-face patch (`STFDEAD0`) marking the local player when dead.
 static mut bstar: *mut patch_t = ptr::null_mut();
+/// Player face patches for each slot (`STPB0`-`STPB3`).
 static mut p: [*mut patch_t; MAXPLAYERS] = [ptr::null_mut(); MAXPLAYERS];
+/// Alternative player face patches for each slot (`WIBP1`-`WIBP4`).
 static mut bp: [*mut patch_t; MAXPLAYERS] = [ptr::null_mut(); MAXPLAYERS];
+/// Heap-allocated array of level-name patches (`WILV##` or `CWILV##`); length is `NUMCMAPS` or `NUMMAPS`.
 static mut lnames: *mut *mut patch_t = ptr::null_mut();
+/// Background map graphic for the current episode (`WIMAP#` or `INTERPIC`).
 static mut background: *mut patch_t = ptr::null_mut();
 
-// Deathmatch / netgame / single-player state
+/// Deathmatch count-up sub-state index (odd = pause, even = ticking).
 static mut dm_state: c_int = 0;
+/// Running frag-count display for each [killer][victim] pair in deathmatch view.
 static mut dm_frags: [[c_int; MAXPLAYERS]; MAXPLAYERS] = [[0; MAXPLAYERS]; MAXPLAYERS];
+/// Running per-player frag totals for deathmatch view.
 static mut dm_totals: [c_int; MAXPLAYERS] = [0; MAXPLAYERS];
 
+/// Running frag-count display per player in cooperative netgame view.
 static mut cnt_frags: [c_int; MAXPLAYERS] = [0; MAXPLAYERS];
+/// Non-zero when at least one player has a non-zero frag count (gates frags column display).
 static mut dofrags: c_int = 0;
+/// Netgame count-up sub-state index.
 static mut ng_state: c_int = 0;
 
+/// Single-player count-up sub-state index.
 static mut sp_state: c_int = 0;
+/// Non-zero when the "you are here" pointer should be drawn in `ShowNextLoc` state.
 static mut snl_pointeron: bool = false;
 
 // ---------------------------------------------------------------------------
@@ -543,11 +694,13 @@ static mut snl_pointeron: bool = false;
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Pass-through shim for Dehacked string replacement (not yet active in this port).
 #[inline(always)]
 unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
     s
 }
 
+/// Identity endian-swap shim; this port runs on little-endian hosts matching the WAD format.
 #[inline(always)]
 fn SHORT(x: i16) -> i16 {
     x
@@ -557,6 +710,10 @@ fn SHORT(x: i16) -> i16 {
 // WI_slamBackground
 // ---------------------------------------------------------------------------
 
+/// Draw the episode background graphic at the origin, covering the entire screen.
+///
+/// Called at the start of each draw function to paint the base image before
+/// overlaying animations, labels, and statistics.
 #[no_mangle]
 pub unsafe extern "C" fn WI_slamBackground() {
     V_DrawPatch(0, 0, background);
@@ -566,6 +723,9 @@ pub unsafe extern "C" fn WI_slamBackground() {
 // WI_Responder
 // ---------------------------------------------------------------------------
 
+/// Intermission event responder - always returns 0 (all input goes through `WI_checkForAccelerate`).
+///
+/// Called by `G_Responder` in `g_game.c`.
 #[no_mangle]
 pub unsafe extern "C" fn WI_Responder(_ev: *mut event_t) -> c_int {
     0
@@ -575,6 +735,10 @@ pub unsafe extern "C" fn WI_Responder(_ev: *mut event_t) -> c_int {
 // WI_drawLF
 // ---------------------------------------------------------------------------
 
+/// Draw the "Finished" overlay: level name and "Finished" text at the top of the screen.
+///
+/// In commercial mode, does nothing for MAP33 and triggers an intentional patch
+/// bounds error for map numbers above `NUMCMAPS` (matching vanilla behavior).
 unsafe fn WI_drawLF() {
     let mut y = WI_TITLEY;
 
@@ -608,6 +772,7 @@ unsafe fn WI_drawLF() {
 // WI_drawEL
 // ---------------------------------------------------------------------------
 
+/// Draw the "Entering" overlay: "Entering" text and the next level's name.
 unsafe fn WI_drawEL() {
     let mut y = WI_TITLEY;
 
@@ -630,6 +795,10 @@ unsafe fn WI_drawEL() {
 // WI_drawOnLnode
 // ---------------------------------------------------------------------------
 
+/// Draw the patch array `c` centred on the `n`-th level node of the current episode map.
+///
+/// Tries each frame in `c` (indices 0 then 1) and draws the first that fits
+/// within the screen bounds. If neither fits, prints a diagnostic to stdout.
 unsafe fn WI_drawOnLnode(n: c_int, c: *mut *mut patch_t) {
     let mut i = 0;
     let mut fits = false;
@@ -668,6 +837,11 @@ unsafe fn WI_drawOnLnode(n: c_int, c: *mut *mut patch_t) {
 // Animated background
 // ---------------------------------------------------------------------------
 
+/// Reset all background animation states for the current episode at the start of an intermission.
+///
+/// No-op in commercial mode and for episode 3 (no animated background exists).
+/// Schedules the first frame of each animation by computing `nexttic` from
+/// `bcnt` plus a random offset.
 unsafe fn WI_initAnimatedBack() {
     if gamemode == d_mode::commercial {
         return;
@@ -693,6 +867,11 @@ unsafe fn WI_initAnimatedBack() {
     }
 }
 
+/// Advance all background animation states by one tic.
+///
+/// No-op in commercial mode and for episode 3. For each animation whose
+/// `nexttic` matches the current `bcnt`, increments `ctr` and schedules the
+/// next frame according to the animation mode.
 unsafe fn WI_updateAnimatedBack() {
     if gamemode == d_mode::commercial {
         return;
@@ -740,6 +919,10 @@ unsafe fn WI_updateAnimatedBack() {
     }
 }
 
+/// Draw the current frame of each active background animation over the already-slammed background.
+///
+/// Skips animations whose `ctr` is negative (not yet started).
+/// No-op in commercial mode and for episode 3.
 unsafe fn WI_drawAnimatedBack() {
     if gamemode == d_mode::commercial {
         return;
@@ -764,6 +947,12 @@ unsafe fn WI_drawAnimatedBack() {
 // Number drawing
 // ---------------------------------------------------------------------------
 
+/// Draw integer `n` right-justified at `(x, y)` using `digits` digit patches.
+///
+/// Returns the x position of the leftmost digit drawn (useful for chaining
+/// displays). If `digits` is negative, the required digit count is computed
+/// from `n`. The sentinel value 1994 suppresses drawing entirely (used when
+/// no ammo type applies). Negative values prepend a minus sign.
 unsafe fn WI_drawNum(mut x: c_int, y: c_int, mut n: c_int, mut digits: c_int) -> c_int {
     let fontwidth = SHORT((*num[0]).width) as c_int;
     let neg = n < 0;
@@ -804,6 +993,9 @@ unsafe fn WI_drawNum(mut x: c_int, y: c_int, mut n: c_int, mut digits: c_int) ->
     x
 }
 
+/// Draw a percentage value: percent sign at `x`, then the number right-justified to the left of it.
+///
+/// No-op if `pct` is negative (stat not yet tallied).
 unsafe fn WI_drawPercent(x: c_int, y: c_int, pct: c_int) {
     if pct < 0 {
         return;
@@ -812,6 +1004,10 @@ unsafe fn WI_drawPercent(x: c_int, y: c_int, pct: c_int) {
     WI_drawNum(x, y, pct, -1);
 }
 
+/// Draw elapsed time `t` (in seconds) right-justified at `(x, y)` in MM:SS format.
+///
+/// No-op if `t` is negative. If `t` exceeds the representable range (61 minutes 59 seconds),
+/// draws the "SUCKS" patch instead.
 unsafe fn WI_drawTime(mut x: c_int, y: c_int, t: c_int) {
     if t < 0 {
         return;
@@ -839,17 +1035,23 @@ unsafe fn WI_drawTime(mut x: c_int, y: c_int, t: c_int) {
 // State: NoState
 // ---------------------------------------------------------------------------
 
+/// Tear down the intermission subsystem after the screen is dismissed.
+///
+/// Releases all WAD patches loaded by `WI_loadData`. Called by `G_WorldDone`
+/// before the game transitions to the next level.
 #[no_mangle]
 pub unsafe extern "C" fn WI_End() {
     WI_unloadData();
 }
 
+/// Enter the `NoState` phase: count down 10 tics then call `G_WorldDone`.
 unsafe fn WI_initNoState() {
     state = stateenum_t::NoState;
     acceleratestage = 0;
     cnt = 10;
 }
 
+/// Tick the `NoState` phase; advances animations and calls `G_WorldDone` when `cnt` reaches 0.
 unsafe fn WI_updateNoState() {
     WI_updateAnimatedBack();
     cnt -= 1;
@@ -862,6 +1064,7 @@ unsafe fn WI_updateNoState() {
 // State: ShowNextLoc
 // ---------------------------------------------------------------------------
 
+/// Enter the `ShowNextLoc` phase: show the episode map with a blinking "you are here" pointer.
 unsafe fn WI_initShowNextLoc() {
     state = stateenum_t::ShowNextLoc;
     acceleratestage = 0;
@@ -869,6 +1072,7 @@ unsafe fn WI_initShowNextLoc() {
     WI_initAnimatedBack();
 }
 
+/// Tick the `ShowNextLoc` phase; blinks the pointer and transitions to `NoState` when done.
 unsafe fn WI_updateShowNextLoc() {
     WI_updateAnimatedBack();
     cnt -= 1;
@@ -879,6 +1083,7 @@ unsafe fn WI_updateShowNextLoc() {
     }
 }
 
+/// Draw the `ShowNextLoc` phase: episode map with completed-level splats and optional pointer.
 unsafe fn WI_drawShowNextLoc() {
     WI_slamBackground();
     WI_drawAnimatedBack();
@@ -916,6 +1121,7 @@ unsafe fn WI_drawShowNextLoc() {
     }
 }
 
+/// Draw the `NoState` phase: same as `ShowNextLoc` but with the pointer always visible.
 unsafe fn WI_drawNoState() {
     snl_pointeron = true;
     WI_drawShowNextLoc();
@@ -925,6 +1131,8 @@ unsafe fn WI_drawNoState() {
 // Frag helpers
 // ---------------------------------------------------------------------------
 
+/// Compute the net frag total for `playernum`: sum of frags against other active players
+/// minus self-frags.
 unsafe fn WI_fragSum(playernum: c_int) -> c_int {
     let mut sum = 0;
     for i in 0..MAXPLAYERS {
@@ -940,6 +1148,7 @@ unsafe fn WI_fragSum(playernum: c_int) -> c_int {
 // State: Deathmatch stats
 // ---------------------------------------------------------------------------
 
+/// Initialise the deathmatch stats phase: zero all counters and start counting up.
 unsafe fn WI_initDeathmatchStats() {
     state = stateenum_t::StatCount;
     acceleratestage = 0;
@@ -960,6 +1169,9 @@ unsafe fn WI_initDeathmatchStats() {
     WI_initAnimatedBack();
 }
 
+/// Tick the deathmatch stats phase: count frag values up toward the actual totals.
+///
+/// State machine: odd states are pauses, state 2 ticks frags, state 4 waits for acceleration.
 unsafe fn WI_updateDeathmatchStats() {
     WI_updateAnimatedBack();
 
@@ -1034,6 +1246,7 @@ unsafe fn WI_updateDeathmatchStats() {
     }
 }
 
+/// Draw the deathmatch stats page: background, level name, frag matrix, and totals column.
 unsafe fn WI_drawDeathmatchStats() {
     WI_slamBackground();
     WI_drawAnimatedBack();
@@ -1093,6 +1306,7 @@ unsafe fn WI_drawDeathmatchStats() {
 // State: Netgame stats
 // ---------------------------------------------------------------------------
 
+/// Initialise the cooperative netgame stats phase: zero per-player counters and check if frags exist.
 unsafe fn WI_initNetgameStats() {
     state = stateenum_t::StatCount;
     acceleratestage = 0;
@@ -1115,6 +1329,9 @@ unsafe fn WI_initNetgameStats() {
     WI_initAnimatedBack();
 }
 
+/// Tick the netgame stats phase: sequentially count up kills, items, secrets, and frags.
+///
+/// States 2/4/6/8 are counting states; odd states are pauses between categories.
 unsafe fn WI_updateNetgameStats() {
     WI_updateAnimatedBack();
 
@@ -1237,6 +1454,7 @@ unsafe fn WI_updateNetgameStats() {
     }
 }
 
+/// Draw the cooperative netgame stats page: background, column headers, and per-player rows.
 unsafe fn WI_drawNetgameStats() {
     let pwidth = SHORT((*percent).width) as c_int;
 
@@ -1298,6 +1516,7 @@ unsafe fn WI_drawNetgameStats() {
 // State: Single-player stats
 // ---------------------------------------------------------------------------
 
+/// Initialise the single-player stats phase: set all display values to -1 (not yet drawn).
 unsafe fn WI_initStats() {
     state = stateenum_t::StatCount;
     acceleratestage = 0;
@@ -1312,6 +1531,10 @@ unsafe fn WI_initStats() {
     WI_initAnimatedBack();
 }
 
+/// Tick the single-player stats phase: sequentially count up kills, items, secrets, then time.
+///
+/// States 2/4/6 count up kill/item/secret percentages; state 8 counts time and par
+/// simultaneously; state 10 waits for the player to accelerate.
 unsafe fn WI_updateStats() {
     WI_updateAnimatedBack();
 
@@ -1395,6 +1618,7 @@ unsafe fn WI_updateStats() {
     }
 }
 
+/// Draw the single-player stats page: background, level name, kill/item/secret/time/par values.
 unsafe fn WI_drawStats() {
     let lh = (3 * SHORT((*num[0]).height) as c_int) / 2;
 
@@ -1424,6 +1648,10 @@ unsafe fn WI_drawStats() {
 // Accelerate check
 // ---------------------------------------------------------------------------
 
+/// Poll all active players' attack and use buttons and set `acceleratestage` if any are newly pressed.
+///
+/// This is the mechanism by which the player can skip the count-up animation by
+/// pressing fire or use during the intermission screen.
 unsafe fn WI_checkForAccelerate() {
     for i in 0..MAXPLAYERS {
         if playeringame[i] != 0 {
@@ -1454,6 +1682,11 @@ unsafe fn WI_checkForAccelerate() {
 // WI_Ticker
 // ---------------------------------------------------------------------------
 
+/// Advance the intermission screen by one game tic.
+///
+/// Increments `bcnt`, starts the intermission music on the first tic,
+/// checks for acceleration input, and dispatches to the appropriate state
+/// update function. Called by `G_Ticker` in `g_game.c`.
 #[no_mangle]
 pub unsafe extern "C" fn WI_Ticker() {
     bcnt += 1;
@@ -1491,8 +1724,16 @@ pub unsafe extern "C" fn WI_Ticker() {
 // Data loading / unloading
 // ---------------------------------------------------------------------------
 
+/// Function pointer type for the load/unload callback used by `WI_loadUnloadData`.
+///
+/// The callback receives the lump name and a pointer to the patch pointer slot.
 type LoadCallback = unsafe extern "C" fn(*mut c_char, *mut *mut patch_t);
 
+/// Walk every intermission lump name and invoke `callback` for each.
+///
+/// Shared by `WI_loadData` and `WI_unloadData`. Handles both episode (Doom 1)
+/// and commercial (Doom 2) map lists, animation frame patches, and all UI
+/// patches (numbers, labels, background).
 unsafe fn WI_loadUnloadData(callback: LoadCallback) {
     let mut name: [c_char; 9] = [0; 9];
 
@@ -1581,10 +1822,16 @@ unsafe fn WI_loadUnloadData(callback: LoadCallback) {
     callback(name.as_mut_ptr(), &mut background);
 }
 
+/// Load callback: cache the named lump at `PU_STATIC` priority and store the pointer.
 unsafe extern "C" fn WI_loadCallback(name: *mut c_char, variable: *mut *mut patch_t) {
     *variable = W_CacheLumpName(name, PU_STATIC) as *mut patch_t;
 }
 
+/// Allocate the `lnames` pointer array and cache all intermission WAD patches.
+///
+/// Must be called before the first `WI_Drawer` call. `lnames` is allocated from
+/// the zone heap at `PU_STATIC` with a size matching either `NUMCMAPS` (commercial)
+/// or `NUMMAPS` (episode).  Also loads the `star`/`bstar` patches directly.
 #[no_mangle]
 pub unsafe extern "C" fn WI_loadData() {
     if gamemode == d_mode::commercial {
@@ -1608,11 +1855,15 @@ pub unsafe extern "C" fn WI_loadData() {
     bstar = W_CacheLumpName(DEH_String(c"STFDEAD0".as_ptr().cast_mut()), PU_STATIC) as *mut patch_t;
 }
 
+/// Unload callback: release the named lump from the WAD cache and null the pointer.
 unsafe extern "C" fn WI_unloadCallback(name: *mut c_char, variable: *mut *mut patch_t) {
     W_ReleaseLumpName(name);
     *variable = ptr::null_mut();
 }
 
+/// Release all intermission WAD patches loaded by `WI_loadData`.
+///
+/// Called indirectly by `WI_End` at the close of the intermission screen.
 #[no_mangle]
 pub unsafe extern "C" fn WI_unloadData() {
     WI_loadUnloadData(WI_unloadCallback);
@@ -1622,6 +1873,10 @@ pub unsafe extern "C" fn WI_unloadData() {
 // WI_Drawer
 // ---------------------------------------------------------------------------
 
+/// Draw the intermission screen for the current frame.
+///
+/// Dispatches to the appropriate draw function based on `state` and `deathmatch`/`netgame` flags.
+/// Called by `D_Display` in `d_main.c` every frame while `gamestate == GS_INTERMISSION`.
 #[no_mangle]
 pub unsafe extern "C" fn WI_Drawer() {
     match state {
@@ -1647,6 +1902,11 @@ pub unsafe extern "C" fn WI_Drawer() {
 // WI_initVariables / WI_Start
 // ---------------------------------------------------------------------------
 
+/// Initialise all intermission globals from the level-start record `wbstartstruct`.
+///
+/// Clamps all max-count fields to a minimum of 1 to avoid division-by-zero in
+/// percentage calculations. Adjusts `wbs.epsd` downward by 3 for non-retail
+/// builds that were given an out-of-range episode number.
 unsafe fn WI_initVariables(wbstartstruct: *mut wbstartstruct_t) {
     wbs = wbstartstruct;
     plrs = (*wbs).plyr.as_mut_ptr();
@@ -1672,6 +1932,11 @@ unsafe fn WI_initVariables(wbstartstruct: *mut wbstartstruct_t) {
     }
 }
 
+/// Start the intermission screen for a newly completed level.
+///
+/// Initialises all state variables, loads WAD patches, and enters the appropriate
+/// stats phase (deathmatch, netgame, or single-player). Called from `G_WorldDone`
+/// in `g_game.c`.
 #[no_mangle]
 pub unsafe extern "C" fn WI_Start(wbstartstruct: *mut wbstartstruct_t) {
     WI_initVariables(wbstartstruct);

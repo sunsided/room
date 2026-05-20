@@ -1,7 +1,17 @@
 //! Rust port of vendor/doomgeneric/st_stuff.c.
 //!
 //! Status bar logic: health, ammo, armor, keys, face widget, palette effects,
-//! and cheat-code handling.
+//! and cheat-code handling. The 32-pixel-tall bar at the bottom of the screen
+//! is composed of widget primitives from `st_lib.rs`. Palette cycling (damage
+//! flash, berserk, radiation suit) is driven here by `I_SetPalette`.
+//!
+//! Notable Rust-vs-C differences:
+//! - Cheat-sequence tables are built at compile time with `const fn` helpers
+//!   instead of being initialised by `ST_Start`.
+//! - `DEH_String` is an identity shim; Dehacked string replacement is not yet
+//!   wired up.
+//! - `logical_gamemission` is duplicated here (it also lives in `st_stuff.c`
+//!   as a macro) to keep the file self-contained.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -41,125 +51,219 @@ use crate::types::Boolean;
 // Constants
 // ---------------------------------------------------------------------------
 
+/// Height of the status bar in screen pixels (matches C `ST_HEIGHT`).
 const ST_HEIGHT: c_int = 32;
+/// Width of the status bar in screen pixels (matches C `ST_WIDTH`).
 const ST_WIDTH: c_int = 320;
+/// Left edge of the status bar in screen coordinates (matches C `ST_X`).
 const ST_X: c_int = 0;
+/// Top edge of the status bar in screen coordinates (matches C `ST_Y`).
 const ST_Y: c_int = 200 - ST_HEIGHT;
 
+/// X pixel position of the face widget background (matches C `ST_FX`).
 const ST_FX: c_int = 143;
+/// Y pixel position of the face widget background (matches C `ST_FY`).
 const ST_FY: c_int = 169;
 
+/// Number of pain-level face rows (0 = healthy, 4 = critical; matches C `ST_NUMPAINFACES`).
 const ST_NUMPAINFACES: c_int = 5;
+/// Straight-ahead frames per pain row (matches C `ST_NUMSTRAIGHTFACES`).
 const ST_NUMSTRAIGHTFACES: c_int = 3;
+/// Turn-direction frames per pain row (matches C `ST_NUMTURNFACES`).
 const ST_NUMTURNFACES: c_int = 2;
+/// Special-expression frames per pain row: ouch, evil-grin, rampage (matches C `ST_NUMSPECIALFACES`).
 const ST_NUMSPECIALFACES: c_int = 3;
 
+/// Total frames per pain-level row (matches C `ST_FACESTRIDE`).
 const ST_FACESTRIDE: c_int = ST_NUMSTRAIGHTFACES + ST_NUMTURNFACES + ST_NUMSPECIALFACES;
 
+/// Number of frames appended after all pain rows: god-mode and dead (matches C `ST_NUMEXTRAFACES`).
 const ST_NUMEXTRAFACES: c_int = 2;
+/// Total face patch count loaded from the WAD (matches C `ST_NUMFACES`).
 const ST_NUMFACES: c_int = ST_FACESTRIDE * ST_NUMPAINFACES + ST_NUMEXTRAFACES;
 
+/// Offset within a pain-row to the first turn face (matches C `ST_TURNOFFSET`).
 const ST_TURNOFFSET: c_int = ST_NUMSTRAIGHTFACES;
+/// Offset within a pain-row to the ouch face (matches C `ST_OUCHOFFSET`).
 const ST_OUCHOFFSET: c_int = ST_TURNOFFSET + ST_NUMTURNFACES;
+/// Offset within a pain-row to the evil-grin face (matches C `ST_EVILGRINOFFSET`).
 const ST_EVILGRINOFFSET: c_int = ST_OUCHOFFSET + 1;
+/// Offset within a pain-row to the rampage face (matches C `ST_RAMPAGEOFFSET`).
 const ST_RAMPAGEOFFSET: c_int = ST_EVILGRINOFFSET + 1;
+/// Index of the god-mode face in the flat `faces` array (matches C `ST_GODFACE`).
 const ST_GODFACE: c_int = ST_NUMPAINFACES * ST_FACESTRIDE;
+/// Index of the dead face in the flat `faces` array (matches C `ST_DEADFACE`).
 const ST_DEADFACE: c_int = ST_GODFACE + 1;
 
+/// X screen coordinate of the face widget (matches C `ST_FACESX`).
 const ST_FACESX: c_int = 143;
+/// Y screen coordinate of the face widget (matches C `ST_FACESY`).
 const ST_FACESY: c_int = 168;
 
+/// Duration of the evil-grin expression in tics (matches C `ST_EVILGRINCOUNT`).
 const ST_EVILGRINCOUNT: c_int = 2 * TICRATE;
+/// Duration of a straight-ahead expression in tics (matches C `ST_STRAIGHTFACECOUNT`).
 const ST_STRAIGHTFACECOUNT: c_int = TICRATE / 2;
+/// Duration of turn and ouch expressions in tics (matches C `ST_TURNCOUNT`).
 const ST_TURNCOUNT: c_int = TICRATE;
+/// Duration of the ouch expression in tics (matches C `ST_OUCHCOUNT`).
 const ST_OUCHCOUNT: c_int = TICRATE;
+/// Tics of continuous fire before the rampage face appears (matches C `ST_RAMPAGEDELAY`).
 const ST_RAMPAGEDELAY: c_int = 2 * TICRATE;
 
+/// Health-point drop threshold that triggers the ouch face (matches C `ST_MUCHPAIN`).
 const ST_MUCHPAIN: c_int = 20;
 
+/// Digit width of the ready-ammo number widget (matches C `ST_AMMOWIDTH`).
 const ST_AMMOWIDTH: c_int = 3;
+/// X coordinate of the ready-ammo display (matches C `ST_AMMOX`).
 const ST_AMMOX: c_int = 44;
+/// Y coordinate of the ready-ammo display (matches C `ST_AMMOY`).
 const ST_AMMOY: c_int = 171;
 
+/// Digit width of the health display (matches C `ST_HEALTHWIDTH`).
 const ST_HEALTHWIDTH: c_int = 3;
+/// X coordinate of the health display (matches C `ST_HEALTHX`).
 const ST_HEALTHX: c_int = 90;
+/// Y coordinate of the health display (matches C `ST_HEALTHY`).
 const ST_HEALTHY: c_int = 171;
 
+/// X coordinate of the weapons-owned grid (matches C `ST_ARMSX`).
 const ST_ARMSX: c_int = 111;
+/// Y coordinate of the weapons-owned grid (matches C `ST_ARMSY`).
 const ST_ARMSY: c_int = 172;
+/// X coordinate of the arms background patch (matches C `ST_ARMSBGX`).
 const ST_ARMSBGX: c_int = 104;
+/// Y coordinate of the arms background patch (matches C `ST_ARMSBGY`).
 const ST_ARMSBGY: c_int = 168;
+/// Horizontal spacing between arms-grid cells in pixels (matches C `ST_ARMSXSPACE`).
 const ST_ARMSXSPACE: c_int = 12;
+/// Vertical spacing between arms-grid cells in pixels (matches C `ST_ARMSYSPACE`).
 const ST_ARMSYSPACE: c_int = 10;
 
+/// X coordinate of the frag counter in deathmatch (matches C `ST_FRAGSX`).
 const ST_FRAGSX: c_int = 138;
+/// Y coordinate of the frag counter in deathmatch (matches C `ST_FRAGSY`).
 const ST_FRAGSY: c_int = 171;
+/// Digit width of the frag counter (matches C `ST_FRAGSWIDTH`).
 const ST_FRAGSWIDTH: c_int = 2;
 
+/// Digit width of the armor display (matches C `ST_ARMORWIDTH`).
 const ST_ARMORWIDTH: c_int = 3;
+/// X coordinate of the armor display (matches C `ST_ARMORX`).
 const ST_ARMORX: c_int = 221;
+/// Y coordinate of the armor display (matches C `ST_ARMORY`).
 const ST_ARMORY: c_int = 171;
 
+/// X coordinate of the blue key slot (matches C `ST_KEY0X`).
 const ST_KEY0X: c_int = 239;
+/// Y coordinate of the blue key slot (matches C `ST_KEY0Y`).
 const ST_KEY0Y: c_int = 171;
+/// X coordinate of the yellow key slot (matches C `ST_KEY1X`).
 const ST_KEY1X: c_int = 239;
+/// Y coordinate of the yellow key slot (matches C `ST_KEY1Y`).
 const ST_KEY1Y: c_int = 181;
+/// X coordinate of the red key slot (matches C `ST_KEY2X`).
 const ST_KEY2X: c_int = 239;
+/// Y coordinate of the red key slot (matches C `ST_KEY2Y`).
 const ST_KEY2Y: c_int = 191;
 
+/// Digit width of per-ammo-type current-ammo displays (matches C `ST_AMMO0WIDTH`).
 const ST_AMMO0WIDTH: c_int = 3;
+/// X coordinate of bullets current-ammo display (matches C `ST_AMMO0X`).
 const ST_AMMO0X: c_int = 288;
+/// Y coordinate of bullets current-ammo display (matches C `ST_AMMO0Y`).
 const ST_AMMO0Y: c_int = 173;
+/// X coordinate of shells current-ammo display (matches C `ST_AMMO1X`).
 const ST_AMMO1X: c_int = 288;
+/// Y coordinate of shells current-ammo display (matches C `ST_AMMO1Y`).
 const ST_AMMO1Y: c_int = 179;
+/// X coordinate of cells current-ammo display (matches C `ST_AMMO2X`).
 const ST_AMMO2X: c_int = 288;
+/// Y coordinate of cells current-ammo display (matches C `ST_AMMO2Y`).
 const ST_AMMO2Y: c_int = 191;
+/// X coordinate of rockets current-ammo display (matches C `ST_AMMO3X`).
 const ST_AMMO3X: c_int = 288;
+/// Y coordinate of rockets current-ammo display (matches C `ST_AMMO3Y`).
 const ST_AMMO3Y: c_int = 185;
 
+/// Digit width of per-ammo-type max-ammo displays (matches C `ST_MAXAMMO0WIDTH`).
 const ST_MAXAMMO0WIDTH: c_int = 3;
+/// X coordinate of bullets max-ammo display (matches C `ST_MAXAMMO0X`).
 const ST_MAXAMMO0X: c_int = 314;
+/// Y coordinate of bullets max-ammo display (matches C `ST_MAXAMMO0Y`).
 const ST_MAXAMMO0Y: c_int = 173;
+/// X coordinate of shells max-ammo display (matches C `ST_MAXAMMO1X`).
 const ST_MAXAMMO1X: c_int = 314;
+/// Y coordinate of shells max-ammo display (matches C `ST_MAXAMMO1Y`).
 const ST_MAXAMMO1Y: c_int = 179;
+/// X coordinate of cells max-ammo display (matches C `ST_MAXAMMO2X`).
 const ST_MAXAMMO2X: c_int = 314;
+/// Y coordinate of cells max-ammo display (matches C `ST_MAXAMMO2Y`).
 const ST_MAXAMMO2Y: c_int = 191;
+/// X coordinate of rockets max-ammo display (matches C `ST_MAXAMMO3X`).
 const ST_MAXAMMO3X: c_int = 314;
+/// Y coordinate of rockets max-ammo display (matches C `ST_MAXAMMO3Y`).
 const ST_MAXAMMO3Y: c_int = 185;
 
+/// Header magic for automap messages sent via the event system (matches C `AM_MSGHEADER`).
 const AM_MSGHEADER: c_int = (('a' as c_int) << 24) + (('m' as c_int) << 16);
+/// Event data value signalling that the automap was opened (matches C `AM_MSGENTERED`).
 const AM_MSGENTERED: c_int = AM_MSGHEADER | (('e' as c_int) << 8);
+/// Event data value signalling that the automap was closed (matches C `AM_MSGEXITED`).
 const AM_MSGEXITED: c_int = AM_MSGHEADER | (('x' as c_int) << 8);
 
+/// Index of the first red-damage palette in `PLAYPAL` (matches C `STARTREDPALS`).
 const STARTREDPALS: c_int = 1;
+/// Index of the first bonus-pickup palette in `PLAYPAL` (matches C `STARTBONUSPALS`).
 const STARTBONUSPALS: c_int = 9;
+/// Number of red-damage palette entries (matches C `NUMREDPALS`).
 const NUMREDPALS: c_int = 8;
+/// Number of bonus-pickup palette entries (matches C `NUMBONUSPALS`).
 const NUMBONUSPALS: c_int = 4;
+/// Index of the radiation-suit palette in `PLAYPAL` (matches C `RADIATIONPAL`).
 const RADIATIONPAL: c_int = 13;
 
 // ---------------------------------------------------------------------------
 // String literals (from d_englsh.h)
 // ---------------------------------------------------------------------------
 
+/// Message shown when god mode is activated (C `STSTR_DQDON` from `d_englsh.h`).
 const STSTR_DQDON: *mut c_char = c"Degreelessness Mode On".as_ptr().cast_mut();
+/// Message shown when god mode is deactivated (C `STSTR_DQDOFF` from `d_englsh.h`).
 const STSTR_DQDOFF: *mut c_char = c"Degreelessness Mode Off".as_ptr().cast_mut();
+/// Message shown when `idfa` (ammo, no keys) cheat fires (C `STSTR_FAADDED`).
 const STSTR_FAADDED: *mut c_char = c"Ammo (no keys) Added".as_ptr().cast_mut();
+/// Message shown when `idkfa` (ammo + keys) cheat fires (C `STSTR_KFAADDED`).
 const STSTR_KFAADDED: *mut c_char = c"Very Happy Ammo Added".as_ptr().cast_mut();
+/// Message shown when a music-change cheat fires (C `STSTR_MUS`).
 const STSTR_MUS: *mut c_char = c"Music Change".as_ptr().cast_mut();
+/// Message shown when an invalid music number is entered (C `STSTR_NOMUS`).
 const STSTR_NOMUS: *mut c_char = c"IMPOSSIBLE SELECTION".as_ptr().cast_mut();
+/// Message shown when no-clip mode is activated (C `STSTR_NCON`).
 const STSTR_NCON: *mut c_char = c"No Clipping Mode ON".as_ptr().cast_mut();
+/// Message shown when no-clip mode is deactivated (C `STSTR_NCOFF`).
 const STSTR_NCOFF: *mut c_char = c"No Clipping Mode OFF".as_ptr().cast_mut();
+/// Prompt shown when the `idbehold` cheat prefix fires (C `STSTR_BEHOLD`).
 const STSTR_BEHOLD: *mut c_char = c"inVuln, Str, Inviso, Rad, Allmap, or Lite-amp"
     .as_ptr()
     .cast_mut();
+/// Message shown when a `idbeholdX` power-up cheat fires (C `STSTR_BEHOLDX`).
 const STSTR_BEHOLDX: *mut c_char = c"Power-up Toggled".as_ptr().cast_mut();
+/// Message shown when the `idchoppers` cheat fires (C `STSTR_CHOPPERS`).
 const STSTR_CHOPPERS: *mut c_char = c"... doesn't suck - GM".as_ptr().cast_mut();
+/// Message shown when the level-change cheat (`idclev`) fires (C `STSTR_CLEV`).
 const STSTR_CLEV: *mut c_char = c"Changing Level...".as_ptr().cast_mut();
 
 // ---------------------------------------------------------------------------
 // DEH_String shim — identity when dehacked is disabled.
 // ---------------------------------------------------------------------------
 
+/// Pass-through shim for Dehacked string replacement.
+///
+/// In the C codebase, `DEH_String` may substitute a string that was patched by
+/// a `.deh` file. This port does not yet support Dehacked, so the function
+/// returns its argument unchanged.
 #[inline(always)]
 unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
     s
@@ -169,6 +273,12 @@ unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
 // Replicate the C `logical_gamemission` macro from `doomstat.h`.
 // ---------------------------------------------------------------------------
 
+/// Return the canonical game mission, collapsing Chex Quest and HacX aliases.
+///
+/// Mirrors the `logical_gamemission` macro from `doomstat.h`:
+/// - `pack_chex` maps to `doom`.
+/// - `pack_hacx` maps to `doom2`.
+/// - All other values are returned as-is.
 unsafe fn logical_gamemission() -> c_int {
     if gamemission == d_mode::pack_chex {
         d_mode::doom
@@ -183,6 +293,9 @@ unsafe fn logical_gamemission() -> c_int {
 // Cheat helpers
 // ---------------------------------------------------------------------------
 
+/// Copy a byte slice into a 25-element `c_char` array, padding the remainder with zeros.
+///
+/// Used at compile time to initialise cheat-sequence buffers inside `cheatseq_t`.
 const fn make_cheat_seq(seq: &[u8]) -> [c_char; 25] {
     let mut arr = [0i8; 25];
     let mut i = 0;
@@ -193,6 +306,10 @@ const fn make_cheat_seq(seq: &[u8]) -> [c_char; 25] {
     arr
 }
 
+/// Construct a `cheatseq_t` from a key sequence and a parameter character count.
+///
+/// All runtime state fields (`chars_read`, `param_chars_read`, `parameter_buf`) are
+/// zeroed; they will be updated by `cht_CheckCheat` during gameplay.
 const fn cheat(seq: &[u8], params: c_int) -> cheatseq_t {
     cheatseq_t {
         sequence: make_cheat_seq(seq),
@@ -208,21 +325,56 @@ const fn cheat(seq: &[u8], params: c_int) -> cheatseq_t {
 // Exported globals
 // ---------------------------------------------------------------------------
 
+/// Backing pixel buffer for the status bar, allocated in `ST_Init`.
+///
+/// Exported as `st_backing_screen` for C callers. The buffer is `ST_WIDTH *
+/// ST_HEIGHT` bytes and is used by `ST_refreshBackground` to save and restore
+/// the pixels beneath the bar.
 #[no_mangle]
 pub static mut st_backing_screen: *mut u8 = ptr::null_mut();
 
+/// Cheat sequence for changing the playing music track (`idmus##`).
+///
+/// Exported for C linkage. Two parameter characters encode the track number.
 #[no_mangle]
 pub static mut cheat_mus: cheatseq_t = cheat(b"idmus", 2);
+
+/// Cheat sequence for toggling god mode (`iddqd`).
+///
+/// Exported for C linkage.
 #[no_mangle]
 pub static mut cheat_god: cheatseq_t = cheat(b"iddqd", 0);
+
+/// Cheat sequence for full ammo and armor, including all keys (`idkfa`).
+///
+/// Exported for C linkage.
 #[no_mangle]
 pub static mut cheat_ammo: cheatseq_t = cheat(b"idkfa", 0);
+
+/// Cheat sequence for full ammo and armor, without keys (`idfa`).
+///
+/// Exported for C linkage.
 #[no_mangle]
 pub static mut cheat_ammonokey: cheatseq_t = cheat(b"idfa", 0);
+
+/// No-clip cheat sequence for Doom episode maps (`idspispopd`).
+///
+/// Exported for C linkage. Only active when `logical_gamemission() == doom`.
 #[no_mangle]
 pub static mut cheat_noclip: cheatseq_t = cheat(b"idspispopd", 0);
+
+/// No-clip cheat sequence for Doom II maps (`idclip`).
+///
+/// Exported for C linkage. Active when `logical_gamemission() != doom`.
 #[no_mangle]
 pub static mut cheat_commercial_noclip: cheatseq_t = cheat(b"idclip", 0);
+
+/// Power-up cheat sequences (`idbeholdv/s/i/r/a/l` and the bare `idbehold` prefix).
+///
+/// Indices 0-5 correspond to the six togglable power-ups
+/// (invulnerability, berserk, invisibility, radiation suit, automap, light amp).
+/// Index 6 is the bare `idbehold` prefix which displays the prompt.
+/// Exported for C linkage.
 #[no_mangle]
 pub static mut cheat_powerup: [cheatseq_t; 7] = [
     cheat(b"idbeholdv", 0),
@@ -233,10 +385,22 @@ pub static mut cheat_powerup: [cheatseq_t; 7] = [
     cheat(b"idbeholdl", 0),
     cheat(b"idbehold", 0),
 ];
+
+/// Cheat sequence that gives the chainsaw and invulnerability (`idchoppers`).
+///
+/// Exported for C linkage.
 #[no_mangle]
 pub static mut cheat_choppers: cheatseq_t = cheat(b"idchoppers", 0);
+
+/// Cheat sequence for warping to a specific episode+map (`idclev##`).
+///
+/// Two parameter characters encode the destination. Exported for C linkage.
 #[no_mangle]
 pub static mut cheat_clev: cheatseq_t = cheat(b"idclev", 2);
+
+/// Cheat sequence that prints the player's current map position (`idmypos`).
+///
+/// Exported for C linkage.
 #[no_mangle]
 pub static mut cheat_mypos: cheatseq_t = cheat(b"idmypos", 0);
 
@@ -244,57 +408,131 @@ pub static mut cheat_mypos: cheatseq_t = cheat(b"idmypos", 0);
 // Internal state
 // ---------------------------------------------------------------------------
 
+/// Pointer to the local player's `PlayerT` struct; set by `ST_initData`.
 static mut plyr: *mut PlayerT = ptr::null_mut();
+
+/// Non-zero when the status bar needs a full redraw on the next `ST_Drawer` call.
 static mut st_firsttime: c_int = 0;
+
+/// WAD lump number of `PLAYPAL`, cached by `ST_loadData` for palette lookups.
 static mut lu_palette: c_int = 0;
+
+/// Monotonically increasing tic counter incremented by `ST_Ticker`.
 static mut st_clock: u32 = 0;
+
+/// Countdown used to temporarily suppress chat-message override of the HUD message.
 static mut st_msgcounter: c_int = 0;
+
+/// Current chat state: 0 = `StartChatState`, used to track HUD message display mode.
 static mut st_chatstate: c_int = 0; // StartChatState = 0
+
+/// Current view state: 0 = automap active, 1 = first-person view.
 static mut st_gamestate: c_int = 0; // AutomapState = 0
+
+/// Non-zero when the status bar should be rendered (i.e. not in full-screen mode).
 static mut st_statusbaron: c_int = 0;
+
+/// Non-zero while a chat message is being composed.
 static mut st_chat: c_int = 0;
+
+/// Previous value of `st_chat`; restored after `st_msgcounter` expires.
 static mut st_oldchat: c_int = 0;
+
+/// Blink flag for the chat cursor; toggled by `st_msgcounter`.
 static mut st_cursoron: c_int = 0;
+
+/// Non-zero in cooperative (non-deathmatch) games; gates the weapons-owned display.
 static mut st_notdeathmatch: c_int = 0;
+
+/// Non-zero when the weapons-owned display should be shown.
 static mut st_armson: c_int = 0;
+
+/// Non-zero when the frag counter should be shown (deathmatch only).
 static mut st_fragson: c_int = 0;
 
+/// Pointer to the `STBAR` background patch.
 static mut sbar: *mut patch_t = ptr::null_mut();
+
+/// Tall digit patches 0-9 (`STTNUM0`-`STTNUM9`), used for health, armor, and ammo.
 static mut tallnum: [*mut patch_t; 10] = [ptr::null_mut(); 10];
+
+/// Tall percent-sign patch (`STTPRCNT`).
 static mut tallpercent: *mut patch_t = ptr::null_mut();
+
+/// Short digit patches 0-9 (`STYSNUM0`-`STYSNUM9`), used in the per-ammo sidebar.
 static mut shortnum: [*mut patch_t; 10] = [ptr::null_mut(); 10];
+
+/// Key icon patches, one per `NUMCARDS` card type.
 static mut keys: [*mut patch_t; NUMCARDS] = [ptr::null_mut(); NUMCARDS];
+
+/// All face patches in a flat array; indexed by `st_faceindex`.
 static mut faces: [*mut patch_t; ST_NUMFACES as usize] = [ptr::null_mut(); ST_NUMFACES as usize];
+
+/// Network-game face-background patch (`STFB#` where `#` is the console player index).
 static mut faceback: *mut patch_t = ptr::null_mut();
+
+/// Arms-grid background patch (`STARMS`).
 static mut armsbg: *mut patch_t = ptr::null_mut();
+
+/// Arms patches: `arms[weapon][0]` = dim `STGNUM#`, `arms[weapon][1]` = bright short digit.
 static mut arms: [[*mut patch_t; 2]; 6] = [[ptr::null_mut(); 2]; 6];
 
+/// Ready-ammo number widget state.
 static mut w_ready: st_number_t = unsafe { std::mem::zeroed() };
+/// Frag-count number widget state (deathmatch only).
 static mut w_frags: st_number_t = unsafe { std::mem::zeroed() };
+/// Health percent widget state.
 static mut w_health: st_percent_t = unsafe { std::mem::zeroed() };
+/// Arms-background binary icon widget state.
 static mut w_armsbg: st_binicon_t = unsafe { std::mem::zeroed() };
+/// Per-weapon multi-icon widget states (weapons 2-7).
 static mut w_arms: [st_multicon_t; 6] = unsafe { std::mem::zeroed() };
+/// Face multi-icon widget state.
 static mut w_faces: st_multicon_t = unsafe { std::mem::zeroed() };
+/// Key-slot multi-icon widget states (three slots: blue, yellow, red).
 static mut w_keyboxes: [st_multicon_t; 3] = unsafe { std::mem::zeroed() };
+/// Armor percent widget state.
 static mut w_armor: st_percent_t = unsafe { std::mem::zeroed() };
+/// Per-ammo-type current-ammo number widget states.
 static mut w_ammo: [st_number_t; NUMAMMO] = unsafe { std::mem::zeroed() };
+/// Per-ammo-type max-ammo number widget states.
 static mut w_maxammo: [st_number_t; NUMAMMO] = unsafe { std::mem::zeroed() };
 
+/// Running frag total for the local player, updated each tic.
 static mut st_fragscount: c_int = 0;
+
+/// Player health from the previous tic; used to detect large drops for the ouch face.
 static mut st_oldhealth: c_int = -1;
+
+/// Snapshot of which weapons the player owned at the previous tic; detects new pickups.
 static mut oldweaponsowned: [c_int; NUMWEAPONS] = [0; NUMWEAPONS];
+
+/// Countdown controlling how many tics the current face expression persists.
 static mut st_facecount: c_int = 0;
+
+/// Current index into `faces[]` that the face widget displays.
 static mut st_faceindex: c_int = 0;
+
+/// Key-slot values: the card/skull index to display, or -1 for empty.
 static mut keyboxes: [c_int; 3] = [0; 3];
+
+/// Random number sampled from `M_Random` each tic to vary the idle straight-face frame.
 static mut st_randomnumber: c_int = 0;
 
+/// Last palette index passed to `I_SetPalette`; avoids redundant calls.
 static mut st_palette: c_int = 0;
+
+/// Non-zero when the status bar subsystem has been stopped via `ST_Stop`.
 static mut st_stopped: c_int = 1;
 
 // ---------------------------------------------------------------------------
 // Background refresh
 // ---------------------------------------------------------------------------
 
+/// Blit the status bar background into the backing buffer, then copy it to screen.
+///
+/// Only runs when `st_statusbaron` is set. In a network game the face-background
+/// patch (`STFB#`) is drawn on top of the bar before the copy.
 #[no_mangle]
 pub unsafe extern "C" fn ST_refreshBackground() {
     if st_statusbaron != 0 {
@@ -312,6 +550,14 @@ pub unsafe extern "C" fn ST_refreshBackground() {
 // Cheat responder
 // ---------------------------------------------------------------------------
 
+/// Handle status-bar-related input events: automap state changes and cheat codes.
+///
+/// Returns 1 if the event was consumed, 0 otherwise. The C original
+/// (`ST_Responder` in `st_stuff.c`) is called by `G_Responder` in `g_game.c`.
+///
+/// Cheat codes are suppressed in network games and on the Nightmare skill level.
+/// The level-change cheat (`idclev`) is suppressed in network games regardless of
+/// skill.
 #[no_mangle]
 pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
     let ev = &*ev;
@@ -491,6 +737,14 @@ pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
 // Face widget
 // ---------------------------------------------------------------------------
 
+/// Compute the base face-array index for the current pain level.
+///
+/// Maps the player's clamped health (0-100) to a pain-row offset inside the
+/// flat `faces` array. The result is a multiple of `ST_FACESTRIDE`. The
+/// computed value is cached in a function-local static so recalculation only
+/// happens when `health` changes.
+///
+/// Precondition: `plyr` is non-null and points to a valid `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn ST_calcPainOffset() -> c_int {
     static mut lastcalc: c_int = 0;
@@ -509,6 +763,19 @@ pub unsafe extern "C" fn ST_calcPainOffset() -> c_int {
     lastcalc
 }
 
+/// Choose the correct face frame for this tic and update `st_faceindex` / `st_facecount`.
+///
+/// Priority system (highest wins):
+/// 1. Dead face (priority 9).
+/// 2. Evil grin on weapon pickup (priority 8).
+/// 3. Ouch or turn face when taking damage from an attacker (priority 7).
+/// 4. Ouch or rampage face when taking damage from an unknown source (priority 6).
+/// 5. Rampage face after `ST_RAMPAGEDELAY` tics of continuous fire (priority 5).
+/// 6. God-mode / invulnerability face (priority 4).
+/// 7. Idle random straight face (priority 0, selected when `st_facecount` reaches 0).
+///
+/// Precondition: `plyr` is non-null and `oldweaponsowned` matches the snapshot
+/// from the previous call.
 #[no_mangle]
 pub unsafe extern "C" fn ST_updateFaceWidget() {
     static mut lastattackdown: c_int = -1;
@@ -624,6 +891,13 @@ pub unsafe extern "C" fn ST_updateFaceWidget() {
 // Widget update
 // ---------------------------------------------------------------------------
 
+/// Refresh all status-bar widget data pointers and counters from the player state.
+///
+/// Called once per tic by `ST_Ticker`. Updates the ready-ammo pointer (using a
+/// sentinel value of 1994 for weapons with no ammo type), key-slot indices,
+/// visibility flags for the arms panel and frag counter, the frag total, and
+/// the face widget via `ST_updateFaceWidget`. Also decrements `st_msgcounter`
+/// and restores `st_chat` when it expires.
 #[no_mangle]
 pub unsafe extern "C" fn ST_updateWidgets() {
     static mut largeammo: c_int = 1994;
@@ -683,6 +957,12 @@ pub unsafe extern "C" fn ST_updateWidgets() {
 // Ticker
 // ---------------------------------------------------------------------------
 
+/// Advance the status bar by one game tic.
+///
+/// Increments the internal clock, samples a new random number for face-idle
+/// variation, updates all widget data via `ST_updateWidgets`, and records the
+/// current health for the ouch-face comparison next tic.
+/// Called once per tic by `G_Ticker` in `g_game.c`.
 #[no_mangle]
 pub unsafe extern "C" fn ST_Ticker() {
     st_clock = st_clock.wrapping_add(1);
@@ -695,6 +975,16 @@ pub unsafe extern "C" fn ST_Ticker() {
 // Palette effects
 // ---------------------------------------------------------------------------
 
+/// Apply the appropriate screen palette based on the player's current status.
+///
+/// Priority order (highest first):
+/// 1. Damage / berserk: red palette shift scaled by damage count.
+/// 2. Bonus pickup: gold/yellow palette shift scaled by bonus count.
+/// 3. Radiation suit: fixed `RADIATIONPAL` index.
+/// 4. Normal: palette 0.
+///
+/// In Chex Quest the red-damage palettes are replaced with `RADIATIONPAL` to
+/// avoid gore. Only calls `I_SetPalette` when the palette index changes.
 #[no_mangle]
 pub unsafe extern "C" fn ST_doPaletteStuff() {
     let mut palette: c_int;
@@ -744,6 +1034,11 @@ pub unsafe extern "C" fn ST_doPaletteStuff() {
 // Drawing
 // ---------------------------------------------------------------------------
 
+/// Drive all st_lib widget update calls for a single frame.
+///
+/// `refresh` is passed through to each widget: non-zero forces a full redraw,
+/// zero redraws only widgets whose value changed since last frame.
+/// Updates `st_armson` and `st_fragson` visibility flags before iterating.
 #[no_mangle]
 pub unsafe extern "C" fn ST_drawWidgets(refresh: c_int) {
     st_armson = if st_statusbaron != 0 && deathmatch == 0 {
@@ -781,6 +1076,7 @@ pub unsafe extern "C" fn ST_drawWidgets(refresh: c_int) {
     STlib_updateNum(&raw mut w_frags, refresh);
 }
 
+/// Perform a full status-bar redraw: clear `st_firsttime`, refresh the background, then redraw all widgets.
 #[no_mangle]
 pub unsafe extern "C" fn ST_doRefresh() {
     st_firsttime = 0;
@@ -788,11 +1084,20 @@ pub unsafe extern "C" fn ST_doRefresh() {
     ST_drawWidgets(1);
 }
 
+/// Perform a differential redraw: only redraw widgets whose value changed.
 #[no_mangle]
 pub unsafe extern "C" fn ST_diffDraw() {
     ST_drawWidgets(0);
 }
 
+/// Draw the status bar for the current frame.
+///
+/// `fullscreen` indicates that the view fills the entire screen (no bar),
+/// `refresh` forces a complete redraw regardless of dirty state. When
+/// `fullscreen` is false or the automap is active, the bar is shown; otherwise
+/// it is hidden.
+///
+/// Called once per frame by the main render loop (`D_Display` in `d_main.c`).
 #[no_mangle]
 pub unsafe extern "C" fn ST_Drawer(fullscreen: Boolean, refresh: Boolean) {
     st_statusbaron = if fullscreen.is_false() || automapactive != 0 {
@@ -817,8 +1122,17 @@ pub unsafe extern "C" fn ST_Drawer(fullscreen: Boolean, refresh: Boolean) {
 // Graphics loading / unloading
 // ---------------------------------------------------------------------------
 
+/// Function pointer type for the load/unload callback used by `ST_loadUnloadGraphics`.
+///
+/// The callback receives a WAD lump name and a pointer to the patch pointer that
+/// should be updated: either cached (load path) or released and nulled (unload path).
 type LoadCallback = unsafe extern "C" fn(*mut c_char, *mut *mut patch_t);
 
+/// Walk every status-bar lump name and invoke `callback` for each.
+///
+/// Shared by `ST_loadGraphics` (which passes `ST_loadCallback`) and
+/// `ST_unloadGraphics` (which passes `ST_unloadCallback`). The face lump names
+/// are generated dynamically; all other names are string literals.
 unsafe fn ST_loadUnloadGraphics(callback: LoadCallback) {
     let mut namebuf = [0i8; 9];
 
@@ -881,31 +1195,37 @@ unsafe fn ST_loadUnloadGraphics(callback: LoadCallback) {
     );
 }
 
+/// Load callback: cache the named WAD lump and store the pointer in `*variable`.
 unsafe extern "C" fn ST_loadCallback(lumpname: *mut c_char, variable: *mut *mut patch_t) {
     *variable = W_CacheLumpName(lumpname, PU_STATIC) as *mut patch_t;
 }
 
+/// Cache all status-bar graphics from the WAD into `PU_STATIC` memory.
 #[no_mangle]
 pub unsafe extern "C" fn ST_loadGraphics() {
     ST_loadUnloadGraphics(ST_loadCallback);
 }
 
+/// Cache the palette lump number and load all status-bar graphics.
 #[no_mangle]
 pub unsafe extern "C" fn ST_loadData() {
     lu_palette = W_GetNumForName(c"PLAYPAL".as_ptr());
     ST_loadGraphics();
 }
 
+/// Unload callback: release the named WAD lump and null the pointer in `*variable`.
 unsafe extern "C" fn ST_unloadCallback(lumpname: *mut c_char, variable: *mut *mut patch_t) {
     W_ReleaseLumpName(lumpname);
     *variable = ptr::null_mut();
 }
 
+/// Release all status-bar graphics and null their pointers.
 #[no_mangle]
 pub unsafe extern "C" fn ST_unloadGraphics() {
     ST_loadUnloadGraphics(ST_unloadCallback);
 }
 
+/// Release all status-bar data (currently delegates to `ST_unloadGraphics`).
 #[no_mangle]
 pub unsafe extern "C" fn ST_unloadData() {
     ST_unloadGraphics();
@@ -915,6 +1235,11 @@ pub unsafe extern "C" fn ST_unloadData() {
 // Init / Start / Stop
 // ---------------------------------------------------------------------------
 
+/// Reset all internal status-bar state variables to their defaults.
+///
+/// Sets `st_firsttime`, clears the clock, chat state, cursor, face index, and
+/// palette sentinel. Snapshots the current weapon ownership array and resets
+/// key-slot values to -1. Calls `STlib_init` to reset the widget library.
 #[no_mangle]
 pub unsafe extern "C" fn ST_initData() {
     st_firsttime = 1;
@@ -940,6 +1265,12 @@ pub unsafe extern "C" fn ST_initData() {
     STlib_init();
 }
 
+/// Initialise and bind all status-bar widgets to their screen positions.
+///
+/// Must be called after `ST_initData` (which sets `plyr`) and after graphics
+/// have been loaded (which populates `tallnum`, `shortnum`, etc.). Creates
+/// widgets for: ready ammo, health, armor, arms background, weapons-owned icons,
+/// frag counter, face, key slots, and per-ammo-type current/max displays.
 #[no_mangle]
 pub unsafe extern "C" fn ST_createWidgets() {
     STlib_initNum(
@@ -1090,6 +1421,10 @@ pub unsafe extern "C" fn ST_createWidgets() {
     }
 }
 
+/// Start the status bar subsystem for a new game or level.
+///
+/// Calls `ST_Stop` if already running, then re-initialises state, creates
+/// widgets, and clears `st_stopped`. Called from `G_DoLoadLevel` in `g_game.c`.
 #[no_mangle]
 pub unsafe extern "C" fn ST_Start() {
     if st_stopped == 0 {
@@ -1100,6 +1435,11 @@ pub unsafe extern "C" fn ST_Start() {
     st_stopped = 0;
 }
 
+/// Stop the status bar subsystem and restore the normal palette.
+///
+/// Resets the display palette to `PLAYPAL` index 0 and sets `st_stopped`.
+/// Safe to call when already stopped (guard at the top). Called from `G_WorldDone`
+/// and `ST_Start` in `g_game.c`.
 #[no_mangle]
 pub unsafe extern "C" fn ST_Stop() {
     if st_stopped != 0 {
@@ -1109,6 +1449,11 @@ pub unsafe extern "C" fn ST_Stop() {
     st_stopped = 1;
 }
 
+/// One-time initialisation of the status bar subsystem.
+///
+/// Loads all WAD graphics into `PU_STATIC` memory and allocates the backing
+/// screen buffer. Must be called exactly once during startup, before `ST_Start`.
+/// Called from `G_InitNew` in `g_game.c`.
 #[no_mangle]
 pub unsafe extern "C" fn ST_Init() {
     ST_loadData();

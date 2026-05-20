@@ -76,10 +76,10 @@ conflicts resolve trivially.
 - [x] doom/f_wipe.rs (258 lines, 2 docs)
 - [x] doom/hu_lib.rs (606 lines, 6 docs)
 - [x] doom/hu_stuff.rs (625 lines, 2 docs)
-- [ ] doom/m_menu.rs (1731 lines, 0 docs)
+- [x] doom/m_menu.rs (1731 lines, 0 docs)
 - [x] doom/st_lib.rs (350 lines, 2 docs)
-- [ ] doom/st_stuff.rs (1116 lines, 0 docs)
-- [ ] doom/wi_stuff.rs (1725 lines, 16 docs)
+- [x] doom/st_stuff.rs (1116 lines, 0 docs)
+- [x] doom/wi_stuff.rs (1725 lines, 16 docs)
 
 ## System / I/O (`i_*`, `w_*`, misc)
 
