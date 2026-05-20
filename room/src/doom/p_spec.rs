@@ -681,8 +681,10 @@ pub unsafe extern "C" fn P_FindMinSurroundingLight(sector: *mut sector_t, max: c
 /// - Specials 72-129 are re-triggerable: `line->special` is left intact.
 /// - Special 52 exits the level; special 124 exits to the secret level (both
 ///   are in the re-triggerable range and do not clear `line->special`).
-/// - Specials 125 and 126 activate only when `thing` has no player (monster-
-///   only teleports; ignored if the thing is a player-controlled object).
+/// - Special 125 is a one-shot monster-only teleport (activates only when
+///   `thing` has no player, then clears `line->special`).
+/// - Special 126 is a re-triggerable monster-only teleport (same player guard,
+///   but does not clear `line->special`).
 ///
 /// - `linenum`: index into the global `lines` array.
 /// - `side`: side of the line the thing is approaching from (0 = front).
