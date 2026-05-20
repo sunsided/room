@@ -61,7 +61,7 @@ conflicts resolve trivially.
 - [x] doom/p_plats.rs (396 lines, 0 docs)
 - [x] doom/p_pspr.rs (928 lines, 42 docs)
 - [ ] doom/p_saveg.rs (1725 lines, 6 docs)
-- [ ] doom/p_setup.rs (1238 lines, 51 docs)
+- [x] doom/p_setup.rs (1238 lines, 51 docs)
 - [x] doom/p_sight.rs (507 lines, 10 docs)
 - [ ] doom/p_spec.rs (1168 lines, 0 docs)
 - [x] doom/p_switch.rs (736 lines, 5 docs)
