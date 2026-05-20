@@ -1222,6 +1222,12 @@ const SAVEGAMENAME: &str = "doomsav";
 /// process; it is allocated once and cached in `TEMP_SAVE_FILENAME`.
 ///
 /// Called by `g_game.c` (`G_DoSaveGame`).
+///
+/// # Safety
+///
+/// `savegamedir` must be a valid, NUL-terminated C string for the lifetime of
+/// this call. The returned pointer is valid until process exit; the caller must
+/// not free or mutate it.
 #[no_mangle]
 pub unsafe extern "C" fn P_TempSaveGameFile() -> *mut c_char {
     if TEMP_SAVE_FILENAME.is_null() {
@@ -1243,6 +1249,12 @@ pub unsafe extern "C" fn P_TempSaveGameFile() -> *mut c_char {
 /// pointer is valid until the next call or process exit.
 ///
 /// Called by `g_game.c` to open the final save file for reading or renaming.
+///
+/// # Safety
+///
+/// `savegamedir` must be a valid, NUL-terminated C string for the lifetime of
+/// this call. `slot` must be in the range `0..=7`. The returned pointer is
+/// valid until the next call to this function; the caller must not free it.
 #[no_mangle]
 pub unsafe extern "C" fn P_SaveGameFile(slot: c_int) -> *mut c_char {
     let dir_len = std::ffi::CStr::from_ptr(savegamedir).to_bytes().len();
@@ -1275,6 +1287,13 @@ pub unsafe extern "C" fn P_SaveGameFile(slot: c_int) -> *mut c_char {
 ///    `[bits 23:16, bits 15:8, bits 7:0]`.
 ///
 /// Called by `g_game.c` (`G_DoSaveGame`).
+///
+/// # Safety
+///
+/// `description` must be a valid, NUL-terminated C string. `save_stream` must
+/// be an open, writable `FILE *` with enough capacity to hold the header bytes.
+/// The global state `gameskill`, `gameepisode`, `gamemap`, `playeringame`, and
+/// `leveltime` must have been set to valid values before this call.
 #[no_mangle]
 pub unsafe extern "C" fn P_WriteSaveGameHeader(description: *const c_char) {
     let desc = std::ffi::CStr::from_ptr(description);
@@ -1325,6 +1344,13 @@ pub unsafe extern "C" fn P_WriteSaveGameHeader(description: *const c_char) {
 /// `gamemap`, `playeringame`, and `leveltime` are updated from the stream.
 ///
 /// Called by `g_game.c` (`G_DoLoadGame`).
+///
+/// # Safety
+///
+/// `save_stream` must be an open, readable `FILE *` positioned at the start of
+/// a save file written by `P_WriteSaveGameHeader`. On success, `gameskill`,
+/// `gameepisode`, `gamemap`, `playeringame`, and `leveltime` are overwritten
+/// with values from the stream.
 #[no_mangle]
 pub unsafe extern "C" fn P_ReadSaveGameHeader() -> c_int {
     // Skip description (SAVESTRINGSIZE bytes)
@@ -1377,6 +1403,12 @@ pub unsafe extern "C" fn P_ReadSaveGameHeader() -> c_int {
 /// Returns `1` if the byte equals `SAVEGAME_EOF` (`0x1d`), otherwise `0`.
 /// A mismatch indicates a truncated or corrupt save file.
 /// Called by `g_game.c` after all game state has been unarchived.
+///
+/// # Safety
+///
+/// `save_stream` must be an open, readable `FILE *` positioned immediately
+/// after the last unarchived byte, i.e. where `P_WriteSaveGameEOF` wrote its
+/// marker. Reading from an invalid or exhausted stream is undefined behaviour.
 #[no_mangle]
 pub unsafe extern "C" fn P_ReadSaveGameEOF() -> c_int {
     let value = saveg_read8();
@@ -1393,6 +1425,12 @@ pub unsafe extern "C" fn P_ReadSaveGameEOF() -> c_int {
 /// Written after all game state has been archived; checked by
 /// `P_ReadSaveGameEOF` on load to detect truncation.
 /// Called by `g_game.c` (`G_DoSaveGame`).
+///
+/// # Safety
+///
+/// `save_stream` must be an open, writable `FILE *`. This must be called after
+/// all archive functions have finished writing so that the marker byte appears
+/// at the correct position for `P_ReadSaveGameEOF` to validate.
 #[no_mangle]
 pub unsafe extern "C" fn P_WriteSaveGameEOF() {
     saveg_write8(SAVEGAME_EOF);
@@ -1421,6 +1459,13 @@ extern "C" {
 /// `playeringame[i] == 0`. Each active player record is 4-byte aligned
 /// (`saveg_write_pad`) then written by `saveg_write_player_t`.
 /// Called by `g_game.c` (`G_DoSaveGame`).
+///
+/// # Safety
+///
+/// `save_stream` must be an open, writable `FILE *` with sufficient capacity.
+/// The `players` array and `playeringame` flags must be fully initialized for
+/// all `MAXPLAYERS` slots. Must be called after `P_WriteSaveGameHeader` and
+/// before `P_WriteSaveGameEOF`.
 #[no_mangle]
 pub unsafe extern "C" fn P_ArchivePlayers() {
     for i in 0..MAXPLAYERS {
@@ -1439,6 +1484,14 @@ pub unsafe extern "C" fn P_ArchivePlayers() {
 /// reset to null pointers; they will be restored when thinkers are unarchived
 /// by `P_UnArchiveThinkers`.
 /// Called by `g_game.c` (`G_DoLoadGame`).
+///
+/// # Safety
+///
+/// `save_stream` must be an open, readable `FILE *` positioned at the byte
+/// sequence written by `P_ArchivePlayers`. `playeringame` must already have
+/// been populated by `P_ReadSaveGameHeader` so the active-slot bitmask is
+/// correct. After this call, `players[i].mo`, `.message`, and `.attacker` are
+/// null and must not be dereferenced until thinkers are unarchived.
 #[no_mangle]
 pub unsafe extern "C" fn P_UnArchivePlayers() {
     for i in 0..MAXPLAYERS {
@@ -1471,6 +1524,13 @@ pub unsafe extern "C" fn P_UnArchivePlayers() {
 /// indices.
 ///
 /// Called by `g_game.c` (`G_DoSaveGame`).
+///
+/// # Safety
+///
+/// `save_stream` must be an open, writable `FILE *` with sufficient capacity.
+/// The global `sectors` array (length `numsectors`), `lines` array (length
+/// `numlines`), and `sides` array must all be fully initialized. Every
+/// `line_t.sidenum[j]` that is not `-1` must be a valid index into `sides`.
 #[no_mangle]
 pub unsafe extern "C" fn P_ArchiveWorld() {
     let num_sec = numsectors as usize;
@@ -1519,6 +1579,15 @@ pub unsafe extern "C" fn P_ArchiveWorld() {
 /// texture offsets (shifted left 16 to restore 16.16) and texture indices.
 ///
 /// Called by `g_game.c` (`G_DoLoadGame`).
+///
+/// # Safety
+///
+/// `save_stream` must be an open, readable `FILE *` positioned at the byte
+/// sequence written by `P_ArchiveWorld`. The `sectors` array (length
+/// `numsectors`), `lines` array (length `numlines`), and `sides` array must
+/// all be allocated and at least partially initialized (map load must have
+/// completed). Every `line_t.sidenum[j]` that is not `-1` must be a valid
+/// index into `sides`.
 #[no_mangle]
 pub unsafe extern "C" fn P_UnArchiveWorld() {
     let num_sec = numsectors as usize;
@@ -1583,6 +1652,13 @@ const tc_mobj: u8 = 1;
 /// `tc_end` byte.
 ///
 /// Called by `g_game.c` (`G_DoSaveGame`).
+///
+/// # Safety
+///
+/// `save_stream` must be an open, writable `FILE *` with sufficient capacity.
+/// The thinker chain rooted at `thinkercap` must be fully initialized and form
+/// a valid doubly-linked circular list. Every thinker in the chain whose
+/// function equals `P_MobjThinker` must point to a valid `mobj_t`.
 #[no_mangle]
 pub unsafe extern "C" fn P_ArchiveThinkers() {
     let cap = &raw mut thinkercap;
@@ -1624,6 +1700,15 @@ pub unsafe extern "C" fn P_ArchiveThinkers() {
 /// - Any other byte: calls `i_error!` (fatal).
 ///
 /// Called by `g_game.c` (`G_DoLoadGame`).
+///
+/// # Safety
+///
+/// `save_stream` must be an open, readable `FILE *` positioned at the byte
+/// sequence written by `P_ArchiveThinkers`. The zone allocator must be
+/// operational (`Z_Malloc`/`Z_Free` must be safe to call). The map geometry
+/// (`sectors`, block-map, etc.) must be loaded so that `P_SetThingPosition`
+/// can place each restored mobj. Must be called before `P_UnArchiveSpecials`
+/// and before any code dereferences `players[i].mo`.
 #[no_mangle]
 pub unsafe extern "C" fn P_UnArchiveThinkers() {
     let cap = &raw mut thinkercap;
@@ -1744,6 +1829,15 @@ const tc_endspecials: u8 = 7;
 /// terminated by `tc_endspecials`.
 ///
 /// Called by `g_game.c` (`G_DoSaveGame`).
+///
+/// # Safety
+///
+/// `save_stream` must be an open, writable `FILE *` with sufficient capacity.
+/// The thinker chain rooted at `thinkercap` must be fully initialized and form
+/// a valid doubly-linked circular list. The `activeceilings` array must be
+/// initialized. Every thinker that matches a known special function pointer
+/// must point to a fully initialized special struct (`ceiling_t`, `vldoor_t`,
+/// etc.).
 #[no_mangle]
 pub unsafe extern "C" fn P_ArchiveSpecials() {
     let cap = &raw mut thinkercap;
@@ -1862,6 +1956,15 @@ pub unsafe extern "C" fn P_ArchiveSpecials() {
 /// `Z_Malloc` tag used for the other special types.
 ///
 /// Called by `g_game.c` (`G_DoLoadGame`).
+///
+/// # Safety
+///
+/// `save_stream` must be an open, readable `FILE *` positioned at the byte
+/// sequence written by `P_ArchiveSpecials`. The zone allocator must be
+/// operational. The `sectors` array must be fully initialized so that
+/// `sector->specialdata` can be set. Must be called after
+/// `P_UnArchiveThinkers` so the thinker chain is in a consistent state before
+/// new specials are registered with `P_AddThinker`.
 // FIXME: p_saveg.c allocates ceiling_t with PU_LEVEL, not PU_LEVSPEC; this
 // port uses PU_LEVSPEC here (consistent with other specials). The difference
 // affects when the zone allocator may purge the block.
