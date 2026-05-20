@@ -209,8 +209,8 @@ pub extern "C" fn STlib_initNum(
 /// Draw a number widget unconditionally.
 ///
 /// Algorithm:
-/// 1. Clamp negative values to fit within `width` digits (e.g., max -9 for
-///    `width == 2`).
+/// 1. Clamp negative values only for `width == 2` (floor at -9) and
+///    `width == 3` (floor at -99); other widths are not clamped.
 /// 2. Erase the current field by blitting from `st_backing_screen`.
 /// 3. If the value equals `1994`, skip rendering (magic "inactive" sentinel).
 /// 4. Draw digits right-to-left using `p[digit]` patches.
@@ -219,6 +219,9 @@ pub extern "C" fn STlib_initNum(
 /// The `_refresh` parameter is accepted for ABI compatibility but is currently
 /// unused; erasing and redrawing always happen unconditionally.
 /// Called by [`STlib_updateNum`].
+///
+/// Panics via `i_error!` if the widget's Y position is above the status bar
+/// (`n->y - ST_Y < 0`).
 #[no_mangle]
 pub extern "C" fn STlib_drawNum(n: *mut st_number_t, _refresh: c_int) {
     unsafe {
@@ -377,6 +380,9 @@ pub extern "C" fn STlib_initMultIcon(
 /// * Updates `oldinum`.
 ///
 /// Skips all work when `*on == 0` or `*inum == -1`.
+///
+/// Panics via `i_error!` if the widget's Y position is above the status bar
+/// (`y - ST_Y < 0`) when erasing a previous icon.
 #[no_mangle]
 pub extern "C" fn STlib_updateMultIcon(mi: *mut st_multicon_t, refresh: c_int) {
     unsafe {
@@ -435,6 +441,9 @@ pub extern "C" fn STlib_initBinIcon(
 /// * Updates `oldval`.
 ///
 /// Skips all work when `*on == 0`.
+///
+/// Panics via `i_error!` if the widget's Y position is above the status bar
+/// (`y - ST_Y < 0`).
 #[no_mangle]
 pub extern "C" fn STlib_updateBinIcon(bi: *mut st_binicon_t, refresh: c_int) {
     unsafe {

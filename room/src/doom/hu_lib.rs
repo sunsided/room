@@ -47,8 +47,10 @@ pub struct hu_textline_t {
     pub x: c_int,
     /// Screen Y position of the text line.
     pub y: c_int,
-    /// Pointer into the font patch array; `f[c - sc]` yields the patch for
-    /// character `c`. Mirrors `patch_t **f` in `hu_textline_t`.
+    /// Pointer to the start of the font patch array; `f.add(c - sc)` yields a
+    /// pointer to the patch for character `c`. Mirrors `patch_t **f` in
+    /// `hu_textline_t`. Access requires pointer arithmetic - direct indexing is
+    /// unsafe.
     pub f: *mut *mut patch_t,
     /// ASCII code of the first character in the font array (`l->sc` in C).
     /// Characters below this value are rendered as spaces.
