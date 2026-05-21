@@ -175,6 +175,10 @@ const DEH_DEFAULT_GREEN_ARMOR_CLASS: c_int = 1;
 /// Armor class granted by the blue mega-armor.
 const DEH_DEFAULT_BLUE_ARMOR_CLASS: c_int = 2;
 
+/// Runtime armor class granted by the green security armor shirt.
+#[no_mangle]
+pub static mut deh_green_armor_class: c_int = DEH_DEFAULT_GREEN_ARMOR_CLASS;
+
 /// Upper health limit imposed by the soulsphere.
 const DEH_DEFAULT_MAX_SOULSPHERE: c_int = 200;
 
@@ -606,10 +610,6 @@ pub unsafe extern "C" fn P_GivePower(player: *mut PlayerT, power: c_int) -> c_in
 /// (`toucher->health <= 0`) to handle sliding player corpses.  This Rust
 /// port omits that guard.
 ///
-/// # FIXME
-///
-/// For `SPR_ARM1` the C source passes `deh_green_armor_class` (a runtime
-/// DEHacked value) to `P_GiveArmor`, but this port hardcodes `1`.
 #[no_mangle]
 pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut mobj_t) {
     let _test_spr = SPR_ARM1;
@@ -631,7 +631,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
     match (*special).sprite {
         // armor
         SPR_ARM1 => {
-            if P_GiveArmor(player, 1) == 0 {
+            if P_GiveArmor(player, deh_green_armor_class) == 0 {
                 return;
             }
             (*player).message = DEH_String(GOTARMOR);
@@ -1299,5 +1299,13 @@ mod tests {
         assert_eq!(DEH_DEFAULT_MAX_SOULSPHERE, 200);
         assert_eq!(DEH_DEFAULT_SOULSPHERE_HEALTH, 100);
         assert_eq!(DEH_DEFAULT_MEGASPHERE_HEALTH, 200);
+    }
+
+    #[test]
+    fn green_armor_class_global_defaults_to_deh_value() {
+        let _g = LOCK.lock().unwrap();
+        unsafe {
+            assert_eq!(deh_green_armor_class, DEH_DEFAULT_GREEN_ARMOR_CLASS);
+        }
     }
 }
