@@ -114,7 +114,7 @@ conflicts resolve trivially.
 - [x] doom/s_sound.rs (520 lines, 0 docs)
 - [x] doom/sounds.rs (928 lines, 5 docs)
 - [x] doom/statenum.rs (971 lines, 0 docs)
-- [ ] doom/tables.rs (1634 lines, 0 docs)
+- [x] doom/tables.rs (1634 lines, 0 docs)
 - [x] doom/z_zone.rs (470 lines, 1 doc)
 
 ## Platform Layer (`audio/`, `platform/`, `types/`, top-level)

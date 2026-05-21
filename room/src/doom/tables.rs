@@ -1,16 +1,140 @@
 #![allow(non_upper_case_globals, non_snake_case)]
+//! Rust port of `vendor/doomgeneric/tables.c` (and `tables.h`).
+//!
+//! Precomputed trigonometric and gamma-correction lookup tables shared by the
+//! renderer, the playsim, and the automap. The arrays are byte-for-byte
+//! identical to the originals shipped with Linux Doom; the
+//! `vendor_table_tests` module at the bottom of this file parses the vendor
+//! `tables.c` source at test time and asserts equality element by element.
+//!
+//! ## Binary Angle Measurement (BAM)
+//!
+//! Doom represents angles as 32-bit unsigned integers ("BAMs") where the full
+//! circle wraps modulo `2^32`. The constants below pin the cardinal directions:
+//! - `ANG45  = 0x2000_0000`  (45 deg)
+//! - `ANG90  = 0x4000_0000`  (90 deg)
+//! - `ANG180 = 0x8000_0000`  (180 deg)
+//! - `ANG270 = 0xC000_0000`  (270 deg)
+//!
+//! Conversion from a BAM to a fine-table index is a single shift:
+//! `index = angle >> ANGLETOFINESHIFT` (with `ANGLETOFINESHIFT == 19`),
+//! producing an index in `0..FINEANGLES` (i.e. `0..8192`).
+//!
+//! ## Fine angle space
+//!
+//! `FINEANGLES = 8192` divides the circle into 8192 equal steps of
+//! `(360 / 8192)` degrees each (~0.044 deg). `FINEMASK = FINEANGLES - 1` is
+//! the bitmask used to wrap a fine-angle index back into range. All sine,
+//! cosine, and tangent lookups operate in this space.
+//!
+//! ## `finesine` / `finecosine`
+//!
+//! `finesine` holds `5 * FINEANGLES / 4 = 10240` fixed-point sine samples
+//! (Q16.16: scale factor `1 << 16 = 65536`). The extra `FINEANGLES / 4 = 2048`
+//! samples beyond a full circle are a duplicated quarter-period so that the
+//! cosine table can be aliased to it: `finecosine` is simply a pointer into
+//! `finesine[FINEANGLES/4..]`, exploiting the identity
+//! `cos(x) = sin(x + pi/2)`. Callers index with a fine-angle index and read a
+//! 16.16 result in `[-65536, 65536]`.
+//!
+//! ## `finetangent`
+//!
+//! `finetangent` holds `FINEANGLES / 2 = 4096` fixed-point tangent samples,
+//! also in Q16.16. Note the C source indexes this with the *upper half* of the
+//! fine-angle space (`(angle + ANG90) >> ANGLETOFINESHIFT` and friends), so
+//! the array spans tangents from a quarter-turn before the horizon up through
+//! a quarter-turn past it. Entries near the poles are very large in magnitude
+//! (the first/last entries are several million in 16.16) and callers must
+//! avoid the singular indices that would correspond to `+-pi/2`.
+//!
+//! ## `tantoangle`
+//!
+//! `tantoangle` is the inverse: a 2049-entry table mapping a "slope" in the
+//! range `0..=SLOPERANGE` (i.e. `0..=2048`) to a BAM in the first octant
+//! (`0..=ANG45`). The size is `SLOPERANGE + 1` so that the `x == y` case
+//! (slope == `SLOPERANGE`) can be looked up directly without an additional
+//! branch. Callers fold a 2D vector into the first octant, compute a slope
+//! via [`SlopeDiv`], and then read the corresponding angle, optionally
+//! adjusting by `ANG90`, `ANG180`, etc. for the original octant.
+//!
+//! ## `gammatable`
+//!
+//! Five 256-entry palette gamma-correction tables, one per gamma level
+//! exposed to the player (none, low, medium, high, max). Indexed by the
+//! 8-bit colour-channel value to be remapped to the corrected output.
+//!
+//! ## Layout / FFI
+//!
+//! Every table is `#[no_mangle]` so the C portions of the engine (and the
+//! `c2rust-intermediate` sources) link against the same symbols as the
+//! original `vendor/doomgeneric/tables.c` exported. The constants in this
+//! module mirror `tables.h` 1:1.
 
 use std::ffi::{c_int, c_uint};
 
+/// Number of fine-angle steps in a full circle (Doom's `FINEANGLES` macro).
+///
+/// Used to size [`finesine`] and [`finetangent`] and as the divisor for
+/// indexing sine/cosine tables. A fine-angle index in `0..FINEANGLES`
+/// represents an angle of `(index / FINEANGLES) * 2*pi` radians.
 pub const FINEANGLES: usize = 8192;
+
+/// Maximum slope value used as both a sentinel and the top index of
+/// [`tantoangle`] (Doom's `SLOPERANGE` macro).
+///
+/// Callers compute a 2D vector's slope as `(num << 3) / (den >> 8)` (see
+/// [`SlopeDiv`]); values above `SLOPERANGE` are clamped to `SLOPERANGE`. The
+/// `+1` slot in [`tantoangle`] handles the clamped (i.e. `x == y`) case
+/// without an extra branch.
 pub const SLOPERANGE: c_int = 2048;
+
+/// Right-shift to convert a 32-bit BAM angle into a fine-angle index
+/// (Doom's `ANGLETOFINESHIFT` macro).
+///
+/// `angle >> ANGLETOFINESHIFT` collapses the `2^32` BAM space down to the
+/// `8192`-entry fine-angle space (`2^32 / 2^19 = 2^13 = 8192`).
 pub const ANGLETOFINESHIFT: u32 = 19;
+
+/// Bitmask used to wrap a fine-angle index back into `0..FINEANGLES`
+/// (Doom's `FINEMASK` macro).
+///
+/// Equivalent to `FINEANGLES - 1 == 8191`. Useful after adding an offset
+/// (e.g. `+ FINEANGLES / 4` when deriving cosine from sine inline).
 pub const FINEMASK: c_int = FINEANGLES as c_int - 1;
+
+/// 45 degree binary angle (Doom's `ANG45` macro): one-eighth of the full
+/// `2^32` BAM circle.
 pub const ANG45: u32 = 0x2000_0000;
+
+/// 90 degree binary angle (Doom's `ANG90` macro): a quarter turn in BAM
+/// units.
 pub const ANG90: u32 = 0x4000_0000;
+
+/// 180 degree binary angle (Doom's `ANG180` macro): a half turn in BAM
+/// units.
 pub const ANG180: u32 = 0x8000_0000;
+
+/// 270 degree binary angle (Doom's `ANG270` macro): three-quarters of a
+/// turn in BAM units.
 pub const ANG270: u32 = 0xC000_0000;
 
+/// Precomputed tangent table indexed by a fine-angle (Doom's
+/// `finetangent[FINEANGLES/2]`).
+///
+/// 4096 Q16.16 fixed-point samples covering tangents from just past `-pi/2`
+/// up to just shy of `+pi/2`. Each entry is `tan(theta) * 65536` where
+/// `theta = (i - 2048 + 0.5) * 2*pi / FINEANGLES`. The values near the two
+/// poles balloon into the hundreds of millions (the very first entry is
+/// `-170_910_304`), reflecting the divergence of `tan` near `+-pi/2`.
+///
+/// Renderer code (`r_main.c`, `r_segs.c`) typically indexes this with
+/// `(viewangle + ANG90) >> ANGLETOFINESHIFT`, mapping a BAM view angle to
+/// the upper half of the fine-angle space. Callers must keep the index in
+/// `0..4096` and must avoid the singular endpoints when divisor semantics
+/// matter.
+///
+/// `#[no_mangle]` because the C portions of the engine and the
+/// `c2rust-intermediate` translation link against this symbol by name.
 #[no_mangle]
 pub static finetangent: [c_int; 4096] = [
     -170910304, -56965752, -34178904, -24413316, -18988036, -15535599, -13145455, -11392683,
@@ -359,6 +483,28 @@ pub static finetangent: [c_int; 4096] = [
     18988036, 24413316, 34178904, 56965752, 170910304,
 ];
 
+/// Precomputed sine table indexed by a fine-angle (Doom's
+/// `finesine[5*FINEANGLES/4]`).
+///
+/// 10240 Q16.16 fixed-point samples; each entry is
+/// `sin(i * 2*pi / FINEANGLES) * 65536`, in the range `[-65536, 65536]`.
+///
+/// The array is `5 * FINEANGLES / 4 = 10240` long, i.e. a full circle
+/// (8192 entries) plus an extra quarter (2048 entries). The trailing quarter
+/// duplicates the start of the next period so that [`finecosine`] - which is
+/// simply `&finesine[FINEANGLES/4 ..]` - can deliver a cosine for any
+/// fine-angle index without wrapping logic, using the identity
+/// `cos(x) = sin(x + pi/2)`.
+///
+/// Typical use:
+/// ```text
+/// let fine = (angle_bam >> ANGLETOFINESHIFT) as usize;
+/// let s = finesine[fine];                          // sine, Q16.16
+/// let c = finesine[(fine + FINEANGLES/4) & FINEMASK as usize]; // cosine
+/// ```
+///
+/// `#[no_mangle]` because both the linked C objects and the
+/// `c2rust-intermediate` sources reference this symbol directly.
 #[no_mangle]
 pub static finesine: [c_int; 10240] = [
     25, 75, 125, 175, 226, 276, 326, 376, 427, 477, 527, 578, 628, 678, 728, 779, 829, 879, 929,
@@ -1165,14 +1311,50 @@ pub static finesine: [c_int; 10240] = [
     65535, 65535, 65535, 65535, 65535, 65535, 65535,
 ];
 
+/// Thin wrapper around a `*const c_int` that lets us expose [`finecosine`]
+/// as a `Sync` static pointer.
+///
+/// Rust forbids `static` raw pointers without an explicit `Sync` impl. The
+/// wrapper carries `#[repr(transparent)]` so it has identical layout to a
+/// bare pointer; from C this is indistinguishable from the original
+/// `const fixed_t *finecosine` declaration in `tables.h`.
 #[repr(transparent)]
 pub struct FineCosinePtr(pub *const c_int);
+
+/// SAFETY: the pointer aims into the read-only [`finesine`] static, which
+/// lives for the whole program and is never mutated. Sharing the pointer
+/// across threads is therefore safe.
 unsafe impl Sync for FineCosinePtr {}
 
+/// Cosine view onto [`finesine`] (Doom's `finecosine` pointer).
+///
+/// Exposes `&finesine[FINEANGLES/4 ..]` so that
+/// `finecosine[i] == finesine[(i + FINEANGLES/4) % FINEANGLES]`, i.e. the
+/// classic `cos(x) = sin(x + pi/2)` identity. C callers read it via the
+/// existing `extern const fixed_t *finecosine;` declaration; Rust callers
+/// must dereference `finecosine.0` and offset by a fine-angle index.
+///
+/// `#[no_mangle]` for FFI symbol parity with the original `tables.c`.
 #[no_mangle]
 pub static finecosine: FineCosinePtr =
     FineCosinePtr(unsafe { finesine.as_ptr().add(FINEANGLES / 4) });
 
+/// Arctangent lookup mapping a slope to a first-octant BAM angle (Doom's
+/// `tantoangle[SLOPERANGE+1]`).
+///
+/// 2049 entries (`SLOPERANGE + 1 == 2049`) covering slope values
+/// `0..=SLOPERANGE`. Each entry is the BAM equivalent of
+/// `atan(slope / SLOPERANGE)`, so the table runs from `0` at index 0 up to
+/// exactly `ANG45 == 0x2000_0000` at index `SLOPERANGE`.
+///
+/// To get a global angle from a cartesian `(x, y)` vector the engine first
+/// flips the coordinates into the first octant (`y <= x`), produces a slope
+/// via [`SlopeDiv`], reads the angle from this table, and then adjusts by
+/// `ANG90`, `ANG180`, etc. depending on the original octant. The `+1` slot
+/// handles the `x == y` boundary (slope == `SLOPERANGE`) without a special
+/// case.
+///
+/// `#[no_mangle]` for FFI symbol parity with `tables.c`.
 #[no_mangle]
 pub static tantoangle: [c_uint; 2049] = [
     0, 333772, 667544, 1001315, 1335086, 1668857, 2002626, 2336395, 2670163, 3003929, 3337694,
@@ -1429,6 +1611,17 @@ pub static tantoangle: [c_uint; 2049] = [
     536369888, 536536992, 536704000, 536870912,
 ];
 
+/// Palette gamma-correction lookup tables (Doom's `gammatable[5][256]`).
+///
+/// Five 256-entry remapping tables, one for each in-game gamma setting from
+/// "none" (row 0, almost a no-op identity) through progressively brighter
+/// curves (rows 1..4). The renderer applies `gammatable[gamma][channel]` to
+/// each 8-bit palette entry when building the screen palette. Index 0 of
+/// row 0 maps to `1` (not `0`) - this matches the original `tables.c`
+/// vendor data exactly; the test suite verifies the byte-for-byte match.
+///
+/// `#[no_mangle]` because the C frontend reads the table directly via its
+/// extern declaration in `tables.h`.
 #[no_mangle]
 pub static gammatable: [[u8; 256]; 5] = [
     [
@@ -1512,6 +1705,36 @@ pub static gammatable: [[u8; 256]; 5] = [
     ],
 ];
 
+/// Compute a clamped slope value suitable for indexing [`tantoangle`].
+///
+/// Direct port of `SlopeDiv` from `vendor/doomgeneric/tables.c`. Returns a
+/// value in `0..=SLOPERANGE` representing `num / den` scaled so that the
+/// result is a valid `tantoangle` index.
+///
+/// # Preconditions
+/// - `num` and `den` are non-negative magnitudes; in renderer use they are
+///   the absolute lengths of the catheti of a right triangle after the
+///   point has been folded into the first octant (so `num <= den`).
+///
+/// # Postconditions
+/// - Returns `SLOPERANGE` when `den < 512` (avoids a divide-by-near-zero
+///   that would also overflow `(num << 3)`), matching the C behaviour and
+///   acting as a saturating "vertical slope" sentinel.
+/// - Otherwise returns `min((num << 3) / (den >> 8), SLOPERANGE)` so the
+///   result is always a valid index into [`tantoangle`].
+///
+/// # Algorithm
+/// `(num << 3) / (den >> 8)` is equivalent to `(num * 2^11) / den` while
+/// shaving precision from both operands so the dividend fits in 32 bits for
+/// the realistic input ranges Doom feeds in. This is a well-known Linux
+/// Doom trick; the shifts intentionally mirror the C source's integer
+/// behaviour.
+///
+/// # C origin
+/// Called from `r_main.c::R_PointToAngle` / `R_PointToAngle2` and
+/// `p_maputl.c::P_AproxDistance`-adjacent helpers via the linked C objects
+/// and the `c2rust-intermediate` translation; exported `#[no_mangle]` so
+/// those call sites resolve to this Rust definition at link time.
 #[no_mangle]
 pub extern "C" fn SlopeDiv(num: c_uint, den: c_uint) -> c_int {
     if den < 512 {
@@ -1524,12 +1747,18 @@ pub extern "C" fn SlopeDiv(num: c_uint, den: c_uint) -> c_int {
     SLOPERANGE
 }
 
+/// Vendor cross-validation tests: parse the original `tables.c` (and a few
+/// neighbouring source files) at test time and assert that every Rust table
+/// matches the C original element-for-element. Acts as a tripwire if the
+/// Rust copies are ever edited by hand.
 #[cfg(test)]
 mod vendor_table_tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
 
+    /// Resolve a path inside the vendored `doomgeneric` tree relative to
+    /// the workspace, regardless of where `cargo test` is invoked from.
     fn vendor_path(rel: &str) -> PathBuf {
         let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         p.push("..");
@@ -1539,6 +1768,10 @@ mod vendor_table_tests {
         p
     }
 
+    /// Locate the textual position of a C array definition named `name`
+    /// inside `content`. Scans forward, requiring the line that introduces
+    /// the identifier to contain either `const` or `static` so that
+    /// references in comments or `extern` declarations are skipped.
     fn find_array_start(content: &str, name: &str) -> usize {
         let mut pos = 0;
         while let Some(idx) = content[pos..].find(name) {
@@ -1555,6 +1788,10 @@ mod vendor_table_tests {
         panic!("Could not find array definition for '{}'", name);
     }
 
+    /// Parse a flat C `int` array literal named `name` inside the vendor
+    /// file `rel` into a `Vec<i32>`. Tokenizes by comma and silently drops
+    /// fragments that fail to parse (whitespace, trailing braces, etc.),
+    /// which is sufficient for the simple integer-literal tables here.
     fn parse_c_array_i32(rel: &str, name: &str) -> Vec<i32> {
         let content = fs::read_to_string(vendor_path(rel)).unwrap();
         let start = find_array_start(&content, name);
@@ -1568,6 +1805,8 @@ mod vendor_table_tests {
             .collect()
     }
 
+    /// `u32` companion to [`parse_c_array_i32`]; used for [`tantoangle`],
+    /// which is an `unsigned` array in the C source.
     fn parse_c_array_u32(rel: &str, name: &str) -> Vec<u32> {
         let content = fs::read_to_string(vendor_path(rel)).unwrap();
         let start = find_array_start(&content, name);
@@ -1581,6 +1820,8 @@ mod vendor_table_tests {
             .collect()
     }
 
+    /// Element-by-element equality check between Rust [`finetangent`] and
+    /// the vendor `finetangent` array.
     #[test]
     fn finetangent_matches_vendor() {
         let c = parse_c_array_i32("tables.c", "finetangent");
@@ -1590,6 +1831,8 @@ mod vendor_table_tests {
         }
     }
 
+    /// Element-by-element equality check between Rust [`finesine`] and the
+    /// vendor `finesine` array.
     #[test]
     fn finesine_matches_vendor() {
         let c = parse_c_array_i32("tables.c", "finesine");
@@ -1599,6 +1842,8 @@ mod vendor_table_tests {
         }
     }
 
+    /// Element-by-element equality check between Rust [`tantoangle`] and
+    /// the vendor `tantoangle` array.
     #[test]
     fn tantoangle_matches_vendor() {
         let c = parse_c_array_u32("tables.c", "tantoangle");
@@ -1608,6 +1853,10 @@ mod vendor_table_tests {
         }
     }
 
+    /// Cross-validate the random-number table in
+    /// [`crate::doom::m_random::RNDTABLE`] against the vendor
+    /// `m_random.c::rndtable` (lives here for convenience because this
+    /// module hosts the vendor-parsing helpers).
     #[test]
     fn rndtable_matches_vendor() {
         use crate::doom::m_random::RNDTABLE;
@@ -1618,6 +1867,11 @@ mod vendor_table_tests {
         }
     }
 
+    /// Sanity check on the runtime SFX link table: after
+    /// `S_InitSfxLinks` runs, the chainsaw / chaingun (`sfx_chgun`) entry
+    /// must alias the pistol (`sfx_pistol`) entry so chaingun shots reuse
+    /// the pistol sound. Lives in this file because vendor-data cross
+    /// checks are colocated here.
     #[test]
     fn sfx_chgun_links_to_pistol() {
         use crate::doom::sounds::{S_InitSfxLinks, S_sfx, Sfx};
