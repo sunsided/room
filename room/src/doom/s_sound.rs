@@ -319,11 +319,14 @@ pub extern "C" fn S_StopSound(origin: *mut MobjStub) {
 
 /// Reserve a channel for a new sound.
 ///
-/// Returns the chosen channel index, or `-1` if no slot at lower-or-equal
-/// priority is available. The function first tries to reuse a free channel
-/// or a channel already owned by the same `origin` (stopping it first), then
-/// falls back to evicting the first channel whose priority is greater than or
-/// equal to `sfxinfo->priority`.
+/// Returns the chosen channel index, or `-1` if no eligible slot exists.
+/// The function first tries to reuse a free channel or a channel already
+/// owned by the same `origin` (stopping it first), then falls back to
+/// evicting the first channel whose `priority` is greater than or equal
+/// to `sfxinfo->priority`. In Doom's convention higher numeric `priority`
+/// means less-important, so this evicts the first equally- or
+/// less-important channel; if every active channel is more important
+/// (numerically lower), the new sound is dropped and `-1` is returned.
 ///
 /// # Safety
 /// `sfxinfo` must point to a valid `SfxInfo`; `origin` may be null. `channels`
