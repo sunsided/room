@@ -397,8 +397,8 @@ pub struct side_t {
 ///
 /// `offset` is the distance along the parent linedef to `v1` in
 /// fixed-point. `angle` is a BAM (Binary Angle Measurement) facing
-/// direction. `frontsector` and `backsector` are non-null and possibly
-/// equal for one-sided segments.
+/// direction. `frontsector` is always non-null; `backsector` is null
+/// for one-sided segments (per the C comment in `r_defs.h`).
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct seg_t {
