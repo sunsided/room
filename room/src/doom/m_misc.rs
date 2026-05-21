@@ -1,3 +1,16 @@
+//! Rust port of vendor/doomgeneric/m_misc.c.
+//!
+//! Miscellaneous helper routines used throughout the engine: file I/O
+//! wrappers, string utilities (case-insensitive search, safe copy/concat,
+//! variadic join, replace), filename helpers, integer parsing, the default
+//! config directory helpers (HOME / XDG), and the Rust-side formatting
+//! helpers `c_write!` / `DEH_snprintf!` / `i_error!` that replace the C
+//! variadic helpers `M_snprintf` and `I_Error`.
+//!
+//! The C source supports both Windows and Unix paths; this port keeps only
+//! the Unix branch (`DIR_SEPARATOR = '/'`). Several routines call back into
+//! libc directly via `extern "C"` shims rather than reimplementing them.
+
 #![allow(non_upper_case_globals, non_snake_case)]
 
 use std::ffi::{c_char, c_int, c_long, c_void, CStr};
@@ -5,52 +18,98 @@ use std::ffi::{c_char, c_int, c_long, c_void, CStr};
 use crate::i_error;
 use crate::types::Boolean;
 
+/// Opaque stand-in for libc's `FILE *`. Pointers are passed through to the
+/// `extern "C"` shims below; the contents are never accessed from Rust.
 pub enum FILE {}
 
+/// Unix directory separator character (C: `DIR_SEPARATOR = '/'`).
 const DIR_SEPARATOR: c_char = b'/' as c_char;
+/// Unix directory separator string (C: `DIR_SEPARATOR_S = "/"`), with a
+/// trailing NUL so the buffer can be passed to C string APIs.
 const DIR_SEPARATOR_S: &[u8] = b"/\0";
 
 use crate::doom::z_zone::PU_STATIC;
 
+/// Mirror of libc's `SEEK_END` constant for use with [`fseek`].
 const SEEK_END: c_int = 2;
+/// Mirror of libc's `SEEK_SET` constant for use with [`fseek`].
 const SEEK_SET: c_int = 0;
 
+/// errno value reported by Linux when `fopen` fails because the path is a
+/// directory. Used by [`M_FileExists`] to treat directories as existing.
 const EISDIR: c_int = 21;
 
 extern "C" {
+    /// libc `fopen`: open `path` with `mode`, returns NULL on error.
     fn fopen(path: *const c_char, mode: *const c_char) -> *mut FILE;
+    /// libc `fread`: read up to `nmemb * size` bytes from `stream` into `ptr`.
     fn fread(ptr: *mut c_void, size: usize, nmemb: usize, stream: *mut FILE) -> usize;
+    /// libc `fwrite`: write up to `nmemb * size` bytes from `ptr` to `stream`.
     fn fwrite(ptr: *const c_void, size: usize, nmemb: usize, stream: *mut FILE) -> usize;
+    /// libc `fseek`: reposition stream offset.
     fn fseek(stream: *mut FILE, offset: c_long, whence: c_int) -> c_int;
+    /// libc `ftell`: return current stream offset.
     fn ftell(stream: *mut FILE) -> c_long;
+    /// libc `fclose`: close the stream and flush any pending output.
     fn fclose(stream: *mut FILE) -> c_int;
+    /// libc `getenv`: look up an environment variable.
     fn getenv(name: *const c_char) -> *mut c_char;
+    /// libc `malloc`: allocate `size` bytes.
     fn malloc(size: usize) -> *mut c_void;
+    /// libc `calloc`: allocate and zero `nmemb * size` bytes.
     fn calloc(nmemb: usize, size: usize) -> *mut c_void;
+    /// libc `free`: release memory previously returned by `malloc`/`calloc`.
     fn free(ptr: *mut c_void);
+    /// libc `strdup`: allocate a malloc'd copy of a null-terminated string.
     fn strdup(s: *const c_char) -> *mut c_char;
+    /// libc per-thread errno location, used by [`errno`].
     fn __errno_location() -> *mut c_int;
+    /// libc `mkdir`: create `path` with the given permission bits.
     fn mkdir(path: *const c_char, mode: u32) -> c_int;
+    /// libc `toupper`: convert an ASCII character to upper case.
     fn toupper(c: c_int) -> c_int;
+    /// libc `tolower`: convert an ASCII character to lower case.
     fn tolower(c: c_int) -> c_int;
+    /// libc `strncasecmp`: case-insensitive compare of the first `n` bytes.
     fn strncasecmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int;
+    /// libc `strlen`: length of a null-terminated string.
     fn strlen(s: *const c_char) -> usize;
+    /// libc `strcmp`: compare two null-terminated strings.
     fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int;
+    /// libc `strncmp`: compare the first `n` bytes of two strings.
     fn strncmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int;
+    /// libc `strncpy`: copy at most `n` bytes (without guaranteeing a NUL).
     fn strncpy(dst: *mut c_char, src: *const c_char, n: usize) -> *mut c_char;
+    /// libc `strrchr`: locate the last occurrence of a byte in a string.
     fn strrchr(s: *const c_char, c: c_int) -> *mut c_char;
+    /// libc `strchr`: locate the first occurrence of a byte in a string.
     fn strchr(s: *const c_char, c: c_int) -> *mut c_char;
+    /// libc `strstr`: locate the first occurrence of a substring.
     fn strstr(haystack: *const c_char, needle: *const c_char) -> *mut c_char;
+    /// libc `sscanf`: variadic formatted input parser.
     fn sscanf(s: *const c_char, format: *const c_char, ...) -> c_int;
+    /// libc `vsnprintf`: bounded formatted output with a `va_list`.
     fn vsnprintf(s: *mut c_char, n: usize, format: *const c_char, arg: ...) -> c_int;
 }
 
 use crate::doom::z_zone::Z_Malloc;
 
+/// Returns the current value of libc `errno` for the calling thread.
+///
+/// # Safety
+///
+/// Must be called from a context where libc has been initialised. The
+/// caller must not retain the returned `int` across operations that may
+/// reset `errno`.
 unsafe fn errno() -> c_int {
     *__errno_location()
 }
 
+/// Create the directory at `path` with permissions `0o755`.
+///
+/// Wrapper around libc `mkdir`; the return value is ignored, so calling on
+/// an already-existing directory is a no-op. Mirrors the Unix branch of the
+/// C `M_MakeDirectory`.
 #[no_mangle]
 pub extern "C" fn M_MakeDirectory(path: *mut c_char) {
     unsafe {
@@ -58,6 +117,11 @@ pub extern "C" fn M_MakeDirectory(path: *mut c_char) {
     }
 }
 
+/// Returns `1` if `filename` names an existing file or directory, else `0`.
+///
+/// Tries `fopen("r")`; on success the stream is immediately closed. If the
+/// open fails because the path is a directory (errno `EISDIR`), this still
+/// reports the entry as existing, matching the C original.
 #[no_mangle]
 pub extern "C" fn M_FileExists(filename: *mut c_char) -> c_int {
     unsafe {
@@ -70,6 +134,10 @@ pub extern "C" fn M_FileExists(filename: *mut c_char) -> c_int {
     }
 }
 
+/// Returns the total length in bytes of an open file `handle`.
+///
+/// Saves the current position, seeks to end to read the length, then
+/// restores the original position. The stream is left in its prior state.
 #[no_mangle]
 pub extern "C" fn M_FileLength(handle: *mut FILE) -> c_long {
     unsafe {
@@ -81,6 +149,10 @@ pub extern "C" fn M_FileLength(handle: *mut FILE) -> c_long {
     }
 }
 
+/// Write `length` bytes from `source` to the file named `name`.
+///
+/// Returns `1` on success, `0` if the file could not be opened for writing
+/// or if the short-write case is hit. The file is created/truncated (`"wb"`).
 #[no_mangle]
 pub extern "C" fn M_WriteFile(name: *mut c_char, source: *mut c_void, length: c_int) -> c_int {
     unsafe {
@@ -97,6 +169,11 @@ pub extern "C" fn M_WriteFile(name: *mut c_char, source: *mut c_void, length: c_
     }
 }
 
+/// Read the entire file `name` into a freshly allocated Z_Malloc buffer.
+///
+/// On success, `*buffer` is set to point at the allocated buffer and the
+/// file length (in bytes) is returned. On failure (file missing or short
+/// read), `I_Error` is invoked and the process exits.
 #[no_mangle]
 pub extern "C" fn M_ReadFile(name: *mut c_char, buffer: *mut *mut c_char) -> c_int {
     unsafe {
@@ -122,6 +199,11 @@ pub extern "C" fn M_ReadFile(name: *mut c_char, buffer: *mut *mut c_char) -> c_i
     }
 }
 
+/// Returns a heap-allocated path of the form `"/tmp/<s>"`.
+///
+/// Always uses `/tmp` on this port (the C original probes `TEMP` on Windows
+/// or `__DJGPP__`). The returned string is allocated by [`M_StringJoinA`]
+/// and must be freed by the caller.
 #[no_mangle]
 pub extern "C" fn M_TempFile(s: *mut c_char) -> *mut c_char {
     let tempdir = c"/tmp".as_ptr();
@@ -131,6 +213,11 @@ pub extern "C" fn M_TempFile(s: *mut c_char) -> *mut c_char {
     M_StringJoinA(strs.as_ptr())
 }
 
+/// Parse `str` as an integer into `*result`, returning `1` on success.
+///
+/// Recognised forms (matching C `M_StrToInt`): `0x` / `0X` hex, leading-zero
+/// octal, and plain decimal. Returns `0` if none of the formats match. The C
+/// original returns a `boolean`; the Rust port keeps the `c_int` ABI.
 #[no_mangle]
 pub extern "C" fn M_StrToInt(str: *const c_char, result: *mut c_int) -> c_int {
     unsafe {
@@ -150,6 +237,13 @@ pub extern "C" fn M_StrToInt(str: *const c_char, result: *mut c_int) -> c_int {
     }
 }
 
+/// Extract the upper-cased 8.3 base name of `path` into the 8-byte `dest`.
+///
+/// Scans backwards from the end of `path` to find the final directory
+/// separator, copies characters from that point until the next `.` or NUL,
+/// up to a maximum of 8 bytes, converting each to upper case. The
+/// destination is zero-padded to 8 bytes. Names longer than 8 characters
+/// are truncated with a warning printed to stderr.
 #[no_mangle]
 pub extern "C" fn M_ExtractFileBase(path: *mut c_char, dest: *mut c_char) {
     unsafe {
@@ -179,6 +273,11 @@ pub extern "C" fn M_ExtractFileBase(path: *mut c_char, dest: *mut c_char) {
     }
 }
 
+/// Convert the null-terminated string `text` to upper case in place.
+///
+/// Iterates byte-by-byte using libc `toupper`. The C original only
+/// implements the uppercase variant; the lowercase variant below is a
+/// symmetric helper added by chocolate-doom / this port.
 #[no_mangle]
 pub extern "C" fn M_ForceUppercase(text: *mut c_char) {
     unsafe {
@@ -190,6 +289,9 @@ pub extern "C" fn M_ForceUppercase(text: *mut c_char) {
     }
 }
 
+/// Convert the null-terminated string `text` to lower case in place.
+///
+/// Symmetric counterpart to [`M_ForceUppercase`].
 #[no_mangle]
 pub extern "C" fn M_ForceLowercase(text: *mut c_char) {
     unsafe {
@@ -201,6 +303,10 @@ pub extern "C" fn M_ForceLowercase(text: *mut c_char) {
     }
 }
 
+/// Case-insensitive `strstr`: find `needle` inside `haystack`.
+///
+/// Returns a pointer into `haystack` at the first match, or NULL if not
+/// found or if `needle` is longer than `haystack`. Mirrors C `M_StrCaseStr`.
 #[no_mangle]
 pub extern "C" fn M_StrCaseStr(haystack: *mut c_char, needle: *mut c_char) -> *mut c_char {
     unsafe {
@@ -219,6 +325,9 @@ pub extern "C" fn M_StrCaseStr(haystack: *mut c_char, needle: *mut c_char) -> *m
     }
 }
 
+/// Safe `strdup` that aborts via `I_Error` if allocation fails.
+///
+/// Returns a malloc'd copy of `orig` that the caller must `free`.
 #[no_mangle]
 pub extern "C" fn M_StringDuplicate(orig: *const c_char) -> *mut c_char {
     unsafe {
@@ -233,6 +342,12 @@ pub extern "C" fn M_StringDuplicate(orig: *const c_char) -> *mut c_char {
     }
 }
 
+/// Replace every occurrence of `needle` in `haystack` with `replacement`.
+///
+/// Computes the final length in a first pass, allocates a single malloc'd
+/// buffer, then performs the substitution in a second pass. The returned
+/// pointer must be freed with `free`. On allocation failure the function
+/// calls `I_Error` and returns NULL (unreachable).
 #[no_mangle]
 pub extern "C" fn M_StringReplace(
     haystack: *const c_char,
@@ -280,6 +395,10 @@ pub extern "C" fn M_StringReplace(
     }
 }
 
+/// `strlcpy`-style copy: writes at most `dest_size - 1` bytes plus a NUL.
+///
+/// Returns `TRUE` if the entire source string fit, `FALSE` if it was
+/// truncated (or if `dest_size == 0`). Mirrors OpenBSD `strlcpy` semantics.
 #[no_mangle]
 pub extern "C" fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size: usize) -> Boolean {
     unsafe {
@@ -294,6 +413,11 @@ pub extern "C" fn M_StringCopy(dest: *mut c_char, src: *const c_char, dest_size:
     }
 }
 
+/// `strlcat`-style concat: appends `src` to `dest` without overrunning
+/// `dest_size`, always leaving the destination NUL-terminated.
+///
+/// Returns `TRUE` if the entire source string fit, `FALSE` if it was
+/// truncated. Mirrors OpenBSD `strlcat` semantics.
 #[no_mangle]
 pub extern "C" fn M_StringConcat(
     dest: *mut c_char,
@@ -309,6 +433,11 @@ pub extern "C" fn M_StringConcat(
     }
 }
 
+/// Returns `TRUE` if `s` starts with `prefix`.
+///
+/// Note: uses strict `>` against the prefix length (matching the C source),
+/// so an exact-length match returns `FALSE`. See the pinned test
+/// `test_string_starts_with_exact_match_broken` for details.
 #[no_mangle]
 pub extern "C" fn M_StringStartsWith(s: *const c_char, prefix: *const c_char) -> Boolean {
     unsafe {
@@ -318,6 +447,7 @@ pub extern "C" fn M_StringStartsWith(s: *const c_char, prefix: *const c_char) ->
     }
 }
 
+/// Returns `TRUE` if `s` ends with `suffix` (exact match also returns `TRUE`).
 #[no_mangle]
 pub extern "C" fn M_StringEndsWith(s: *const c_char, suffix: *const c_char) -> Boolean {
     unsafe {
@@ -328,9 +458,18 @@ pub extern "C" fn M_StringEndsWith(s: *const c_char, suffix: *const c_char) -> B
 }
 
 extern "C" {
+    /// libc `snprintf`: variadic bounded formatted output.
     fn snprintf(s: *mut c_char, n: usize, format: *const c_char, ...) -> c_int;
 }
 
+/// Array-form replacement for the C variadic `M_StringJoin`.
+///
+/// Takes a pointer to a NULL-terminated array of C-string pointers and
+/// concatenates them into a single freshly malloc'd string. The result
+/// must be freed by the caller. Aborts via `I_Error` on allocation
+/// failure. Rust callers use this in place of the C variadic API; for the
+/// few sites where the C entry point is still needed, a separate shim
+/// wraps it.
 #[no_mangle]
 pub extern "C" fn M_StringJoinA(strs: *const *const c_char) -> *mut c_char {
     unsafe {
@@ -361,6 +500,18 @@ pub extern "C" fn M_StringJoinA(strs: *const *const c_char) -> *mut c_char {
     }
 }
 
+/// Clamp the return value of a previously-invoked `snprintf` and ensure the
+/// destination is NUL-terminated.
+///
+/// `result` is the value returned by the underlying `snprintf` call. When
+/// the buffer was truncated (`result < 0` or `result >= len`), the last
+/// byte of `buf` is set to NUL and `len - 1` is returned; otherwise the
+/// original `result` is propagated unchanged. Passing `len == 0` returns
+/// `0` without writing.
+///
+/// This is a clamping helper only - it does NOT perform variadic
+/// formatting. Callers must call `snprintf` (or the `c_write!` /
+/// `DEH_snprintf!` macros) first to fill `buf`.
 pub(crate) fn m_snprintf_clamp(buf: *mut c_char, len: usize, result: c_int) -> c_int {
     if len == 0 {
         return 0;
@@ -375,19 +526,36 @@ pub(crate) fn m_snprintf_clamp(buf: *mut c_char, len: usize, result: c_int) -> c
     }
 }
 
+/// C-linkage shim around `m_snprintf_clamp` for `extern "C"` callers.
 #[no_mangle]
 pub extern "C" fn M_snprintf_clamp(buf: *mut c_char, len: usize, result: c_int) -> c_int {
     m_snprintf_clamp(buf, len, result)
 }
 
+/// Returns `getenv("HOME")` - the user's home directory, or NULL if unset.
+///
+/// Note: not present in vanilla `m_misc.c` (that file's per-user paths are
+/// resolved inline via `getenv` calls scattered through `M_GetSaveGameDir`
+/// and friends); this port lifts the lookup into a named helper.
 #[no_mangle]
 pub extern "C" fn M_HomeDir() -> *const c_char {
     unsafe { getenv(c"HOME".as_ptr()) }
 }
 
-// Returns a heap-allocated path (via M_StringJoinA/malloc) in the normal case, or a
-// static literal when HOME is unset. Callers cannot distinguish the two, so the
-// returned pointer must NOT be freed. This matches the behaviour of the original C.
+/// Returns the default configuration directory.
+///
+/// Resolution order:
+/// 1. If `HOME` is unset, returns the static `"."`.
+/// 2. If `XDG_CONFIG_HOME` is set, returns `"<XDG_CONFIG_HOME>/doom"`.
+/// 3. Otherwise returns `"<HOME>/.config/doom"`.
+///
+/// Cases 2 and 3 return a heap-allocated path (via `M_StringJoinA` /
+/// `malloc`); case 1 returns a static literal. Callers cannot distinguish
+/// the two, so the returned pointer must NOT be freed.
+///
+/// Note: not present in vanilla `m_misc.c` (`M_SetConfigDir` in the C port
+/// computes a fallback inline). This Rust helper centralises XDG-aware
+/// resolution.
 #[no_mangle]
 pub extern "C" fn M_DefaultConfigDir() -> *const c_char {
     unsafe {
@@ -407,6 +575,12 @@ pub extern "C" fn M_DefaultConfigDir() -> *const c_char {
     }
 }
 
+/// Stub for the Windows-only `M_OEMToUTF8` (always returns NULL on this port).
+///
+/// The C original lives behind `#ifdef _WIN32` and converts OEM-encoded
+/// strings to UTF-8 via `MultiByteToWideChar` / `WideCharToMultiByte`. The
+/// non-Windows build has no such call site; this stub exists only for ABI
+/// completeness.
 #[no_mangle]
 pub extern "C" fn M_OEMToUTF8(_oem: *const c_char) -> *mut c_char {
     std::ptr::null_mut()
@@ -459,6 +633,20 @@ macro_rules! i_error {
     };
 }
 
+/// Writes a Rust `&str` into a `*mut [c_char; N]` buffer with truncation
+/// and NUL termination.
+///
+/// Intended to be invoked by the `c_write!` and `DEH_snprintf!` macros via
+/// `addr_of_mut!`, which avoids creating a `&mut` reference to a mutable
+/// static. Bytes beyond the `N - 1` boundary are dropped; the final slot is
+/// always set to `0`.
+///
+/// # Safety
+///
+/// `ptr` must be a valid, properly aligned pointer to an array of `N`
+/// `c_char`s for the duration of the call. Aliasing rules must be observed
+/// by the caller: no other `&` or `&mut` reference to the buffer may exist
+/// during the call.
 pub(crate) unsafe fn write_c_buf_ptr<const N: usize>(ptr: *mut [c_char; N], s: &str) {
     // SAFETY: ptr is valid for N c_chars; obtained via addr_of_mut! to avoid
     // creating a reference to a mutable static.
@@ -466,6 +654,10 @@ pub(crate) unsafe fn write_c_buf_ptr<const N: usize>(ptr: *mut [c_char; N], s: &
     write_c_buf(slice, s);
 }
 
+/// Copy `s` into the `c_char` slice `buf`, truncating and NUL-terminating.
+///
+/// Writes at most `buf.len() - 1` bytes from `s`, then stores `0` in the
+/// next slot. If `buf` is empty, the call is a no-op (no panic, no write).
 pub(crate) fn write_c_buf(buf: &mut [c_char], s: &str) {
     if buf.is_empty() {
         return;
@@ -477,6 +669,12 @@ pub(crate) fn write_c_buf(buf: &mut [c_char], s: &str) {
     buf[n] = 0;
 }
 
+/// Unit tests for the string / file / formatting helpers in this module.
+///
+/// The suite focuses on the routines whose semantics are easy to express in
+/// pure-Rust fixtures - the `M_String*` family, `m_snprintf_clamp`, and
+/// `write_c_buf` - plus pinned tests that document known-broken behaviour
+/// inherited from the C source.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -486,6 +684,8 @@ mod tests {
     // M_StringCopy
     // -----------------------------------------------------------------------
 
+    /// Copy fits exactly within the destination - returns `TRUE` and the
+    /// full source string is present.
     #[test]
     fn test_string_copy_fits() {
         let src = CString::new("Hello").unwrap();
@@ -496,6 +696,8 @@ mod tests {
         assert_eq!(cstr.to_str().unwrap(), "Hello");
     }
 
+    /// Copy is truncated to `dest_size - 1` bytes - returns `FALSE` and
+    /// the destination is NUL-terminated.
     #[test]
     fn test_string_copy_truncation() {
         let src = CString::new("Hello, World!").unwrap();
@@ -510,6 +712,8 @@ mod tests {
     // M_StringConcat
     // -----------------------------------------------------------------------
 
+    /// `M_StringConcat` succeeds when the combined string fits in the
+    /// destination buffer.
     #[test]
     fn test_string_concat_fits() {
         let mut buf: Vec<c_char> = CString::new("Hello, ")
@@ -526,6 +730,8 @@ mod tests {
         assert_eq!(cstr.to_str().unwrap(), "Hello, World!");
     }
 
+    /// `M_StringConcat` truncates and returns `FALSE` when the combined
+    /// length exceeds the destination buffer.
     #[test]
     fn test_string_concat_truncation() {
         let mut buf: Vec<c_char> = CString::new("Hello, ")
@@ -547,6 +753,7 @@ mod tests {
     // M_StringStartsWith
     // -----------------------------------------------------------------------
 
+    /// Basic prefix match: `"hello world"` begins with `"hello"`.
     #[test]
     fn test_string_starts_with_basic() {
         let s = CString::new("hello world").unwrap();
@@ -570,6 +777,7 @@ mod tests {
         assert_eq!(result, Boolean::FALSE);
     }
 
+    /// Negative case: `"world"` does not begin with `"hello"`.
     #[test]
     fn test_string_starts_with_no_match() {
         let s = CString::new("world").unwrap();
@@ -578,6 +786,7 @@ mod tests {
         assert_eq!(result, Boolean::FALSE);
     }
 
+    /// A prefix longer than the string itself returns `FALSE`.
     #[test]
     fn test_string_starts_with_prefix_longer_than_string() {
         let s = CString::new("hi").unwrap();
@@ -590,6 +799,7 @@ mod tests {
     // M_StringEndsWith
     // -----------------------------------------------------------------------
 
+    /// Basic suffix match: `"hello world"` ends with `"world"`.
     #[test]
     fn test_string_ends_with_basic() {
         let s = CString::new("hello world").unwrap();
@@ -598,6 +808,8 @@ mod tests {
         assert_eq!(result, Boolean::TRUE);
     }
 
+    /// Exact-length suffix match returns `TRUE` (unlike the starts-with
+    /// counterpart, this case is intentionally allowed by the C source).
     #[test]
     fn test_string_ends_with_exact_match() {
         let s = CString::new("hello").unwrap();
@@ -606,6 +818,7 @@ mod tests {
         assert_eq!(result, Boolean::TRUE);
     }
 
+    /// Negative case: `"hello"` does not end with `"world"`.
     #[test]
     fn test_string_ends_with_no_match() {
         let s = CString::new("hello").unwrap();
@@ -614,6 +827,7 @@ mod tests {
         assert_eq!(result, Boolean::FALSE);
     }
 
+    /// A suffix longer than the string itself returns `FALSE`.
     #[test]
     fn test_string_ends_with_suffix_longer_than_string() {
         let s = CString::new("hi").unwrap();
@@ -626,10 +840,17 @@ mod tests {
     // M_StringReplace
     // -----------------------------------------------------------------------
 
+    /// Test helper: release a malloc'd C string with libc `free`.
+    ///
+    /// # Safety
+    ///
+    /// `p` must be a non-null pointer returned by `malloc` (or
+    /// `M_String*` routines that wrap it) and not previously freed.
     unsafe fn free_cstring(p: *mut c_char) {
         free(p as *mut c_void);
     }
 
+    /// Single-occurrence replacement: `"world"` -> `"earth"` in `"hello world"`.
     #[test]
     fn test_string_replace_basic() {
         let haystack = CString::new("hello world").unwrap();
@@ -643,6 +864,8 @@ mod tests {
         assert_eq!(s, "hello earth");
     }
 
+    /// When the needle is absent, the haystack is returned verbatim
+    /// in a fresh allocation.
     #[test]
     fn test_string_replace_not_found() {
         let haystack = CString::new("hello").unwrap();
@@ -656,6 +879,7 @@ mod tests {
         assert_eq!(s, "hello");
     }
 
+    /// Multiple non-overlapping occurrences are all replaced left-to-right.
     #[test]
     fn test_string_replace_multiple_occurrences() {
         let haystack = CString::new("aababab").unwrap();
@@ -673,6 +897,7 @@ mod tests {
     // M_StringJoinA
     // -----------------------------------------------------------------------
 
+    /// Joining a single-element array reproduces the input string.
     #[test]
     fn test_string_join_a_single() {
         let s = CString::new("hello").unwrap();
@@ -685,6 +910,8 @@ mod tests {
         assert_eq!(out, "hello");
     }
 
+    /// Joining multiple elements concatenates them in order with no
+    /// separator inserted.
     #[test]
     fn test_string_join_a_multiple() {
         let a = CString::new("hello").unwrap();
@@ -699,6 +926,8 @@ mod tests {
         assert_eq!(out, "hello, world");
     }
 
+    /// An empty (NULL-only) list still returns a fresh allocation
+    /// containing just the trailing NUL.
     #[test]
     fn test_string_join_a_empty_list() {
         let strs: [*const c_char; 1] = [std::ptr::null()];
@@ -714,6 +943,7 @@ mod tests {
     // M_ForceUppercase / M_ForceLowercase
     // -----------------------------------------------------------------------
 
+    /// `M_ForceUppercase` upper-cases an ASCII mixed-case string in place.
     #[test]
     fn test_force_uppercase() {
         let mut buf: Vec<c_char> = b"Hello, World!\0".iter().map(|&b| b as c_char).collect();
@@ -722,6 +952,7 @@ mod tests {
         assert_eq!(s, "HELLO, WORLD!");
     }
 
+    /// `M_ForceLowercase` lower-cases an ASCII mixed-case string in place.
     #[test]
     fn test_force_lowercase() {
         let mut buf: Vec<c_char> = b"Hello, World!\0".iter().map(|&b| b as c_char).collect();
@@ -739,6 +970,7 @@ mod tests {
     // first to fill the buffer.
     // -----------------------------------------------------------------------
 
+    /// `len == 0`: the clamp returns `0` without writing anywhere.
     #[test]
     fn test_snprintf_clamp_zero_len() {
         let mut buf = [0i8; 16];
@@ -746,6 +978,7 @@ mod tests {
         assert_eq!(r, 0);
     }
 
+    /// `result < len`: the underlying `snprintf` result is propagated unchanged.
     #[test]
     fn test_snprintf_clamp_no_truncation() {
         // result < len: the value is returned unchanged.
@@ -754,6 +987,8 @@ mod tests {
         assert_eq!(r, 5);
     }
 
+    /// `result == len - 1`: no truncation occurs; the boundary case is
+    /// returned verbatim.
     #[test]
     fn test_snprintf_clamp_exact_fit() {
         // result == len - 1: no truncation, value returned unchanged.
@@ -762,6 +997,8 @@ mod tests {
         assert_eq!(r, (buf.len() - 1) as c_int);
     }
 
+    /// `result >= len`: the buffer is forced to a NUL at `buf[len - 1]`
+    /// and the clamped length `len - 1` is returned.
     #[test]
     fn test_snprintf_clamp_truncation() {
         // result >= len: buffer is null-terminated at len-1, clamped value returned.
@@ -772,6 +1009,8 @@ mod tests {
         assert_eq!(buf[len - 1], 0);
     }
 
+    /// Encoding error path: a negative `result` triggers the same NUL
+    /// terminator + clamp as the over-length case.
     #[test]
     fn test_snprintf_clamp_error_result() {
         // result < 0 (encoding error): buffer is null-terminated at len-1, clamped.
@@ -831,6 +1070,7 @@ mod tests {
     // write_c_buf
     // -----------------------------------------------------------------------
 
+    /// `write_c_buf` copies the string verbatim when it fits.
     #[test]
     fn test_write_c_buf_fits() {
         let mut buf: [c_char; 16] = [0; 16];
@@ -839,6 +1079,8 @@ mod tests {
         assert_eq!(s, "hello");
     }
 
+    /// Boundary case: `s.len() == buf.len() - 1` writes the whole source
+    /// and stores the NUL in the final slot.
     #[test]
     fn test_write_c_buf_exact_fit() {
         // s.len() == buf.len() - 1: no truncation, null at last position
@@ -849,6 +1091,8 @@ mod tests {
         assert_eq!(buf[5], 0);
     }
 
+    /// Truncation case: extra source bytes are dropped, NUL terminator
+    /// stored at `buf[len - 1]`.
     #[test]
     fn test_write_c_buf_truncates() {
         // s.len() > buf.len() - 1: truncated, null at buf[len-1]
@@ -859,6 +1103,7 @@ mod tests {
         assert_eq!(buf[3], 0);
     }
 
+    /// Empty source writes a single NUL terminator at `buf[0]`.
     #[test]
     fn test_write_c_buf_empty_str() {
         let mut buf: [c_char; 8] = [0x42; 8];
@@ -866,6 +1111,8 @@ mod tests {
         assert_eq!(buf[0], 0);
     }
 
+    /// Zero-length destination: the helper exits without panicking and
+    /// without writing.
     #[test]
     fn test_write_c_buf_empty_buf() {
         // zero-length buffer: no panic, no write
