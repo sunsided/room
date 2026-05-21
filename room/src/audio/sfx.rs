@@ -1,9 +1,36 @@
+//! Sound-effect (SFX) decoding and mixing helpers.
+//!
+//! Implements the per-channel audio state used by Doom's eight logical SFX
+//! channels and the helpers that decode raw DMX `DSxxxxx` lumps into
+//! float-PCM samples consumable by `rodio`.  The channel and pan-state types
+//! here are owned by [`crate::audio::AudioState`] (see the parent module),
+//! which drives the high-level start/stop/update API.
+//!
+//! ## Format quick-reference (Doom DMX SFX lump)
+//!
+//! | Offset | Bytes | Meaning                          |
+//! |--------|-------|----------------------------------|
+//! | 0      | 2     | Format ID (always `3`)           |
+//! | 2      | 2     | Sample rate, little-endian Hz    |
+//! | 4      | 4     | Sample count, little-endian      |
+//! | 8      | N     | Unsigned 8-bit PCM (centre = 128)|
+//!
+//! The decoder converts the 8-bit samples to `f32` in `[-1, 1)` and the
+//! [`PannedSource`] adapter turns a mono `rodio::Source` into a stereo stream
+//! with per-channel gains that may be updated mid-playback via [`PanState`].
+
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use rodio::{Player, Source};
 
+/// Decode a raw Doom DMX SFX lump into a sample rate and float PCM buffer.
+///
+/// Returns `None` for any malformed input: too-short headers, zero sample
+/// count, zero sample rate, or a buffer truncated before the sample data is
+/// complete.  Otherwise yields the lump's reported sample rate (Hz) and the
+/// converted `f32` samples in `[-1, 1)` (8-bit unsigned PCM, centre 128).
 pub(crate) fn decode_doom_sfx(data: &[u8]) -> Option<(u32, Vec<f32>)> {
     if data.len() < 8 {
         return None;
@@ -20,18 +47,34 @@ pub(crate) fn decode_doom_sfx(data: &[u8]) -> Option<(u32, Vec<f32>)> {
     Some((sample_rate, samples))
 }
 
+/// Convert Doom's `(volume, separation)` pair into linear left/right gains.
+///
+/// `vol` is clamped to `0..=127` (Doom's volume range) and `sep` to `0..=254`
+/// (Doom's stereo separation: 0 = hard left, 127 = centre, 254 = hard right).
+/// The result is a pair `(left, right)` where each gain is in `[0.0, 1.0]`.
 pub(crate) fn gains_from(vol: i32, sep: i32) -> (f32, f32) {
     let v = vol.clamp(0, 127) as f32;
     let s = sep.clamp(0, 254) as f32;
     (v * (254.0 - s) / (127.0 * 254.0), v * s / (127.0 * 254.0))
 }
 
+/// Atomic left/right gain pair shared between the game thread (which writes
+/// via [`PanState::update`]) and the audio thread (which reads inside a
+/// [`PannedSource`]).
+///
+/// Bits are stored as `AtomicU32` and reinterpreted as `f32` via
+/// `f32::from_bits`, which avoids any locking in the audio fast path.
 pub(crate) struct PanState {
+    /// Left-channel gain, encoded as the bit pattern of an `f32`.
     pub(crate) l_gain: AtomicU32,
+    /// Right-channel gain, encoded as the bit pattern of an `f32`.
     pub(crate) r_gain: AtomicU32,
 }
 
+/// Construction and live-update helpers for [`PanState`].
 impl PanState {
+    /// Build a [`PanState`] initialised from the given Doom volume and
+    /// separation values.  Both gains are derived via [`gains_from`].
     pub(crate) fn new(vol: i32, sep: i32) -> Self {
         let (l, r) = gains_from(vol, sep);
         Self {
@@ -40,6 +83,11 @@ impl PanState {
         }
     }
 
+    /// Atomically update both gains from a fresh `(vol, sep)` pair.
+    ///
+    /// Uses `Ordering::Relaxed` for both stores: tearing between the left and
+    /// right gains is acceptable because it only causes a single sample of
+    /// stale panning during the rare update boundary.
     pub(crate) fn update(&self, vol: i32, sep: i32) {
         let (l, r) = gains_from(vol, sep);
         self.l_gain.store(l.to_bits(), Ordering::Relaxed);
@@ -47,13 +95,27 @@ impl PanState {
     }
 }
 
+/// Stereo adapter that wraps a mono `rodio::Source` and emits interleaved
+/// left/right samples, each scaled by the gains held in [`PanState`].
+///
+/// `S` is the underlying mono source; `buffered` holds the input sample
+/// between the left output and the right output so each input frame produces
+/// exactly two output frames.
 pub(crate) struct PannedSource<S> {
+    /// Mono input source.  Read once per emitted stereo frame.
     inner: S,
+    /// Shared gain state, read every output sample.
     pan: Arc<PanState>,
+    /// `None` after a left sample is emitted; `Some(s)` after we've stashed
+    /// the input sample so the next call can emit the right channel.
     buffered: Option<f32>,
 }
 
+/// Construction helper for [`PannedSource`].
 impl<S: Source> PannedSource<S> {
+    /// Wrap `inner` and pair it with a shared [`PanState`] for live gain
+    /// updates.  The wrapped source must be mono; multi-channel input is
+    /// unsupported (only one input sample is read per emitted stereo frame).
     pub(crate) fn new(inner: S, pan: Arc<PanState>) -> Self {
         Self {
             inner,
@@ -63,9 +125,13 @@ impl<S: Source> PannedSource<S> {
     }
 }
 
+/// Iterator impl producing alternating left/right samples.
 impl<S: Source> Iterator for PannedSource<S> {
     type Item = f32;
 
+    /// Pull one stereo sample.  Even calls fetch a fresh mono sample from
+    /// `inner` and emit it scaled by the left gain (while caching the raw
+    /// sample); odd calls emit the cached sample scaled by the right gain.
     fn next(&mut self) -> Option<f32> {
         match self.buffered.take() {
             None => {
@@ -79,27 +145,47 @@ impl<S: Source> Iterator for PannedSource<S> {
     }
 }
 
+/// `rodio::Source` impl that advertises the wrapped source as stereo.
 impl<S: Source> Source for PannedSource<S> {
+    /// Length of the current contiguous span in samples; doubled because each
+    /// mono input sample yields two output samples.
     fn current_span_len(&self) -> Option<usize> {
         self.inner.current_span_len().map(|n| n * 2)
     }
+    /// Always 2 (stereo).
     fn channels(&self) -> rodio::ChannelCount {
         std::num::NonZero::new(2).unwrap()
     }
+    /// Pass through the underlying mono source's sample rate.
     fn sample_rate(&self) -> rodio::SampleRate {
         self.inner.sample_rate()
     }
+    /// Pass through the underlying source's total duration (if any).
     fn total_duration(&self) -> Option<Duration> {
         self.inner.total_duration()
     }
 }
 
+/// State for one of Doom's eight logical SFX channels.
+///
+/// Held in an array by [`crate::audio::AudioState`].  The optional `player` is
+/// the live `rodio::Player` currently playing on this channel (dropping it
+/// stops playback immediately); the shared `pan` outlives individual players
+/// so volume/separation updates between sounds remain coherent.
 pub(crate) struct ChannelState {
+    /// Active rodio player for this channel, or `None` when idle.  Dropping
+    /// the player halts playback.
     pub(crate) player: Option<Player>,
+    /// Shared pan state cloned into every [`PannedSource`] on this channel
+    /// so [`crate::audio::AudioState::update_sound_params`] can adjust
+    /// gains without restarting playback.
     pub(crate) pan: Arc<PanState>,
 }
 
+/// Default-construction helper for [`ChannelState`].
 impl ChannelState {
+    /// Build an idle channel: no active player and a centred-volume pan state
+    /// (`vol = 127`, `sep = 127`).
     pub(crate) fn new() -> Self {
         Self {
             player: None,

@@ -37,6 +37,9 @@
 //! GPU resources through [`thread_local!`] statics, which is safe because
 //! everything runs on the main thread.
 
+/// Heap-profiling global allocator, enabled only when the `dhat-heap`
+/// Cargo feature is active.  The matching [`dhat::Profiler::new_heap`] handle
+/// in [`main`] enables collection for the lifetime of the binary.
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
@@ -84,11 +87,20 @@ struct App {
     doom_initialized: bool,
 }
 
-// SAFETY: The raw pointers in `argv` point into the `CString` data owned by
-// `args`.  `App` is only ever used on the main thread (the winit event loop
-// does not send it across threads), so the non-`Send` raw pointers are fine.
+/// Manual [`Send`] impl: the raw pointers in `argv` reference `CString` data
+/// owned by `args` in the same struct, so moving `App` between threads keeps
+/// the pointers valid.  In practice `App` is only used on the main thread.
+///
+/// # Safety
+///
+/// The raw pointers in `argv` point into the `CString` data owned by `args`,
+/// which lives alongside them and is never freed for the duration of the
+/// programme.  Concurrent mutation is impossible because `App` is only ever
+/// used on the main thread (the winit event loop does not send it across
+/// threads), so the non-`Send` raw pointers are fine.
 unsafe impl Send for App {}
 
+/// Constructor and helpers for [`App`].
 impl App {
     /// Build an `App` from the OS command-line arguments.
     ///
@@ -111,6 +123,8 @@ impl App {
     }
 }
 
+/// Winit event-loop integration: window/GPU bring-up, input forwarding, and
+/// the per-iteration game tick.
 impl ApplicationHandler for App {
     /// Called when the application becomes active (e.g. on launch or resume).
     ///
@@ -238,6 +252,12 @@ impl ApplicationHandler for App {
 // Entry point
 // ---------------------------------------------------------------------------
 
+/// Binary entry point.
+///
+/// Initialises logging and (optionally) the heap profiler, builds the winit
+/// event loop, configures continuous polling so the Doom tick can run as
+/// fast as possible, constructs the [`App`], and hands control to winit.  On
+/// event-loop failure the process exits with status `1`.
 fn main() {
     #[cfg(feature = "dhat-heap")]
     let _profiler = dhat::Profiler::new_heap();

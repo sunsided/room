@@ -17,6 +17,7 @@ use core::ops::Not;
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct Boolean(c_uint);
 
+/// Constants, predicates, and canonicalisation helpers for [`Boolean`].
 impl Boolean {
     /// The canonical false value (`0`).
     pub const FALSE: Self = Self(0);
@@ -90,7 +91,10 @@ impl Boolean {
     }
 }
 
+/// Lifts a native Rust `bool` to a [`Boolean`], using the canonical
+/// `0`/`1` representation.
 impl From<bool> for Boolean {
+    /// `true` becomes [`Boolean::TRUE`]; `false` becomes [`Boolean::FALSE`].
     #[inline]
     fn from(value: bool) -> Self {
         if value {
@@ -101,6 +105,8 @@ impl From<bool> for Boolean {
     }
 }
 
+/// Reduces a [`Boolean`] to a native Rust `bool` using domain-level truth
+/// (the `UNDEF` sentinel is treated as `false`).
 impl From<Boolean> for bool {
     /// Converts using domain-level truth: `UNDEF` and `FALSE` both map to
     /// `false`; any other non-zero value maps to `true`.
@@ -110,7 +116,9 @@ impl From<Boolean> for bool {
     }
 }
 
+/// `!` operator with C semantics: any truthy value becomes [`Boolean::FALSE`].
 impl Not for Boolean {
+    /// `!x` produces another `Boolean`.
     type Output = Boolean;
 
     /// Follows C's `!x` semantics: any truthy value becomes `FALSE`,
@@ -125,7 +133,11 @@ impl Not for Boolean {
     }
 }
 
+/// Debug formatting that prints `Boolean::FALSE`, `Boolean::TRUE`,
+/// `Boolean::UNDEF`, or `Boolean(<raw>)` for unusual values.
 impl fmt::Debug for Boolean {
+    /// Render the boolean using the canonical-constant name when possible,
+    /// falling back to `Boolean(value)` for non-canonical bit patterns.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Self::FALSE => f.write_str("Boolean::FALSE"),
