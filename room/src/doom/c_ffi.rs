@@ -19,7 +19,15 @@ pub use super::tables::{ANG180, ANG270, ANG45, ANG90, ANGLETOFINESHIFT, FINEMASK
 // Opaque types — we only need pointers to these for many FFI signatures.
 // ---------------------------------------------------------------------------
 
+/// Opaque animation-state record (`state_t` in `info.h`).
+///
+/// Only pointers to this type appear in cross-module FFI signatures; the
+/// fields are not accessed from Rust here.
 pub enum state_t {}
+/// Opaque map-object class descriptor (`mobjinfo_t` in `info.h`).
+///
+/// Only pointers to this type appear in cross-module FFI signatures; the
+/// fields are not accessed from Rust here.
 pub enum mobjinfo_t {}
 
 // ---------------------------------------------------------------------------
@@ -29,6 +37,9 @@ pub enum mobjinfo_t {}
 // pointer casts between the two are safe.
 // ---------------------------------------------------------------------------
 
+/// Runtime vertex record (`vertex_t` in `r_defs.h`).
+///
+/// Fields `x` and `y` are fixed-point map coordinates.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct vertex_t {
@@ -36,6 +47,11 @@ pub struct vertex_t {
     pub y: c_int,
 }
 
+/// Parametric dividing line (`divline_t` in `p_local.h`).
+///
+/// Used by `P_PointOnDivlineSide` and the intercept-traversal helpers.
+/// `(x, y)` is the start point; `(dx, dy)` is the direction vector in
+/// fixed-point map units.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct divline_t {
@@ -45,6 +61,11 @@ pub struct divline_t {
     pub dy: c_int,
 }
 
+/// Runtime BSP subsector (`subsector_t` in `r_defs.h`).
+///
+/// `sector` points to the owning `sector_t`; `firstline` indexes into the
+/// segs array and `numlines` is the count of segs forming the convex
+/// polygon for this subsector. Trailing padding aligns to 8 bytes.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct subsector_t {
@@ -54,6 +75,12 @@ pub struct subsector_t {
     _pad: [u8; 4],
 }
 
+/// On-disk thing record (`mapthing_t` in `doomdata.h`).
+///
+/// 10-byte packed record from the WAD THINGS lump describing a spawn point.
+/// `x` and `y` are in map units (not fixed-point), `angle` is degrees,
+/// `type` is the Doom editor number, and `options` is a bit mask of skill
+/// and multiplayer flags.
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 pub struct mapthing_t {
@@ -64,6 +91,12 @@ pub struct mapthing_t {
     pub options: i16,
 }
 
+/// Runtime sector record (`sector_t` in `r_defs.h`).
+///
+/// Layout mirrors the C definition exactly so pointer casts between the
+/// Rust and C halves of the engine remain sound. `soundorg` is opaque
+/// `degenmobj_t` storage (40 bytes); explicit `_pad0` reflects the C
+/// compiler's natural padding after the four packed `c_short` fields.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct sector_t {
@@ -86,6 +119,13 @@ pub struct sector_t {
     pub lines: *mut *mut c_void,
 }
 
+/// Runtime line definition (`line_t` in `r_defs.h`).
+///
+/// A line is bounded by two vertices, has a direction vector `(dx, dy)`,
+/// a `flags` bit mask of [`LinedefFlag`] entries, an optional `special`
+/// trigger, sector tags, and `sidenum[2]` indices (-1 for one-sided lines).
+/// `frontsector` and `backsector` are opaque `sector_t*` pointers; cast
+/// them to [`sector_t`] when access is required.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct line_t {
@@ -105,6 +145,12 @@ pub struct line_t {
     pub specialdata: *mut c_void,
 }
 
+/// Intercept record produced by `P_PathTraverse` (`intercept_t` in
+/// `p_local.h`).
+///
+/// `frac` is the fractional position along the trace (fixed-point in
+/// `[0, FRACUNIT]`). `isaline` selects the active arm of [`intercept_t_d`]:
+/// non-zero means `d.line`, zero means `d.thing`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct intercept_t {
@@ -113,6 +159,11 @@ pub struct intercept_t {
     pub d: intercept_t_d,
 }
 
+/// Untagged union holding the intercepted entity (`intercept_t.d` in
+/// `p_local.h`).
+///
+/// Active arm is selected by [`intercept_t::isaline`]. Reading the inactive
+/// arm is undefined behaviour; callers must consult `isaline` first.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub union intercept_t_d {
@@ -120,6 +171,13 @@ pub union intercept_t_d {
     pub line: *mut line_t,
 }
 
+/// Runtime map-object record (`mobj_t` in `p_mobj.h`).
+///
+/// Layout matches the C definition exactly, including the 24-byte
+/// `thinker_t` prefix (`thinker_prev`, `thinker_next`, `thinker_fn`) and
+/// the explicit `_padN` fillers required by the C compiler's alignment
+/// rules on 64-bit platforms. See the project memory note on `MobjStub` for
+/// the consequences of getting this layout wrong.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct mobj_t {
@@ -176,10 +234,20 @@ pub struct mobj_t {
 // ---------------------------------------------------------------------------
 
 extern "C" {
+    /// Initialise the view-window buffer for the given dimensions
+    /// (`R_InitBuffer` in `r_draw.c`).
     pub fn R_InitBuffer(width: c_int, height: c_int);
+    /// Build per-player palette-translation tables
+    /// (`R_InitTranslationTables` in `r_draw.c`).
     pub fn R_InitTranslationTables();
+    /// Fill the area outside the 3D view window with the back screen
+    /// (`R_FillBackScreen` in `r_draw.c`).
     pub fn R_FillBackScreen();
+    /// Erase a horizontal run of pixels from the back-screen buffer
+    /// (`R_VideoErase` in `r_draw.c`).
     pub fn R_VideoErase(ofs: c_uint, count: c_int);
+    /// Redraw the view-window border after a console or menu close
+    /// (`R_DrawViewBorder` in `r_draw.c`).
     pub fn R_DrawViewBorder();
 }
 
@@ -187,17 +255,33 @@ extern "C" {
 // Constants from C headers
 // ---------------------------------------------------------------------------
 
+/// Width/height of one blockmap cell in map units (`MAPBLOCKUNITS` in
+/// `p_local.h`).
 pub const MAPBLOCKUNITS: c_int = 128;
+/// Width/height of one blockmap cell in fixed-point units (`MAPBLOCKSIZE`
+/// in `p_local.h`).
 pub const MAPBLOCKSIZE: c_int = MAPBLOCKUNITS * FRACUNIT;
+/// Right-shift count converting a fixed-point coordinate to a blockmap
+/// cell index (`MAPBLOCKSHIFT` in `p_local.h`).
 pub const MAPBLOCKSHIFT: c_int = FRACBITS as c_int + 7;
+/// Mask isolating the in-cell offset of a fixed-point coordinate
+/// (`MAPBMASK` in `p_local.h`).
 pub const MAPBMASK: c_int = MAPBLOCKSIZE - 1;
+/// Shift count converting in-cell offsets back to fixed-point fractions
+/// (`MAPBTOFRAC` in `p_local.h`).
 pub const MAPBTOFRAC: c_int = MAPBLOCKSHIFT - FRACBITS as c_int;
 
+/// Capacity of the per-tic event queue (`ITEMQUESIZE` analogue used by the
+/// engine's input handling).
 pub const ITEMQUESIZE: usize = 128;
 
+/// Slope type for a horizontal line segment (`ST_HORIZONTAL` in `r_defs.h`).
 pub const ST_HORIZONTAL: c_int = 0;
+/// Slope type for a vertical line segment (`ST_VERTICAL` in `r_defs.h`).
 pub const ST_VERTICAL: c_int = 1;
+/// Slope type for a line with positive gradient (`ST_POSITIVE` in `r_defs.h`).
 pub const ST_POSITIVE: c_int = 2;
+/// Slope type for a line with negative gradient (`ST_NEGATIVE` in `r_defs.h`).
 pub const ST_NEGATIVE: c_int = 3;
 
 // ---------------------------------------------------------------------------
@@ -210,6 +294,7 @@ pub const ST_NEGATIVE: c_int = 3;
 /// map's header lump to locate each sub-lump.
 #[repr(C)]
 pub struct MapLump;
+/// `ML_*` lump-offset constants used to index a map's group of WAD lumps.
 impl MapLump {
     #[doc(alias = "ML_LABEL")]
     pub const LABEL: c_int = 0; // ExMx / MAPxx separator
@@ -244,6 +329,7 @@ const _: () = assert!(
 /// a bitmask; each constant is a single-bit mask.
 #[repr(C)]
 pub struct LinedefFlag;
+/// `ML_*` bit-mask constants stored in `line_t.flags`.
 impl LinedefFlag {
     #[doc(alias = "ML_BLOCKING")]
     pub const BLOCKING: u16 = 1; // Solid obstacle
@@ -290,7 +376,10 @@ pub const FUZZOFF: c_int = SCREENWIDTH;
 // Runtime renderer types (r_defs.h) — used by unported r_segs.c / r_things.c
 // ---------------------------------------------------------------------------
 
-/// SideDef: visual appearance of a wall segment.
+/// SideDef: visual appearance of a wall segment (`side_t` in `r_defs.h`).
+///
+/// Two-byte `_pad` matches the C compiler's natural alignment after the
+/// three packed `c_short` texture indices and before the pointer field.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct side_t {
@@ -303,7 +392,13 @@ pub struct side_t {
     pub sector: *mut sector_t,
 }
 
-/// LineSeg: a BSP-split segment of a line definition.
+/// LineSeg: a BSP-split segment of a line definition (`seg_t` in
+/// `r_defs.h`).
+///
+/// `offset` is the distance along the parent linedef to `v1` in
+/// fixed-point. `angle` is a BAM (Binary Angle Measurement) facing
+/// direction. `frontsector` and `backsector` are non-null and possibly
+/// equal for one-sided segments.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct seg_t {
@@ -317,7 +412,12 @@ pub struct seg_t {
     pub backsector: *mut sector_t,
 }
 
-/// BSP node: partitions space into two sub-trees.
+/// BSP node: partitions space into two sub-trees (`node_t` in `r_defs.h`).
+///
+/// `(x, y)` is a point on the partition line; `(dx, dy)` is the direction
+/// vector. `bbox[side]` is the bounding box of each child subtree;
+/// `children[side]` is a node or subsector index, with the high bit set
+/// to indicate a subsector leaf.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct node_t {
@@ -329,7 +429,12 @@ pub struct node_t {
     pub children: [c_ushort; 2],
 }
 
-/// Draw segment: one visible wall segment produced by the BSP traversal.
+/// Draw segment: one visible wall segment produced by the BSP traversal
+/// (`drawseg_t` in `r_defs.h`).
+///
+/// Built by `R_StoreWallRange`; consumed by sprite clipping and the wall
+/// rasteriser. `silhouette` is a bit mask indicating whether the segment
+/// occludes from below (`SIL_BOTTOM`), above (`SIL_TOP`), or both.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct drawseg_t {
@@ -347,7 +452,12 @@ pub struct drawseg_t {
     pub maskedtexturecol: *mut c_short,
 }
 
-/// Visible sprite: a thing that is (partly) visible in the current frame.
+/// Visible sprite: a thing that is (partly) visible in the current frame
+/// (`vissprite_t` in `r_defs.h`).
+///
+/// Built by `R_ProjectSprite`; sorted by `scale` (depth) before
+/// rasterisation. `colormap` selects light level / palette translation
+/// per-column.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct vissprite_t {

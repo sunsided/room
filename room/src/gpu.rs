@@ -122,6 +122,7 @@ pub struct GpuState {
     render_pipeline: wgpu::RenderPipeline,
 }
 
+/// Constructors and frame-time operations for [`GpuState`].
 impl GpuState {
     /// Create a new [`GpuState`] for the given window.
     ///
