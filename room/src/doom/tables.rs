@@ -127,10 +127,11 @@ pub const ANG270: u32 = 0xC000_0000;
 /// poles balloon into the hundreds of millions (the very first entry is
 /// `-170_910_304`), reflecting the divergence of `tan` near `+-pi/2`.
 ///
-/// Renderer code (`r_main.c`, `r_segs.c`) typically indexes this with
-/// `(viewangle + ANG90) >> ANGLETOFINESHIFT`, mapping a BAM view angle to
-/// the upper half of the fine-angle space. Callers must keep the index in
-/// `0..4096` and must avoid the singular endpoints when divisor semantics
+/// Renderer code indexes this directly with a fine-angle, e.g.
+/// `(rw_centerangle + xtoviewangle[x]) >> ANGLETOFINESHIFT` in
+/// `r_segs.c`. The table only covers the first half of the fine-angle
+/// space (`0..4096`); callers are expected to keep the resulting index
+/// in range and to avoid the singular endpoints when divisor semantics
 /// matter.
 ///
 /// `#[no_mangle]` because the C portions of the engine and the
