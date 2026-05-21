@@ -9,6 +9,8 @@
 
 use winit::keyboard::KeyCode;
 
+/// Re-export every `KEY_*` constant from [`room::doom::doomkeys`] so the
+/// `to_doom_key` mapping below can refer to them unqualified.
 pub use room::doom::doomkeys::*;
 
 /// Convert a winit [`KeyCode`] into the corresponding Doom key byte.

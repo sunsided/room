@@ -1,3 +1,26 @@
+//! Diagnostic binary that prints the size and field offsets of the most
+//! ABI-sensitive map-data structs.
+//!
+//! The Doom map format and the C engine both rely on `#[repr(C)]` layouts
+//! matching exactly between the runtime types and the compiled-in tables (and
+//! across the FFI boundary with any residual C code).  Running this binary
+//! gives a quick visual diff against the expected layout when chasing
+//! save-game corruption, render glitches, or BSP-traversal bugs introduced by
+//! struct edits.
+//!
+//! Build and run with:
+//!
+//! ```sh
+//! cargo run --release --bin struct_sizes
+//! ```
+//!
+//! No options, no output parsing: it just prints to stdout.
+
+/// Program entry point: dump struct sizes and field offsets to stdout.
+///
+/// Each block of `println!` calls follows the same pattern: one heading line,
+/// then one line per field, formatted to line up visually in a fixed-width
+/// terminal.  Add new types here as they become layout-sensitive.
 fn main() {
     use room::doom::c_ffi::*;
     use std::mem::{offset_of, size_of};

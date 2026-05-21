@@ -1,8 +1,19 @@
-//! Rust re-implementations of vendored doomgeneric modules.
+//! Module aggregator for all `doom/*.rs` submodules.
 //!
-//! Each submodule replaced one `.c` file from `vendor/doomgeneric/`.
-//! Functions are exported with `#[no_mangle] extern "C"` so the
-//! remaining C code resolves them at final link time.
+//! This file mirrors the file layout of `vendor/doomgeneric/` one-for-one:
+//! each `pub mod` below corresponds to a single `.c` file in the original
+//! engine source.  Submodules export their public API with
+//! `#[no_mangle] extern "C"` so the residual C code (or other Rust ports that
+//! still go through the C ABI for parity testing) resolves them at final link
+//! time.
+//!
+//! Adding a new ported file means dropping a `pub mod foo;` here in
+//! alphabetical order within its subsystem block.  The grouping (core, render,
+//! physics, HUD, system, utilities) matches `DOCUMENTING.md` and the spec at
+//! `docs/superpowers/specs/2026-05-17-doc-commenting-design.md`.
+//!
+//! Each submodule carries its own `//!` module header documenting the C file
+//! it ports and what it does; see the individual files for details.
 
 pub mod am_map;
 pub mod c_ffi;
