@@ -625,9 +625,11 @@ unsafe fn get_default_for_name(name: *const c_char) -> *mut Default {
 /// Parse an integer parameter as written in a `.cfg` file.
 ///
 /// Recognises `0x` / `0X` hexadecimal prefixes (case-insensitive) and
-/// decimal otherwise. Returns `0` on any parse error. Mirrors the parsing
-/// logic of C `ParseIntParameter` for the `DEFAULT_INT*` / `DEFAULT_KEY`
-/// cases.
+/// decimal otherwise. Returns `0` on any parse error. Used for the
+/// `DEFAULT_INT*` / `DEFAULT_KEY` cases. Diverges from C
+/// `ParseIntParameter` in two ways flagged inline below: this port
+/// accepts the upper-case `0X` prefix and drops C's leading-zero octal
+/// fallback.
 fn parse_int_parameter(strparm: &CStr) -> c_int {
     let bytes = strparm.to_bytes();
     // FIXME: C `ParseIntParameter` only checks the lowercase `0x` prefix;
