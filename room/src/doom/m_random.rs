@@ -8,6 +8,9 @@
 
 use std::ffi::c_int;
 
+/// 256-entry lookup table backing both `M_Random` and `P_Random`.
+/// Byte-for-byte identical to `rndtable` in `m_random.c`; the values are
+/// the original Doom random sequence and must not be changed.
 pub(crate) static RNDTABLE: [u8; 256] = [
     0, 8, 109, 220, 222, 241, 149, 107, 75, 248, 254, 140, 16, 66, 74, 21, 211, 47, 80, 242, 154,
     27, 205, 128, 161, 89, 77, 36, 95, 110, 85, 48, 212, 140, 211, 249, 22, 79, 200, 50, 28, 188,
@@ -36,6 +39,10 @@ pub static mut rndindex: c_int = 0;
 #[no_mangle]
 pub static mut prndindex: c_int = 0;
 
+/// `int P_Random(void)` — advance and read the play-simulation random
+/// cursor. Returns the next byte from `RNDTABLE` masked to `0..=255`.
+/// This is the deterministic generator used by game logic; demos and
+/// net-play depend on its exact sequence.
 // Which one is deterministic?
 #[no_mangle]
 pub extern "C" fn P_Random() -> c_int {
@@ -45,6 +52,10 @@ pub extern "C" fn P_Random() -> c_int {
     }
 }
 
+/// `int M_Random(void)` — advance and read the game-thinker random
+/// cursor. Returns the next byte from `RNDTABLE` masked to `0..=255`.
+/// Used for non-simulation effects (e.g. menu animation) so its use
+/// does not perturb demo determinism.
 #[no_mangle]
 pub extern "C" fn M_Random() -> c_int {
     unsafe {
@@ -53,6 +64,9 @@ pub extern "C" fn M_Random() -> c_int {
     }
 }
 
+/// `void M_ClearRandom(void)` — reset both `rndindex` and `prndindex` to
+/// 0. Called at the start of a new game/demo so the random sequence
+/// reproduces.
 #[no_mangle]
 pub extern "C" fn M_ClearRandom() {
     unsafe {
@@ -66,9 +80,14 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
+    /// Process-wide guard that serialises tests touching the global
+    /// `rndindex`/`prndindex` so parallel `cargo test` invocations do not
+    /// interleave.
     // Random globals are process-wide; serialise tests that mutate them.
     static LOCK: Mutex<()> = Mutex::new(());
 
+    /// Spot-check that `RNDTABLE` still contains the canonical Doom
+    /// values at a few known positions.
     #[test]
     fn table_sentinels() {
         assert_eq!(RNDTABLE[0], 0);
@@ -77,6 +96,8 @@ mod tests {
         assert_eq!(RNDTABLE.len(), 256);
     }
 
+    /// Three consecutive `M_Random` calls should return entries 1, 2, 3
+    /// of `RNDTABLE` in order (the pre-increment makes index 0 unused).
     #[test]
     fn m_random_walks_the_table() {
         let _g = LOCK.lock().unwrap();
@@ -86,6 +107,8 @@ mod tests {
         assert_eq!(M_Random(), RNDTABLE[3] as c_int);
     }
 
+    /// `M_Random` and `P_Random` each advance their own cursor; the
+    /// first call to either after `M_ClearRandom` returns `RNDTABLE[1]`.
     #[test]
     fn p_and_m_independent() {
         let _g = LOCK.lock().unwrap();
@@ -99,6 +122,8 @@ mod tests {
         }
     }
 
+    /// `M_ClearRandom` must zero `rndindex` even if both cursors have
+    /// been advanced by prior calls.
     #[test]
     fn clear_resets_both() {
         let _g = LOCK.lock().unwrap();
@@ -111,6 +136,8 @@ mod tests {
         }
     }
 
+    /// Two `P_Random` calls should leave `prndindex` at 2 and return
+    /// `RNDTABLE[1]` then `RNDTABLE[2]`.
     #[test]
     fn p_random_increments_prndindex() {
         let _g = LOCK.lock().unwrap();
@@ -122,6 +149,8 @@ mod tests {
         }
     }
 
+    /// `M_ClearRandom` must zero `prndindex` (in addition to `rndindex`,
+    /// covered by `clear_resets_both`).
     #[test]
     fn clear_also_resets_prndindex() {
         let _g = LOCK.lock().unwrap();

@@ -13,10 +13,20 @@ pub type fixed_t = c_int;
 /// `angle_t` — BAM angle, matches `typedef unsigned int angle_t;` in tables.h.
 pub type angle_t = u32;
 
+/// Number of fractional bits in `fixed_t`. Matches `FRACBITS` in
+/// `m_fixed.h` and is the right-shift used by `FixedMul`.
 pub const FRACBITS: u32 = 16;
+
+/// `1.0` expressed in 16.16 fixed-point (`1 << FRACBITS`). Matches
+/// `FRACUNIT` in `m_fixed.h`.
 pub const FRACUNIT: fixed_t = 1 << FRACBITS;
 
-/// Exported to C as `FixedMul`. Consumed by ~20 vendored .c files.
+/// `fixed_t FixedMul(fixed_t a, fixed_t b)` — 16.16 fixed-point multiply.
+///
+/// Widens to `i64` so the full 64-bit product is computed, then shifts
+/// right by `FRACBITS` to land back in 16.16. Truncates the result; no
+/// overflow checking, matching the C original which is exported to and
+/// consumed by ~20 vendored `.c` files.
 #[no_mangle]
 pub extern "C" fn FixedMul(a: fixed_t, b: fixed_t) -> fixed_t {
     ((a as i64 * b as i64) >> FRACBITS) as fixed_t
@@ -44,41 +54,50 @@ pub extern "C" fn FixedDiv(a: fixed_t, b: fixed_t) -> fixed_t {
 mod tests {
     use super::*;
 
+    /// `1.0 * 1.0 == 1.0` in 16.16.
     #[test]
     fn mul_identity() {
         assert_eq!(FixedMul(1 << 16, 1 << 16), 1 << 16);
     }
 
+    /// `0.5 * 2.0 == 1.0` in 16.16.
     #[test]
     fn mul_half_times_two() {
         assert_eq!(FixedMul(1 << 15, 2 << 16), 1 << 16);
     }
 
+    /// `-1.0 * 1.0 == -1.0` in 16.16 (sign preserved through `>>`).
     #[test]
     fn mul_negative() {
         assert_eq!(FixedMul(-(1 << 16), 1 << 16), -(1 << 16));
     }
 
+    /// `3.0 / 1.0 == 3.0` in 16.16.
     #[test]
     fn div_one() {
         assert_eq!(FixedDiv(3 << 16, 1 << 16), 3 << 16);
     }
 
+    /// Positive overflow saturates to `INT_MAX`.
     #[test]
     fn div_saturates_pos() {
         assert_eq!(FixedDiv(i32::MAX, 1), i32::MAX);
     }
 
+    /// Negative overflow (positive / negative) saturates to `INT_MIN`.
     #[test]
     fn div_saturates_neg() {
         assert_eq!(FixedDiv(i32::MAX, -1), i32::MIN);
     }
 
+    /// Regression guard: `FixedDiv(INT_MIN, x)` must not panic on the
+    /// `abs(INT_MIN)` step; Rust's `wrapping_abs` keeps the call defined.
     #[test]
     fn div_min_no_panic() {
         let _ = FixedDiv(i32::MIN, 1 << 16);
     }
 
+    /// Any operand of 0 yields 0.
     #[test]
     fn mul_zero() {
         assert_eq!(FixedMul(0, 1 << 16), 0);
@@ -86,24 +105,29 @@ mod tests {
         assert_eq!(FixedMul(0, 0), 0);
     }
 
+    /// `(-2.0) * 3.0 == -6.0` in 16.16.
     #[test]
     fn mul_neg_pos() {
         // (-2.0) × 3.0 = -6.0 in 16.16 fixed-point
         assert_eq!(FixedMul(-(2 << 16), 3 << 16), -(6 << 16));
     }
 
+    /// `(-2.0) * (-3.0) == 6.0` in 16.16.
     #[test]
     fn mul_neg_neg() {
         // (-2.0) × (-3.0) = 6.0 in 16.16 fixed-point
         assert_eq!(FixedMul(-(2 << 16), -(3 << 16)), 6 << 16);
     }
 
+    /// `1.5 * 2.0 == 3.0` in 16.16.
     #[test]
     fn mul_fraction() {
         // 1.5 × 2.0 = 3.0; 1.5 = (3 << 15)
         assert_eq!(FixedMul(3 << 15, 2 << 16), 3 << 16);
     }
 
+    /// Multiplying extreme values must not invoke i64 UB or panic. The
+    /// `as` cast at the end truncates silently, matching the C original.
     #[test]
     fn mul_large_does_not_panic() {
         // The intermediate i64 must not overflow to UB; Rust guarantees this
@@ -112,12 +136,14 @@ mod tests {
         let _ = FixedMul(i32::MAX, i32::MIN);
     }
 
+    /// `1.0 / 2.0 == 0.5` in 16.16.
     #[test]
     fn div_half() {
         // 1.0 / 2.0 = 0.5 in 16.16 fixed-point
         assert_eq!(FixedDiv(1 << 16, 2 << 16), 1 << 15);
     }
 
+    /// `(-4.0) / 2.0 == -2.0` in 16.16.
     #[test]
     fn div_neg_by_pos() {
         // (-4.0) / 2.0 = -2.0 in 16.16 fixed-point

@@ -1,12 +1,22 @@
 //! Rust port of vendor/doomgeneric/m_cheat.c.
 //!
-//! Cheat sequence checking.
+//! Cheat sequence checking. Keystrokes are fed one at a time to
+//! [`cht_CheckCheat`]; it tracks progress through a fixed sequence,
+//! optionally collects trailing parameter characters, and reports when a
+//! cheat is fully entered. Matches the vanilla-Doom behaviour exactly,
+//! including the quirk where a too-short sequence on a cheat with
+//! parameters never fires.
 
 #![allow(non_snake_case)]
 
 use std::ffi::{c_char, c_int};
 
+/// Maximum length of a cheat sequence including the NUL terminator,
+/// matching `MAX_CHEAT_LEN` in `m_cheat.h`.
 pub const MAX_CHEAT_LEN: usize = 25;
+
+/// Maximum number of trailing parameter characters captured per cheat,
+/// matching `MAX_CHEAT_PARAMS` in `m_cheat.h`.
 pub const MAX_CHEAT_PARAMS: usize = 5;
 
 /// Matches `cheatseq_t` from `m_cheat.h`.
@@ -35,11 +45,19 @@ pub const MAX_CHEAT_PARAMS: usize = 5;
 /// Total: 52 bytes
 #[repr(C)]
 pub struct cheatseq_t {
+    /// NUL-terminated cheat sequence bytes (e.g. `"IDKFA"`).
     pub sequence: [c_char; MAX_CHEAT_LEN],
+    /// Declared sequence length (vanilla uses this to suppress short
+    /// cheats on parameter-bearing entries; see `cht_CheckCheat`).
     pub sequence_len: usize,
+    /// Number of trailing parameter characters expected after the
+    /// sequence matches (e.g. 2 for `IDCLEVxx`).
     pub parameter_chars: c_int,
+    /// Cursor into `sequence`: number of correct keystrokes consumed.
     pub chars_read: usize,
+    /// Cursor into `parameter_buf`: number of parameter chars consumed.
     pub param_chars_read: c_int,
+    /// Captured parameter characters; readable via `cht_GetParam`.
     pub parameter_buf: [c_char; MAX_CHEAT_PARAMS],
 }
 
@@ -113,6 +131,9 @@ pub extern "C" fn cht_GetParam(cht: *mut cheatseq_t, buffer: *mut c_char) {
 mod tests {
     use super::*;
 
+    /// Build a `cheatseq_t` from a Rust string for use in the tests below.
+    /// `sequence_len` is set to the string length so the
+    /// short-sequence-on-parameter-cheat guard does not fire.
     fn make_cheat(seq: &str, param_chars: c_int) -> cheatseq_t {
         let mut sequence = [0i8; MAX_CHEAT_LEN];
         let bytes = seq.as_bytes();
@@ -129,6 +150,8 @@ mod tests {
         }
     }
 
+    /// Five correct keystrokes for a 5-character no-parameter cheat
+    /// should report success only on the last keystroke.
     #[test]
     fn simple_cheat_five_chars() {
         let mut cheat = make_cheat("IDKFA", 0);
@@ -139,6 +162,8 @@ mod tests {
         assert_eq!(cht_CheckCheat(&mut cheat, b'A' as c_char), 1); // matched!
     }
 
+    /// Same flow as `simple_cheat_five_chars` but with a 4-character
+    /// cheat, confirming the implementation isn't length-specific.
     #[test]
     fn simple_cheat_four_chars() {
         let mut cheat = make_cheat("IDFA", 0);
@@ -148,6 +173,8 @@ mod tests {
         assert_eq!(cht_CheckCheat(&mut cheat, b'A' as c_char), 1); // matched!
     }
 
+    /// A wrong keystroke must reset `chars_read` to 0 so the user has to
+    /// restart the cheat from scratch.
     #[test]
     fn wrong_char_resets() {
         let mut cheat = make_cheat("IDFA", 0);
@@ -156,6 +183,8 @@ mod tests {
         assert_eq!(cht_CheckCheat(&mut cheat, b'I' as c_char), 0); // restart
     }
 
+    /// Cheats with `parameter_chars > 0` only fire once the parameter
+    /// characters have also been entered.
     #[test]
     fn cheat_with_params() {
         let mut cheat = make_cheat("IDKFA", 1);
@@ -173,6 +202,8 @@ mod tests {
         assert_eq!(cht_CheckCheat(&mut cheat, b'7' as c_char), 1); // matched!
     }
 
+    /// After a successful cheat with parameters, `cht_GetParam` must
+    /// copy the captured bytes into the caller-provided buffer.
     #[test]
     fn get_param_copies_buffer() {
         let mut cheat = make_cheat("IDKFA", 1);
@@ -186,12 +217,16 @@ mod tests {
         assert_eq!(param_buf[0], b'7' as c_char);
     }
 
+    /// Runtime check that the 64-bit `cheatseq_t` layout still totals
+    /// 72 bytes (matches the layout comment on the struct).
     #[test]
     #[cfg(target_pointer_width = "64")]
     fn struct_size_assertion() {
         assert_eq!(std::mem::size_of::<cheatseq_t>(), 72);
     }
 
+    /// Runtime check that the 32-bit `cheatseq_t` layout still totals
+    /// 52 bytes (matches the layout comment on the struct).
     #[test]
     #[cfg(target_pointer_width = "32")]
     fn struct_size_assertion() {
