@@ -52,6 +52,8 @@ pub(crate) struct AudioState {
     pub(crate) music: music::MusicState,
 }
 
+/// Construction and channel-control entry points used by the engine's
+/// `S_sound` shims.
 impl AudioState {
     /// Open the default audio device and build a fresh [`AudioState`].
     ///
