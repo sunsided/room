@@ -87,7 +87,7 @@ conflicts resolve trivially.
 - [x] doom/i_endoom.rs (4 lines, 0 docs)
 - [x] doom/i_input.rs (126 lines, 0 docs)
 - [x] doom/i_joystick.rs (77 lines, 0 docs)
-- [ ] doom/i_scale.rs (902 lines, 0 docs)
+- [x] doom/i_scale.rs (902 lines, 0 docs)
 - [x] doom/i_sound.rs (359 lines, 0 docs)
 - [x] doom/i_system.rs (320 lines, 1 doc)
 - [x] doom/i_timer.rs (50 lines, 0 docs)
