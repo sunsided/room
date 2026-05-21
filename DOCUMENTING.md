@@ -102,7 +102,7 @@ conflicts resolve trivially.
 
 ## Utilities (`m_*`, `tables`, `sounds`, `s_sound`, `info`, `statenum`, `z_zone`)
 
-- [ ] doom/info.rs (13071 lines, 19 docs)
+- [x] doom/info.rs (13071 lines, 19 docs)
 - [x] doom/m_argv.rs (172 lines, 0 docs)
 - [x] doom/m_bbox.rs (90 lines, 10 docs)
 - [x] doom/m_cheat.rs (200 lines, 29 docs)
