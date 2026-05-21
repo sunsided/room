@@ -129,9 +129,10 @@ impl<S: Source> PannedSource<S> {
 impl<S: Source> Iterator for PannedSource<S> {
     type Item = f32;
 
-    /// Pull one stereo sample.  Even calls fetch a fresh mono sample from
-    /// `inner` and emit it scaled by the left gain (while caching the raw
-    /// sample); odd calls emit the cached sample scaled by the right gain.
+    /// Pull one stereo sample. State machine on `buffered`: when empty,
+    /// fetch a fresh mono sample from `inner`, cache it, and emit it
+    /// scaled by the left gain; when full, emit the cached sample
+    /// scaled by the right gain and clear the cache.
     fn next(&mut self) -> Option<f32> {
         match self.buffered.take() {
             None => {
