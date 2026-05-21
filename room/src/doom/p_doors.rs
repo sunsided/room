@@ -99,22 +99,22 @@ unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
 }
 
 #[inline(always)]
-unsafe fn locked_object_message(special: c_int) -> Option<*mut c_char> {
+unsafe fn locked_object_message(special: c_int) -> *mut c_char {
     match special {
-        99 | 133 => Some(DEH_String(PD_BLUEO)),
-        134 | 135 => Some(DEH_String(PD_REDO)),
-        136 | 137 => Some(DEH_String(PD_YELLOWO)),
-        _ => None,
+        99 | 133 => DEH_String(PD_BLUEO),
+        134 | 135 => DEH_String(PD_REDO),
+        136 | 137 => DEH_String(PD_YELLOWO),
+        _ => unreachable!("unexpected locked object special: {special}"),
     }
 }
 
 #[inline(always)]
-unsafe fn locked_door_message(special: c_int) -> Option<*mut c_char> {
+unsafe fn locked_door_message(special: c_int) -> *mut c_char {
     match special {
-        26 | 32 => Some(DEH_String(PD_BLUEK)),
-        27 | 34 => Some(DEH_String(PD_YELLOWK)),
-        28 | 33 => Some(DEH_String(PD_REDK)),
-        _ => None,
+        26 | 32 => DEH_String(PD_BLUEK),
+        27 | 34 => DEH_String(PD_YELLOWK),
+        28 | 33 => DEH_String(PD_REDK),
+        _ => unreachable!("unexpected locked door special: {special}"),
     }
 }
 
@@ -327,7 +327,7 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
                 return 0;
             }
             if (*p).cards[it_bluecard] == 0 && (*p).cards[it_blueskull] == 0 {
-                (*p).message = locked_object_message((*line).special as c_int).unwrap();
+                (*p).message = locked_object_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return 0;
             }
@@ -337,7 +337,7 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
                 return 0;
             }
             if (*p).cards[it_redcard] == 0 && (*p).cards[it_redskull] == 0 {
-                (*p).message = locked_object_message((*line).special as c_int).unwrap();
+                (*p).message = locked_object_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return 0;
             }
@@ -347,7 +347,7 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
                 return 0;
             }
             if (*p).cards[it_yellowcard] == 0 && (*p).cards[it_yellowskull] == 0 {
-                (*p).message = locked_object_message((*line).special as c_int).unwrap();
+                (*p).message = locked_object_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return 0;
             }
@@ -487,7 +487,7 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
                 return;
             }
             if (*player).cards[it_bluecard] == 0 && (*player).cards[it_blueskull] == 0 {
-                (*player).message = locked_door_message((*line).special as c_int).unwrap();
+                (*player).message = locked_door_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return;
             }
@@ -497,7 +497,7 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
                 return;
             }
             if (*player).cards[it_yellowcard] == 0 && (*player).cards[it_yellowskull] == 0 {
-                (*player).message = locked_door_message((*line).special as c_int).unwrap();
+                (*player).message = locked_door_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return;
             }
@@ -507,7 +507,7 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
                 return;
             }
             if (*player).cards[it_redcard] == 0 && (*player).cards[it_redskull] == 0 {
-                (*player).message = locked_door_message((*line).special as c_int).unwrap();
+                (*player).message = locked_door_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return;
             }
@@ -751,13 +751,12 @@ mod tests {
     fn locked_object_specials_map_to_dehacked_messages() {
         let _g = LOCK.lock().unwrap();
         unsafe {
-            assert_eq!(locked_object_message(99), Some(DEH_String(PD_BLUEO)));
-            assert_eq!(locked_object_message(133), Some(DEH_String(PD_BLUEO)));
-            assert_eq!(locked_object_message(134), Some(DEH_String(PD_REDO)));
-            assert_eq!(locked_object_message(135), Some(DEH_String(PD_REDO)));
-            assert_eq!(locked_object_message(136), Some(DEH_String(PD_YELLOWO)));
-            assert_eq!(locked_object_message(137), Some(DEH_String(PD_YELLOWO)));
-            assert_eq!(locked_object_message(1), None);
+            assert_eq!(locked_object_message(99), DEH_String(PD_BLUEO));
+            assert_eq!(locked_object_message(133), DEH_String(PD_BLUEO));
+            assert_eq!(locked_object_message(134), DEH_String(PD_REDO));
+            assert_eq!(locked_object_message(135), DEH_String(PD_REDO));
+            assert_eq!(locked_object_message(136), DEH_String(PD_YELLOWO));
+            assert_eq!(locked_object_message(137), DEH_String(PD_YELLOWO));
         }
     }
 
@@ -765,13 +764,12 @@ mod tests {
     fn vertical_door_specials_map_to_dehacked_messages() {
         let _g = LOCK.lock().unwrap();
         unsafe {
-            assert_eq!(locked_door_message(26), Some(DEH_String(PD_BLUEK)));
-            assert_eq!(locked_door_message(32), Some(DEH_String(PD_BLUEK)));
-            assert_eq!(locked_door_message(27), Some(DEH_String(PD_YELLOWK)));
-            assert_eq!(locked_door_message(34), Some(DEH_String(PD_YELLOWK)));
-            assert_eq!(locked_door_message(28), Some(DEH_String(PD_REDK)));
-            assert_eq!(locked_door_message(33), Some(DEH_String(PD_REDK)));
-            assert_eq!(locked_door_message(1), None);
+            assert_eq!(locked_door_message(26), DEH_String(PD_BLUEK));
+            assert_eq!(locked_door_message(32), DEH_String(PD_BLUEK));
+            assert_eq!(locked_door_message(27), DEH_String(PD_YELLOWK));
+            assert_eq!(locked_door_message(34), DEH_String(PD_YELLOWK));
+            assert_eq!(locked_door_message(28), DEH_String(PD_REDK));
+            assert_eq!(locked_door_message(33), DEH_String(PD_REDK));
         }
     }
 }
