@@ -882,8 +882,9 @@ pub struct MobjInfo {
     /// Sound played on death.
     pub deathsound: Sfx,
     /// Movement speed. For monsters, this is the per-`P_Move` step in
-    /// integer map units. For projectiles, it is the per-tic distance
-    /// in fixed-point (multiplied by `FRACUNIT` at spawn).
+    /// integer map units. For projectiles, the table entries are already
+    /// scaled by `FRACUNIT` (e.g. `15 * FRACUNIT`) and represent the
+    /// per-tic distance in fixed-point.
     pub speed: c_int,
     /// Collision radius in Doom fixed-point units.
     pub radius: c_int,
