@@ -603,6 +603,8 @@ pub unsafe extern "C" fn I_Video_Link_Anchor() {
     I_EndRead();
     I_SetWindowTitle(ptr::null_mut());
     I_GraphicsCheckCommandLine();
+    /// Inert mouse-grab callback used only to take a function pointer for
+    /// `I_SetGrabMouseCallback`; never invoked at runtime.
     extern "C" fn _grab_anchor() -> Boolean {
         Boolean::FALSE
     }

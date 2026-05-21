@@ -658,6 +658,7 @@ mod tests {
         }
     }
 
+    /// RAII restoration of the saved WAD globals on test teardown.
     impl Drop for WadTestScope {
         /// Restore the saved globals.
         fn drop(&mut self) {
