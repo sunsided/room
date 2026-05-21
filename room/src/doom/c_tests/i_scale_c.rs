@@ -59,6 +59,8 @@ fn screen_mode_t_size_is_32() {
     assert_eq!(std::mem::size_of::<c_ffi::screen_mode_t>(), 32);
 }
 
+/// `screen_mode_t` alignment is 8 — the largest member is a pointer
+/// (`InitMode`/`DrawScreen`) which on 64-bit Linux is 8-byte aligned.
 #[test]
 fn screen_mode_t_align_is_8() {
     assert_eq!(std::mem::align_of::<c_ffi::screen_mode_t>(), 8);

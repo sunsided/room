@@ -117,11 +117,13 @@ struct mapthing_t {
 // mapvertex_t  (2 × short = 4 bytes)
 // ---------------------------------------------------------------------------
 
+/// `mapvertex_t` is two `short` fields → 4 bytes when packed.
 #[test]
 fn mapvertex_t_size() {
     assert_eq!(size_of::<mapvertex_t>(), 4);
 }
 
+/// Field offsets for `mapvertex_t`: `x` at 0, `y` at 2.
 #[test]
 fn mapvertex_t_offsets() {
     assert_eq!(offset_of!(mapvertex_t, x), 0);
@@ -132,11 +134,13 @@ fn mapvertex_t_offsets() {
 // mapsidedef_t  (2+2 + 8+8+8 + 2 = 30 bytes)
 // ---------------------------------------------------------------------------
 
+/// `mapsidedef_t` total size is 30 bytes: 2+2 (offsets) + 8+8+8 (textures) + 2 (sector).
 #[test]
 fn mapsidedef_t_size() {
     assert_eq!(size_of::<mapsidedef_t>(), 30);
 }
 
+/// Field offsets for `mapsidedef_t` match the C `PACKEDATTR` layout.
 #[test]
 fn mapsidedef_t_offsets() {
     assert_eq!(offset_of!(mapsidedef_t, textureoffset), 0);
@@ -151,11 +155,13 @@ fn mapsidedef_t_offsets() {
 // maplinedef_t  (7 × short = 14 bytes: v1, v2, flags, special, tag, sidenum[2])
 // ---------------------------------------------------------------------------
 
+/// `maplinedef_t` total size is 14 bytes: 5 single `short`s + a 2-element `short` array.
 #[test]
 fn maplinedef_t_size() {
     assert_eq!(size_of::<maplinedef_t>(), 14);
 }
 
+/// Field offsets for `maplinedef_t` match the C `PACKEDATTR` layout.
 #[test]
 fn maplinedef_t_offsets() {
     assert_eq!(offset_of!(maplinedef_t, v1), 0);
@@ -166,6 +172,7 @@ fn maplinedef_t_offsets() {
     assert_eq!(offset_of!(maplinedef_t, sidenum), 10);
 }
 
+/// `sidenum[2]` is 4 bytes — two contiguous `short` slots, no padding.
 #[test]
 fn maplinedef_sidenum_length() {
     // sidenum is declared as short sidenum[2]; verify via size: 2 shorts = 4 bytes.
@@ -176,11 +183,13 @@ fn maplinedef_sidenum_length() {
 // mapsector_t  (2+2 + 8+8 + 2+2+2 = 26 bytes)
 // ---------------------------------------------------------------------------
 
+/// `mapsector_t` total size is 26 bytes: 2+2 (heights) + 8+8 (flat names) + 2+2+2 (lightlevel/special/tag).
 #[test]
 fn mapsector_t_size() {
     assert_eq!(size_of::<mapsector_t>(), 26);
 }
 
+/// Field offsets for `mapsector_t` match the C `PACKEDATTR` layout.
 #[test]
 fn mapsector_t_offsets() {
     assert_eq!(offset_of!(mapsector_t, floorheight), 0);
@@ -196,11 +205,13 @@ fn mapsector_t_offsets() {
 // mapsubsector_t  (2 × short = 4 bytes)
 // ---------------------------------------------------------------------------
 
+/// `mapsubsector_t` is two `short` fields → 4 bytes when packed.
 #[test]
 fn mapsubsector_t_size() {
     assert_eq!(size_of::<mapsubsector_t>(), 4);
 }
 
+/// Field offsets for `mapsubsector_t`: `numsegs` at 0, `firstseg` at 2.
 #[test]
 fn mapsubsector_t_offsets() {
     assert_eq!(offset_of!(mapsubsector_t, numsegs), 0);
@@ -211,11 +222,13 @@ fn mapsubsector_t_offsets() {
 // mapseg_t  (6 × short = 12 bytes)
 // ---------------------------------------------------------------------------
 
+/// `mapseg_t` is six `short` fields → 12 bytes when packed.
 #[test]
 fn mapseg_t_size() {
     assert_eq!(size_of::<mapseg_t>(), 12);
 }
 
+/// Field offsets for `mapseg_t` step by 2 bytes per `short`.
 #[test]
 fn mapseg_t_offsets() {
     assert_eq!(offset_of!(mapseg_t, v1), 0);
@@ -230,11 +243,13 @@ fn mapseg_t_offsets() {
 // mapnode_t  (4 × short + bbox[2][4] shorts + children[2] = 28 bytes)
 // ---------------------------------------------------------------------------
 
+/// `mapnode_t` total size is 28 bytes: 4 partition shorts + bbox[2][4] shorts + 2 child indices.
 #[test]
 fn mapnode_t_size() {
     assert_eq!(size_of::<mapnode_t>(), 28);
 }
 
+/// Field offsets for `mapnode_t`: partition fields then bbox (8 shorts) then children.
 #[test]
 fn mapnode_t_offsets() {
     assert_eq!(offset_of!(mapnode_t, x), 0);
@@ -245,6 +260,8 @@ fn mapnode_t_offsets() {
     assert_eq!(offset_of!(mapnode_t, children), 24);
 }
 
+/// `NF_SUBSECTOR = 0x8000` marks a BSP child as a leaf subsector rather than
+/// another node.  Value must equal bit 15.
 #[test]
 fn mapnode_t_nf_subsector_flag() {
     // NF_SUBSECTOR marks a leaf child; the value must be 0x8000.
@@ -256,11 +273,13 @@ fn mapnode_t_nf_subsector_flag() {
 // mapthing_t  (5 × short = 10 bytes)
 // ---------------------------------------------------------------------------
 
+/// `mapthing_t` is five `short` fields → 10 bytes when packed.
 #[test]
 fn mapthing_t_size() {
     assert_eq!(size_of::<mapthing_t>(), 10);
 }
 
+/// Field offsets for `mapthing_t` step by 2 bytes per `short`.
 #[test]
 fn mapthing_t_offsets() {
     assert_eq!(offset_of!(mapthing_t, x), 0);
@@ -275,6 +294,9 @@ fn mapthing_t_offsets() {
 // The constants live in c_ffi so the rest of the ported code can use them.
 // ---------------------------------------------------------------------------
 
+/// `MapLump` enum values must be consecutive starting at 0; the map-loader
+/// indexes lumps by `firstmaplump + ML_*`, so any gap or reorder would read
+/// the wrong WAD lump.
 #[test]
 fn ml_lump_order_values() {
     assert_eq!(c_ffi::MapLump::LABEL, 0);
@@ -297,6 +319,9 @@ fn ml_lump_order_values() {
 // Each flag occupies exactly one bit and the values must be powers of two.
 // ---------------------------------------------------------------------------
 
+/// Each `LinedefFlag` (`ML_*` define from doomdata.h) must be a unique power
+/// of two; the test confirms no two flags share a bit and the nine flags
+/// occupy bits 0–8.  Absolute values are also checked against the C header.
 #[test]
 fn ml_linedef_flags() {
     // Verify every flag is a distinct power of two — no two flags may overlap.
@@ -347,6 +372,9 @@ fn ml_linedef_flags() {
 // Ensure packed fields do not introduce unexpected padding
 // ---------------------------------------------------------------------------
 
+/// Each `mapfoo_t` struct size must equal the sum of its field sizes — any
+/// difference indicates that `PACKEDATTR` (the `#[repr(C, packed)]` mirror)
+/// did not actually suppress padding.
 #[test]
 fn all_wad_structs_are_densely_packed() {
     // The sum of all field sizes must equal the struct size; any padding

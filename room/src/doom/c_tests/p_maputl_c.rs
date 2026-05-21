@@ -19,6 +19,7 @@ use crate::doom::p_maputl;
 // P_AproxDistance
 // ---------------------------------------------------------------------------
 
+/// `P_AproxDistance(0, 0)` is zero — the degenerate case.
 #[test]
 fn aproxdist_zero() {
     unsafe {
@@ -26,6 +27,7 @@ fn aproxdist_zero() {
     }
 }
 
+/// Distance along a purely horizontal vector equals `|dx|`.
 #[test]
 fn aproxdist_along_x() {
     unsafe {
@@ -33,6 +35,7 @@ fn aproxdist_along_x() {
     }
 }
 
+/// Distance along a purely vertical vector equals `|dy|`.
 #[test]
 fn aproxdist_along_y() {
     unsafe {
@@ -40,6 +43,7 @@ fn aproxdist_along_y() {
     }
 }
 
+/// 45-degree diagonal exercises the octant approximation `dx + dy - min/2`.
 #[test]
 fn aproxdist_diagonal() {
     // Octant approximation: dx + dy - min(dx,dy)/2
@@ -52,6 +56,7 @@ fn aproxdist_diagonal() {
     }
 }
 
+/// A negative `dx` is taken absolute-value before the approximation.
 #[test]
 fn aproxdist_negative_dx() {
     unsafe {
@@ -62,6 +67,7 @@ fn aproxdist_negative_dx() {
     }
 }
 
+/// A negative `dy` is taken absolute-value before the approximation.
 #[test]
 fn aproxdist_negative_dy() {
     unsafe {
@@ -72,6 +78,7 @@ fn aproxdist_negative_dy() {
     }
 }
 
+/// Both components negative; the result depends only on magnitudes.
 #[test]
 fn aproxdist_both_negative() {
     // dx=100, dy=50 → 100 + 50 - 25 = 125
@@ -83,6 +90,7 @@ fn aproxdist_both_negative() {
     }
 }
 
+/// When `|dx| < |dy|`, the approximation halves `dx` (the smaller magnitude).
 #[test]
 fn aproxdist_dx_lt_dy() {
     // dx < dy → dx + dy - (dx >> 1)
@@ -95,6 +103,7 @@ fn aproxdist_dx_lt_dy() {
     }
 }
 
+/// When `|dx| > |dy|`, the approximation halves `dy` (the smaller magnitude).
 #[test]
 fn aproxdist_dx_gt_dy() {
     // dx > dy → dx + dy - (dy >> 1)
@@ -107,6 +116,7 @@ fn aproxdist_dx_gt_dy() {
     }
 }
 
+/// Extremal inputs (`i32::MAX`, `i32::MIN`) must not panic — Doom wraps on overflow.
 #[test]
 fn aproxdist_max_values_no_panic() {
     unsafe {
@@ -115,6 +125,7 @@ fn aproxdist_max_values_no_panic() {
     }
 }
 
+/// Mixed sign components are taken absolute-value independently.
 #[test]
 fn aproxdist_mixed_sign() {
     // abs(-64) = 64, abs(128) = 128 → 64 + 128 - 32 = 160
@@ -139,6 +150,8 @@ fn aproxdist_mixed_sign() {
 //             right < left → 0,  else → 1
 // ---------------------------------------------------------------------------
 
+/// Construct a minimal `line_t` for `P_PointOnLineSide` tests: only `v1`,
+/// `dx`, `dy` are meaningful; the remaining fields are zeroed.
 fn make_pols_line(v1: *mut vertex_t, dx: c_int, dy: c_int) -> line_t {
     let mut line: line_t = unsafe { std::mem::zeroed() };
     line.v1 = v1;
@@ -147,6 +160,7 @@ fn make_pols_line(v1: *mut vertex_t, dx: c_int, dy: c_int) -> line_t {
     line
 }
 
+/// Vertical line pointing up (`dy > 0`), point to the left → back side (1).
 #[test]
 fn point_on_line_side_vertical_pos_dy_left() {
     // dx=0, dy>0, x < v1.x → back (1)
@@ -157,6 +171,7 @@ fn point_on_line_side_vertical_pos_dy_left() {
     }
 }
 
+/// Vertical line pointing up, point to the right → front side (0).
 #[test]
 fn point_on_line_side_vertical_pos_dy_right() {
     // dx=0, dy>0, x > v1.x → front (0)
@@ -167,6 +182,8 @@ fn point_on_line_side_vertical_pos_dy_right() {
     }
 }
 
+/// Vertical line pointing up, point exactly on the line → back side (the
+/// `x <= v1.x` branch covers equality).
 #[test]
 fn point_on_line_side_vertical_pos_dy_on_line() {
     // dx=0, dy>0, x == v1.x (takes x <= v1.x branch) → back (1)
@@ -177,6 +194,7 @@ fn point_on_line_side_vertical_pos_dy_on_line() {
     }
 }
 
+/// Vertical line pointing down (`dy < 0`), point to the left → front side.
 #[test]
 fn point_on_line_side_vertical_neg_dy_left() {
     // dx=0, dy<0, x <= v1.x → front (0)
@@ -187,6 +205,7 @@ fn point_on_line_side_vertical_neg_dy_left() {
     }
 }
 
+/// Vertical line pointing down, point to the right → back side.
 #[test]
 fn point_on_line_side_vertical_neg_dy_right() {
     // dx=0, dy<0, x > v1.x → back (1)
@@ -197,6 +216,7 @@ fn point_on_line_side_vertical_neg_dy_right() {
     }
 }
 
+/// Horizontal line pointing right (`dx > 0`), point below → front side.
 #[test]
 fn point_on_line_side_horizontal_pos_dx_below() {
     // dy=0, dx>0, y < v1.y → front (0)
@@ -207,6 +227,7 @@ fn point_on_line_side_horizontal_pos_dx_below() {
     }
 }
 
+/// Horizontal line pointing right, point above → back side.
 #[test]
 fn point_on_line_side_horizontal_pos_dx_above() {
     // dy=0, dx>0, y > v1.y → back (1)
@@ -217,6 +238,8 @@ fn point_on_line_side_horizontal_pos_dx_above() {
     }
 }
 
+/// Horizontal line pointing right, point exactly on it → front side (the
+/// `y <= v1.y` branch covers equality).
 #[test]
 fn point_on_line_side_horizontal_pos_dx_on_line() {
     // dy=0, dx>0, y == v1.y (takes y <= v1.y branch) → front (0)
@@ -227,6 +250,7 @@ fn point_on_line_side_horizontal_pos_dx_on_line() {
     }
 }
 
+/// Horizontal line pointing left (`dx < 0`), point below → back side.
 #[test]
 fn point_on_line_side_horizontal_neg_dx_below() {
     // dy=0, dx<0, y <= v1.y → back (1)
@@ -237,6 +261,7 @@ fn point_on_line_side_horizontal_neg_dx_below() {
     }
 }
 
+/// Horizontal line pointing left, point above → front side.
 #[test]
 fn point_on_line_side_horizontal_neg_dx_above() {
     // dy=0, dx<0, y > v1.y → front (0)
@@ -247,6 +272,7 @@ fn point_on_line_side_horizontal_neg_dx_above() {
     }
 }
 
+/// Diagonal NE line, point above-left → back side via the cross-product branch.
 #[test]
 fn point_on_line_side_diagonal_above_left() {
     // NE diagonal (dx=dy=FRACUNIT), point at (0, FRACUNIT) — above-left → back (1)
@@ -258,6 +284,7 @@ fn point_on_line_side_diagonal_above_left() {
     }
 }
 
+/// Diagonal NE line, point below-right → front side via the cross-product branch.
 #[test]
 fn point_on_line_side_diagonal_below_right() {
     // NE diagonal (dx=dy=FRACUNIT), point at (FRACUNIT, 0) — below-right → front (0)
@@ -269,6 +296,8 @@ fn point_on_line_side_diagonal_below_right() {
     }
 }
 
+/// Diagonal NE line, point exactly on it: `right == left` returns back side
+/// (the comparison is `right < left → front`, equality falls through to back).
 #[test]
 fn point_on_line_side_diagonal_on_line_is_back() {
     // Point exactly on NE diagonal: right==left → back (1)
@@ -293,10 +322,12 @@ fn point_on_line_side_diagonal_on_line_is_back() {
 //                           x > line.x  → side 0 (front)
 // ---------------------------------------------------------------------------
 
+/// Build a `divline_t` from explicit origin and direction components.
 fn make_divline(x: c_int, y: c_int, dx: c_int, dy: c_int) -> divline_t {
     divline_t { x, y, dx, dy }
 }
 
+/// Horizontal divline (pointing right), point above → back side (1).
 #[test]
 fn divline_side_horizontal_above() {
     let line = make_divline(0, 0, FRACUNIT, 0); // pointing right
@@ -309,6 +340,7 @@ fn divline_side_horizontal_above() {
     }
 }
 
+/// Horizontal divline, point below → front side (0).
 #[test]
 fn divline_side_horizontal_below() {
     let line = make_divline(0, 0, FRACUNIT, 0);
@@ -321,6 +353,7 @@ fn divline_side_horizontal_below() {
     }
 }
 
+/// Horizontal divline, point exactly on it → front side (`y <= line.y`).
 #[test]
 fn divline_side_horizontal_on_line() {
     let line = make_divline(0, 0, FRACUNIT, 0);
@@ -333,6 +366,7 @@ fn divline_side_horizontal_on_line() {
     }
 }
 
+/// Vertical divline (pointing up), point to the left → back side (1).
 #[test]
 fn divline_side_vertical_left() {
     let line = make_divline(0, 0, 0, FRACUNIT); // pointing up
@@ -345,6 +379,7 @@ fn divline_side_vertical_left() {
     }
 }
 
+/// Vertical divline, point to the right → front side (0).
 #[test]
 fn divline_side_vertical_right() {
     let line = make_divline(0, 0, 0, FRACUNIT);
@@ -357,6 +392,7 @@ fn divline_side_vertical_right() {
     }
 }
 
+/// Vertical divline, point exactly on it → back side (`x <= line.x`).
 #[test]
 fn divline_side_vertical_on_line() {
     let line = make_divline(0, 0, 0, FRACUNIT);
@@ -369,6 +405,8 @@ fn divline_side_vertical_on_line() {
     }
 }
 
+/// Diagonal divline (`y = x`): points are tested on either side using the
+/// general cross-product branch.
 #[test]
 fn divline_side_diagonal() {
     // 45-degree line y = x
@@ -393,6 +431,8 @@ fn divline_side_diagonal() {
 // Returns the fractional intercept point along the FIRST divline (v2).
 // ---------------------------------------------------------------------------
 
+/// Two parallel horizontal divlines never intersect — the function returns 0
+/// rather than dividing by zero.
 #[test]
 fn intercept_parallel_returns_zero() {
     let v1 = make_divline(0, 0, FRACUNIT, 0);
@@ -406,6 +446,8 @@ fn intercept_parallel_returns_zero() {
     }
 }
 
+/// Perpendicular divlines crossing at the origin → intercept fraction is 0
+/// (the crossing is at the start of `v2`).
 #[test]
 fn intercept_perpendicular_crossing_at_origin() {
     let v1 = make_divline(0, 0, FRACUNIT, 0); // x-axis
@@ -419,6 +461,7 @@ fn intercept_perpendicular_crossing_at_origin() {
     }
 }
 
+/// Horizontal `v1` crossed at the midpoint of vertical `v2` → intercept = 0.5.
 #[test]
 fn intercept_crossing_at_half_along_v2() {
     // v1: from (0,0) to (1,0)  — horizontal
@@ -435,6 +478,8 @@ fn intercept_crossing_at_half_along_v2() {
     }
 }
 
+/// Same midpoint crossing but with a longer `v1` — the intercept is
+/// expressed as a fraction along `v2`, so the result is unchanged.
 #[test]
 fn intercept_crossing_at_one_along_v2() {
     // v1: from (0,0) to (2,0)
@@ -454,6 +499,8 @@ fn intercept_crossing_at_one_along_v2() {
 // P_MakeDivline
 // ---------------------------------------------------------------------------
 
+/// `P_MakeDivline` should copy `(v1.x, v1.y, dx, dy)` from a `line_t` into
+/// the supplied `divline_t` unchanged.
 #[test]
 fn make_divline_copies_fields() {
     let v = vertex_t {
@@ -495,6 +542,7 @@ fn make_divline_copies_fields() {
 // P_BoxOnLineSide
 // ---------------------------------------------------------------------------
 
+/// Horizontal `ST_HORIZONTAL` line, bounding box entirely above → back side.
 #[test]
 fn box_on_line_horizontal_above() {
     let v1 = vertex_t { x: 0, y: 0 };
@@ -523,6 +571,7 @@ fn box_on_line_horizontal_above() {
     }
 }
 
+/// Horizontal `ST_HORIZONTAL` line, bounding box entirely below → front side.
 #[test]
 fn box_on_line_horizontal_below() {
     let v1 = vertex_t { x: 0, y: 0 };
@@ -551,6 +600,7 @@ fn box_on_line_horizontal_below() {
     }
 }
 
+/// Vertical `ST_VERTICAL` line, bounding box entirely to the right → front side.
 #[test]
 fn box_on_line_vertical_right() {
     let v1 = vertex_t { x: 0, y: 0 };
@@ -579,6 +629,7 @@ fn box_on_line_vertical_right() {
     }
 }
 
+/// Vertical `ST_VERTICAL` line, bounding box entirely to the left → back side.
 #[test]
 fn box_on_line_vertical_left() {
     let v1 = vertex_t { x: 0, y: 0 };
@@ -607,6 +658,8 @@ fn box_on_line_vertical_left() {
     }
 }
 
+/// When the bounding box straddles the line, `P_BoxOnLineSide` returns -1
+/// (the box is on **both** sides — neither front nor back).
 #[test]
 fn box_crosses_line_returns_negative_one() {
     let v1 = vertex_t { x: 0, y: 0 };
@@ -639,6 +692,8 @@ fn box_crosses_line_returns_negative_one() {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Zero-initialise a `sector_t` and set only the two height fields the
+/// line-opening tests care about.
 fn make_sector(floorheight: c_int, ceilingheight: c_int) -> c_ffi::sector_t {
     let mut s: c_ffi::sector_t = unsafe { std::mem::zeroed() };
     s.floorheight = floorheight;
@@ -646,6 +701,9 @@ fn make_sector(floorheight: c_int, ceilingheight: c_int) -> c_ffi::sector_t {
     s
 }
 
+/// Build a horizontal `line_t` with the supplied sides/sectors for
+/// `P_LineOpening` tests.  `v2`, special, tag, bbox, and validcount are
+/// not exercised by the function under test.
 fn make_line(
     v1: *mut vertex_t,
     sidenum: [c_short; 2],
@@ -674,6 +732,8 @@ fn make_line(
 // P_LineOpening
 // ---------------------------------------------------------------------------
 
+/// Single-sided lines (back side `-1`) leave `openrange = 0` — players and
+/// monsters can never pass through them.
 #[test]
 fn line_opening_single_sided() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -685,6 +745,8 @@ fn line_opening_single_sided() {
     }
 }
 
+/// Two-sided line where the front sector has a higher ceiling: opening
+/// extends from `max(floors)` to `min(ceilings)`, `lowfloor` is the back floor.
 #[test]
 fn line_opening_two_sided_front_higher() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -705,6 +767,8 @@ fn line_opening_two_sided_front_higher() {
     }
 }
 
+/// Two-sided line where the back sector has a higher floor: opening starts
+/// at the back floor, `lowfloor` becomes the front floor.
 #[test]
 fn line_opening_two_sided_back_higher() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -725,6 +789,8 @@ fn line_opening_two_sided_back_higher() {
     }
 }
 
+/// Two-sided line with identical sectors on both sides: opening equals the
+/// full sector height, `lowfloor` equals `openbottom`.
 #[test]
 fn line_opening_two_sided_equal() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -741,6 +807,8 @@ fn line_opening_two_sided_equal() {
     }
 }
 
+/// Edge case: front floor sits above back ceiling, producing a negative
+/// `openrange` — interpreted by callers as "no opening at all".
 #[test]
 fn line_opening_negative_range() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -766,18 +834,26 @@ fn line_opening_negative_range() {
 // P_TraverseIntercepts
 // ---------------------------------------------------------------------------
 
+/// Per-test scratch buffer used by the traverse-callback to record the
+/// fractions it was invoked with, in invocation order.
 static TRAVERSED_FRACS: Mutex<Vec<c_int>> = Mutex::new(Vec::new());
 
+/// Test callback: records the intercept fraction and returns 1 to ask
+/// `P_TraverseIntercepts` to continue iterating.
 unsafe extern "C" fn record_and_continue(intr: *mut c_ffi::intercept_t) -> c_uint {
     TRAVERSED_FRACS.lock().unwrap().push((*intr).frac);
     1 // continue
 }
 
+/// Test callback: records the intercept fraction and returns 0 to make
+/// `P_TraverseIntercepts` stop after this single intercept.
 unsafe extern "C" fn record_and_stop(intr: *mut c_ffi::intercept_t) -> c_uint {
     TRAVERSED_FRACS.lock().unwrap().push((*intr).frac);
     0 // stop
 }
 
+/// Empty intercept list → traversal returns `true` immediately without
+/// invoking the callback.
 #[test]
 fn traverse_intercepts_empty() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -790,6 +866,7 @@ fn traverse_intercepts_empty() {
     }
 }
 
+/// Single intercept within `maxfrac` is delivered exactly once.
 #[test]
 fn traverse_intercepts_single() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -810,6 +887,9 @@ fn traverse_intercepts_single() {
     }
 }
 
+/// Out-of-order intercepts are delivered to the callback in ascending
+/// `frac` order — `P_TraverseIntercepts` selects the smallest unprocessed
+/// intercept on each iteration.
 #[test]
 fn traverse_intercepts_sorted_order() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -844,6 +924,8 @@ fn traverse_intercepts_sorted_order() {
     }
 }
 
+/// Intercepts whose `frac` exceeds `maxfrac` are skipped — only those in
+/// range invoke the callback.
 #[test]
 fn traverse_intercepts_respects_maxfrac() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -871,6 +953,8 @@ fn traverse_intercepts_respects_maxfrac() {
     }
 }
 
+/// Callback returning 0 stops traversal after the current intercept —
+/// `P_TraverseIntercepts` returns `false` to signal early termination.
 #[test]
 fn traverse_intercepts_stop_early() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
