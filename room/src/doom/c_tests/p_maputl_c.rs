@@ -840,6 +840,12 @@ static TRAVERSED_FRACS: Mutex<Vec<c_int>> = Mutex::new(Vec::new());
 
 /// Test callback: records the intercept fraction and returns 1 to ask
 /// `P_TraverseIntercepts` to continue iterating.
+///
+/// # Safety
+///
+/// `intr` must be a valid, non-null, properly aligned pointer to an
+/// `intercept_t` whose `frac` field is initialised. Only called from
+/// within `P_TraverseIntercepts`, which satisfies these requirements.
 unsafe extern "C" fn record_and_continue(intr: *mut c_ffi::intercept_t) -> c_uint {
     TRAVERSED_FRACS.lock().unwrap().push((*intr).frac);
     1 // continue
@@ -847,6 +853,12 @@ unsafe extern "C" fn record_and_continue(intr: *mut c_ffi::intercept_t) -> c_uin
 
 /// Test callback: records the intercept fraction and returns 0 to make
 /// `P_TraverseIntercepts` stop after this single intercept.
+///
+/// # Safety
+///
+/// `intr` must be a valid, non-null, properly aligned pointer to an
+/// `intercept_t` whose `frac` field is initialised. Only called from
+/// within `P_TraverseIntercepts`, which satisfies these requirements.
 unsafe extern "C" fn record_and_stop(intr: *mut c_ffi::intercept_t) -> c_uint {
     TRAVERSED_FRACS.lock().unwrap().push((*intr).frac);
     0 // stop
