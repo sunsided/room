@@ -582,9 +582,10 @@ unsafe extern "C" fn i_stretch_2x(_x1: c_int, _y1: c_int, _x2: c_int, _y2: c_int
 }
 
 /// 3x stretch driver: 960x720 (200 -> 720, 18 rows per 5 source rows).
-/// Schedule per 5-source block: line0 x3, blend60/40(l1,l0), line1 x3,
-/// blend20/80(l1,l2), line2 x2, blend80/20(l3,l2), line3 x3,
-/// blend40/60(l3,l4), line4 x3. Only supports full-screen updates.
+/// Schedule per 5-source block (notation `X/Y(a,b,t) = X% a + Y% b`):
+/// line0 x3, blend40/60(l1,l0,t1), line1 x3, blend20/80(l1,l2,t0),
+/// line2 x2, blend20/80(l3,l2,t0), line3 x3, blend40/60(l3,l4,t1),
+/// line4 x3. Only supports full-screen updates.
 ///
 /// # Safety
 ///
@@ -662,11 +663,12 @@ unsafe extern "C" fn i_stretch_3x(_x1: c_int, _y1: c_int, _x2: c_int, _y2: c_int
 }
 
 /// 4x stretch driver: 1280x960 (200 -> 960, 24 rows per 5 source rows).
-/// Schedule per 5-source block: line0 x4, blend80/20(l1,l0) (the C
-/// source's "90% line 0, 20% line 1" comment is a typo - the actual
-/// arguments are `stretch_tables[0]` with `(line1, line0)`), line1 x4,
-/// blend60/40(l1,l0,t1), line2 x4, blend40/60(l2,l3,t1), line3 x4,
-/// blend20/80(l3,l4,t0), line4 x4. Only supports full-screen updates.
+/// Schedule per 5-source block (notation `X/Y(a,b,t) = X% a + Y% b`):
+/// line0 x4, blend20/80(l1,l0,t0) (the C source's "90% line 0, 20% line 1"
+/// comment is a typo - the call is `stretch_tables[0]` with `(line1, line0)`,
+/// i.e. 20% line1 + 80% line0), line1 x4, blend40/60(l1,l0,t1), line2 x4,
+/// blend40/60(l2,l3,t1), line3 x4, blend20/80(l3,l4,t0), line4 x4. Only
+/// supports full-screen updates.
 ///
 /// # Safety
 ///
