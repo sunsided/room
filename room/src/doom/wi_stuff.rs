@@ -669,7 +669,7 @@ static mut background: *mut patch_t = ptr::null_mut();
 
 /// Deathmatch count-up sub-state index (odd = pause, even = ticking).
 static mut dm_state: c_int = 0;
-/// Running frag-count display for each [killer][victim] pair in deathmatch view.
+/// Running frag-count display for each `[killer][victim]` pair in deathmatch view.
 static mut dm_frags: [[c_int; MAXPLAYERS]; MAXPLAYERS] = [[0; MAXPLAYERS]; MAXPLAYERS];
 /// Running per-player frag totals for deathmatch view.
 static mut dm_totals: [c_int; MAXPLAYERS] = [0; MAXPLAYERS];
@@ -695,6 +695,12 @@ static mut snl_pointeron: bool = false;
 // ---------------------------------------------------------------------------
 
 /// Pass-through shim for Dehacked string replacement (not yet active in this port).
+///
+/// # Safety
+///
+/// Caller must ensure `s` is either null or a valid C-string pointer; this
+/// implementation does not dereference it and simply returns the pointer
+/// unchanged.
 #[inline(always)]
 unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
     s
@@ -714,6 +720,12 @@ fn SHORT(x: i16) -> i16 {
 ///
 /// Called at the start of each draw function to paint the base image before
 /// overlaying animations, labels, and statistics.
+///
+/// # Safety
+///
+/// Reads the global `background` patch pointer and calls `V_DrawPatch`.
+/// Caller must ensure `WI_loadData` has cached the patch and the video
+/// backend is ready.
 #[no_mangle]
 pub unsafe extern "C" fn WI_slamBackground() {
     V_DrawPatch(0, 0, background);
@@ -726,6 +738,12 @@ pub unsafe extern "C" fn WI_slamBackground() {
 /// Intermission event responder - always returns 0 (all input goes through `WI_checkForAccelerate`).
 ///
 /// Called by `G_Responder` in `g_game.c`.
+///
+/// # Safety
+///
+/// `_ev` is not dereferenced. Caller may pass any pointer (including null).
+/// The function is `unsafe extern "C"` for ABI compatibility with the C
+/// responder signature only.
 #[no_mangle]
 pub unsafe extern "C" fn WI_Responder(_ev: *mut event_t) -> c_int {
     0
@@ -738,7 +756,14 @@ pub unsafe extern "C" fn WI_Responder(_ev: *mut event_t) -> c_int {
 /// Draw the "Finished" overlay: level name and "Finished" text at the top of the screen.
 ///
 /// In commercial mode, does nothing for MAP33 and triggers an intentional patch
-/// bounds error for map numbers above `NUMCMAPS` (matching vanilla behavior).
+/// bounds error for map numbers above `NUMCMAPS` (preserving vanilla quirk - the
+/// out-of-range patch lookup is an upstream bug retained for demo compatibility).
+///
+/// # Safety
+///
+/// Dereferences the global `wbs` pointer plus the `lnames` array and the
+/// `finished` patch pointer. Caller must ensure `WI_Start`/`WI_loadData`
+/// have run so these globals are valid.
 unsafe fn WI_drawLF() {
     let mut y = WI_TITLEY;
 
@@ -773,6 +798,12 @@ unsafe fn WI_drawLF() {
 // ---------------------------------------------------------------------------
 
 /// Draw the "Entering" overlay: "Entering" text and the next level's name.
+///
+/// # Safety
+///
+/// Dereferences the global `wbs` pointer plus the `entering` patch and the
+/// `lnames` array. Caller must ensure `WI_Start`/`WI_loadData` have run so
+/// these globals are valid.
 unsafe fn WI_drawEL() {
     let mut y = WI_TITLEY;
 
@@ -799,6 +830,13 @@ unsafe fn WI_drawEL() {
 ///
 /// Tries each frame in `c` (indices 0 then 1) and draws the first that fits
 /// within the screen bounds. If neither fits, prints a diagnostic to stdout.
+///
+/// # Safety
+///
+/// `c` must point to an array of at least two `*mut patch_t` slots; the
+/// function reads index 0 unconditionally and index 1 only if index 0 does
+/// not fit on screen. Each non-null slot must point to a valid `patch_t`.
+/// Dereferences the global `wbs` for the current episode and reads `LNODES`.
 unsafe fn WI_drawOnLnode(n: c_int, c: *mut *mut patch_t) {
     let mut i = 0;
     let mut fits = false;
@@ -842,6 +880,13 @@ unsafe fn WI_drawOnLnode(n: c_int, c: *mut *mut patch_t) {
 /// No-op in commercial mode and for episode 3 (no animated background exists).
 /// Schedules the first frame of each animation by computing `nexttic` from
 /// `bcnt` plus a random offset.
+///
+/// # Safety
+///
+/// Dereferences the global `wbs` pointer and mutates the per-episode
+/// animation-state tables via `anim_state_ptr`. Caller must ensure `wbs`
+/// has been initialised (typically by `WI_initVariables`) and that no other
+/// code is concurrently reading the animation tables.
 unsafe fn WI_initAnimatedBack() {
     if gamemode == d_mode::commercial {
         return;
@@ -872,6 +917,12 @@ unsafe fn WI_initAnimatedBack() {
 /// No-op in commercial mode and for episode 3. For each animation whose
 /// `nexttic` matches the current `bcnt`, increments `ctr` and schedules the
 /// next frame according to the animation mode.
+///
+/// # Safety
+///
+/// Dereferences the global `wbs` pointer and mutates the per-episode
+/// animation-state tables via `anim_state_ptr`. Caller must ensure `wbs`
+/// is valid and the animation state was initialised by `WI_initAnimatedBack`.
 unsafe fn WI_updateAnimatedBack() {
     if gamemode == d_mode::commercial {
         return;
@@ -923,6 +974,13 @@ unsafe fn WI_updateAnimatedBack() {
 ///
 /// Skips animations whose `ctr` is negative (not yet started).
 /// No-op in commercial mode and for episode 3.
+///
+/// # Safety
+///
+/// Dereferences the global `wbs` pointer and reads the per-episode
+/// animation-state tables via `anim_state_ptr` plus the patch arrays they
+/// reference. Caller must ensure `wbs` is valid and animations have been
+/// initialised by `WI_initAnimatedBack`.
 unsafe fn WI_drawAnimatedBack() {
     if gamemode == d_mode::commercial {
         return;
@@ -953,6 +1011,11 @@ unsafe fn WI_drawAnimatedBack() {
 /// displays). If `digits` is negative, the required digit count is computed
 /// from `n`. The sentinel value 1994 suppresses drawing entirely (used when
 /// no ammo type applies). Negative values prepend a minus sign.
+///
+/// # Safety
+///
+/// Reads the global `num` digit patches and `wiminus` patch. Caller must
+/// ensure `WI_loadData` has cached these patches before invoking.
 unsafe fn WI_drawNum(mut x: c_int, y: c_int, mut n: c_int, mut digits: c_int) -> c_int {
     let fontwidth = SHORT((*num[0]).width) as c_int;
     let neg = n < 0;
@@ -996,6 +1059,11 @@ unsafe fn WI_drawNum(mut x: c_int, y: c_int, mut n: c_int, mut digits: c_int) ->
 /// Draw a percentage value: percent sign at `x`, then the number right-justified to the left of it.
 ///
 /// No-op if `pct` is negative (stat not yet tallied).
+///
+/// # Safety
+///
+/// Reads the global `percent` patch and delegates to `WI_drawNum`. Caller
+/// must ensure `WI_loadData` has cached the patches.
 unsafe fn WI_drawPercent(x: c_int, y: c_int, pct: c_int) {
     if pct < 0 {
         return;
@@ -1008,6 +1076,11 @@ unsafe fn WI_drawPercent(x: c_int, y: c_int, pct: c_int) {
 ///
 /// No-op if `t` is negative. If `t` exceeds the representable range (61 minutes 59 seconds),
 /// draws the "SUCKS" patch instead.
+///
+/// # Safety
+///
+/// Reads the global `colon` and `sucks` patches and delegates to
+/// `WI_drawNum`. Caller must ensure `WI_loadData` has cached the patches.
 unsafe fn WI_drawTime(mut x: c_int, y: c_int, t: c_int) {
     if t < 0 {
         return;
@@ -1039,12 +1112,22 @@ unsafe fn WI_drawTime(mut x: c_int, y: c_int, t: c_int) {
 ///
 /// Releases all WAD patches loaded by `WI_loadData`. Called by `G_WorldDone`
 /// before the game transitions to the next level.
+///
+/// # Safety
+///
+/// Delegates to `WI_unloadData`, which nulls every cached patch pointer.
+/// Caller must ensure no draw functions are still executing.
 #[no_mangle]
 pub unsafe extern "C" fn WI_End() {
     WI_unloadData();
 }
 
 /// Enter the `NoState` phase: count down 10 tics then call `G_WorldDone`.
+///
+/// # Safety
+///
+/// Mutates the intermission state globals `state`, `acceleratestage`, and
+/// `cnt`. Caller must ensure `WI_Start` has been invoked.
 unsafe fn WI_initNoState() {
     state = stateenum_t::NoState;
     acceleratestage = 0;
@@ -1052,6 +1135,11 @@ unsafe fn WI_initNoState() {
 }
 
 /// Tick the `NoState` phase; advances animations and calls `G_WorldDone` when `cnt` reaches 0.
+///
+/// # Safety
+///
+/// Mutates `cnt` and runs `WI_updateAnimatedBack` (which dereferences `wbs`
+/// and the animation state). Caller must ensure `WI_Start` has been invoked.
 unsafe fn WI_updateNoState() {
     WI_updateAnimatedBack();
     cnt -= 1;
@@ -1065,6 +1153,12 @@ unsafe fn WI_updateNoState() {
 // ---------------------------------------------------------------------------
 
 /// Enter the `ShowNextLoc` phase: show the episode map with a blinking "you are here" pointer.
+///
+/// # Safety
+///
+/// Mutates `state`, `acceleratestage`, `cnt`, and resets the animated
+/// background via `WI_initAnimatedBack` (which dereferences `wbs`). Caller
+/// must ensure `WI_Start` has been invoked.
 unsafe fn WI_initShowNextLoc() {
     state = stateenum_t::ShowNextLoc;
     acceleratestage = 0;
@@ -1073,6 +1167,11 @@ unsafe fn WI_initShowNextLoc() {
 }
 
 /// Tick the `ShowNextLoc` phase; blinks the pointer and transitions to `NoState` when done.
+///
+/// # Safety
+///
+/// Mutates `cnt` and `snl_pointeron` and may transition to `NoState` via
+/// `WI_initNoState`. Caller must ensure `WI_Start` has been invoked.
 unsafe fn WI_updateShowNextLoc() {
     WI_updateAnimatedBack();
     cnt -= 1;
@@ -1084,6 +1183,12 @@ unsafe fn WI_updateShowNextLoc() {
 }
 
 /// Draw the `ShowNextLoc` phase: episode map with completed-level splats and optional pointer.
+///
+/// # Safety
+///
+/// Dereferences the global `wbs` pointer and the `splat`/`yah` patch arrays,
+/// and delegates to `WI_slamBackground`, `WI_drawAnimatedBack`, `WI_drawEL`,
+/// and `WI_drawOnLnode`. Caller must ensure `WI_Start`/`WI_loadData` have run.
 unsafe fn WI_drawShowNextLoc() {
     WI_slamBackground();
     WI_drawAnimatedBack();
@@ -1122,6 +1227,11 @@ unsafe fn WI_drawShowNextLoc() {
 }
 
 /// Draw the `NoState` phase: same as `ShowNextLoc` but with the pointer always visible.
+///
+/// # Safety
+///
+/// Mutates `snl_pointeron` and delegates to `WI_drawShowNextLoc`; same
+/// invariants apply (intermission must be started and patches loaded).
 unsafe fn WI_drawNoState() {
     snl_pointeron = true;
     WI_drawShowNextLoc();
@@ -1133,6 +1243,13 @@ unsafe fn WI_drawNoState() {
 
 /// Compute the net frag total for `playernum`: sum of frags against other active players
 /// minus self-frags.
+///
+/// # Safety
+///
+/// Reads the global `playeringame` array and indexes into `plrs[playernum]`
+/// (a pointer into `wbs.plyr`). Caller must ensure `WI_initVariables` has
+/// set `plrs` to a valid array and that `playernum` is within
+/// `0..MAXPLAYERS`.
 unsafe fn WI_fragSum(playernum: c_int) -> c_int {
     let mut sum = 0;
     for i in 0..MAXPLAYERS {
@@ -1149,6 +1266,12 @@ unsafe fn WI_fragSum(playernum: c_int) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Initialise the deathmatch stats phase: zero all counters and start counting up.
+///
+/// # Safety
+///
+/// Mutates the intermission state globals (`state`, `acceleratestage`,
+/// `dm_state`, `cnt_pause`, `dm_frags`, `dm_totals`) and reads
+/// `playeringame`. Caller must ensure `WI_initVariables` has been invoked.
 unsafe fn WI_initDeathmatchStats() {
     state = stateenum_t::StatCount;
     acceleratestage = 0;
@@ -1172,6 +1295,14 @@ unsafe fn WI_initDeathmatchStats() {
 /// Tick the deathmatch stats phase: count frag values up toward the actual totals.
 ///
 /// State machine: odd states are pauses, state 2 ticks frags, state 4 waits for acceleration.
+///
+/// # Safety
+///
+/// Mutates the deathmatch-stats globals (`dm_frags`, `dm_totals`,
+/// `dm_state`, `cnt_pause`, `acceleratestage`) and reads `plrs`,
+/// `playeringame`, `gamemode`. Triggers sound effects via `S_StartSound`.
+/// Caller must ensure `WI_initDeathmatchStats` has run and the sound
+/// subsystem is initialised.
 unsafe fn WI_updateDeathmatchStats() {
     WI_updateAnimatedBack();
 
@@ -1247,6 +1378,13 @@ unsafe fn WI_updateDeathmatchStats() {
 }
 
 /// Draw the deathmatch stats page: background, level name, frag matrix, and totals column.
+///
+/// # Safety
+///
+/// Reads the deathmatch-stats globals plus the `total`/`killers`/`victims`/
+/// `p`/`star`/`bstar` patches and `playeringame`. Caller must ensure
+/// `WI_loadData` cached the patches and the deathmatch stats phase has
+/// been initialised.
 unsafe fn WI_drawDeathmatchStats() {
     WI_slamBackground();
     WI_drawAnimatedBack();
@@ -1307,6 +1445,12 @@ unsafe fn WI_drawDeathmatchStats() {
 // ---------------------------------------------------------------------------
 
 /// Initialise the cooperative netgame stats phase: zero per-player counters and check if frags exist.
+///
+/// # Safety
+///
+/// Mutates the netgame-stats globals (`state`, `ng_state`, `cnt_pause`,
+/// `cnt_kills`, `cnt_items`, `cnt_secret`, `cnt_frags`, `dofrags`) and
+/// reads `playeringame`. Caller must ensure `WI_initVariables` has run.
 unsafe fn WI_initNetgameStats() {
     state = stateenum_t::StatCount;
     acceleratestage = 0;
@@ -1332,6 +1476,13 @@ unsafe fn WI_initNetgameStats() {
 /// Tick the netgame stats phase: sequentially count up kills, items, secrets, and frags.
 ///
 /// States 2/4/6/8 are counting states; odd states are pauses between categories.
+///
+/// # Safety
+///
+/// Mutates the netgame-stats globals (`cnt_kills`, `cnt_items`,
+/// `cnt_secret`, `cnt_frags`, `ng_state`, `cnt_pause`, `acceleratestage`)
+/// and reads `plrs`, `wbs`, `playeringame`. Triggers sound effects via
+/// `S_StartSound`. Caller must ensure `WI_initNetgameStats` has run.
 unsafe fn WI_updateNetgameStats() {
     WI_updateAnimatedBack();
 
@@ -1455,6 +1606,13 @@ unsafe fn WI_updateNetgameStats() {
 }
 
 /// Draw the cooperative netgame stats page: background, column headers, and per-player rows.
+///
+/// # Safety
+///
+/// Reads the netgame-stats globals plus the column-header patches
+/// (`kills`, `items`, `secret`, `frags`, `percent`, `p`, `star`) and
+/// `playeringame`. Caller must ensure `WI_loadData` cached the patches
+/// and the netgame stats phase has been initialised.
 unsafe fn WI_drawNetgameStats() {
     let pwidth = SHORT((*percent).width) as c_int;
 
@@ -1517,6 +1675,13 @@ unsafe fn WI_drawNetgameStats() {
 // ---------------------------------------------------------------------------
 
 /// Initialise the single-player stats phase: set all display values to -1 (not yet drawn).
+///
+/// # Safety
+///
+/// Mutates the single-player stats globals (`state`, `sp_state`,
+/// `cnt_kills[0]`, `cnt_items[0]`, `cnt_secret[0]`, `cnt_time`, `cnt_par`,
+/// `cnt_pause`, `acceleratestage`) and resets the animated background.
+/// Caller must ensure `WI_initVariables` has run.
 unsafe fn WI_initStats() {
     state = stateenum_t::StatCount;
     acceleratestage = 0;
@@ -1535,6 +1700,13 @@ unsafe fn WI_initStats() {
 ///
 /// States 2/4/6 count up kill/item/secret percentages; state 8 counts time and par
 /// simultaneously; state 10 waits for the player to accelerate.
+///
+/// # Safety
+///
+/// Mutates the single-player stats counters (`cnt_kills[0]`, `cnt_items[0]`,
+/// `cnt_secret[0]`, `cnt_time`, `cnt_par`, `sp_state`, `cnt_pause`,
+/// `acceleratestage`) and reads `plrs`, `wbs`. Triggers sound effects via
+/// `S_StartSound`. Caller must ensure `WI_initStats` has run.
 unsafe fn WI_updateStats() {
     WI_updateAnimatedBack();
 
@@ -1619,6 +1791,13 @@ unsafe fn WI_updateStats() {
 }
 
 /// Draw the single-player stats page: background, level name, kill/item/secret/time/par values.
+///
+/// # Safety
+///
+/// Reads the single-player stats counters plus the patches `num`, `kills`,
+/// `items`, `sp_secret`, `timepatch`, `par`, and dereferences `wbs` to
+/// decide whether to draw the par-time row. Caller must ensure
+/// `WI_loadData` cached the patches and the stats phase has been initialised.
 unsafe fn WI_drawStats() {
     let lh = (3 * SHORT((*num[0]).height) as c_int) / 2;
 
@@ -1652,6 +1831,12 @@ unsafe fn WI_drawStats() {
 ///
 /// This is the mechanism by which the player can skip the count-up animation by
 /// pressing fire or use during the intermission screen.
+///
+/// # Safety
+///
+/// Reads `playeringame` and mutates each active player's `attackdown`/
+/// `usedown` flags via the global `players` array, and may set
+/// `acceleratestage`. Caller must ensure the player array is initialised.
 unsafe fn WI_checkForAccelerate() {
     for i in 0..MAXPLAYERS {
         if playeringame[i] != 0 {
@@ -1687,6 +1872,14 @@ unsafe fn WI_checkForAccelerate() {
 /// Increments `bcnt`, starts the intermission music on the first tic,
 /// checks for acceleration input, and dispatches to the appropriate state
 /// update function. Called by `G_Ticker` in `g_game.c`.
+///
+/// # Safety
+///
+/// Mutates `bcnt` and `state` (indirectly via the update functions) and
+/// reads `gamemode`/`deathmatch`/`netgame`. Triggers `S_ChangeMusic` and
+/// invokes `WI_checkForAccelerate` and one of the per-state updaters, each
+/// with their own state-global dependencies. Caller must ensure `WI_Start`
+/// has been invoked and the sound subsystem is initialised.
 #[no_mangle]
 pub unsafe extern "C" fn WI_Ticker() {
     bcnt += 1;
@@ -1734,6 +1927,15 @@ type LoadCallback = unsafe extern "C" fn(*mut c_char, *mut *mut patch_t);
 /// Shared by `WI_loadData` and `WI_unloadData`. Handles both episode (Doom 1)
 /// and commercial (Doom 2) map lists, animation frame patches, and all UI
 /// patches (numbers, labels, background).
+///
+/// # Safety
+///
+/// `callback` is invoked as an `unsafe extern "C"` function and is given raw
+/// pointers into the static patch globals (`lnames`, `yah`, `splat`, `num`,
+/// `percent`, `finished`, `entering`, etc.) and the per-episode animation
+/// state. Caller must pass a callback that respects those pointers' validity
+/// and only reads/writes the single slot supplied. Dereferences `wbs` and
+/// the global `gamemode`; the WAD subsystem must be initialised.
 unsafe fn WI_loadUnloadData(callback: LoadCallback) {
     let mut name: [c_char; 9] = [0; 9];
 
@@ -1823,6 +2025,13 @@ unsafe fn WI_loadUnloadData(callback: LoadCallback) {
 }
 
 /// Load callback: cache the named lump at `PU_STATIC` priority and store the pointer.
+///
+/// # Safety
+///
+/// Caller must ensure `name` is a valid NUL-terminated C-string pointer
+/// recognised by `W_CacheLumpName`, and `variable` is a valid, non-null,
+/// properly aligned pointer to a `*mut patch_t` slot the function may
+/// overwrite.
 unsafe extern "C" fn WI_loadCallback(name: *mut c_char, variable: *mut *mut patch_t) {
     *variable = W_CacheLumpName(name, PU_STATIC) as *mut patch_t;
 }
@@ -1832,6 +2041,13 @@ unsafe extern "C" fn WI_loadCallback(name: *mut c_char, variable: *mut *mut patc
 /// Must be called before the first `WI_Drawer` call. `lnames` is allocated from
 /// the zone heap at `PU_STATIC` with a size matching either `NUMCMAPS` (commercial)
 /// or `NUMMAPS` (episode).  Also loads the `star`/`bstar` patches directly.
+///
+/// # Safety
+///
+/// Allocates `lnames` via `Z_Malloc` and mutates every cached patch global
+/// (`star`, `bstar`, and everything touched by `WI_loadUnloadData`). Caller
+/// must ensure the WAD and zone-memory subsystems are initialised and that
+/// `wbs` is valid (via `WI_initVariables`).
 #[no_mangle]
 pub unsafe extern "C" fn WI_loadData() {
     if gamemode == d_mode::commercial {
@@ -1856,6 +2072,13 @@ pub unsafe extern "C" fn WI_loadData() {
 }
 
 /// Unload callback: release the named lump from the WAD cache and null the pointer.
+///
+/// # Safety
+///
+/// Caller must ensure `name` is a valid NUL-terminated C-string pointer
+/// previously cached via `W_CacheLumpName`, and `variable` is a valid,
+/// non-null, properly aligned pointer to a `*mut patch_t` slot that this
+/// function may overwrite with null.
 unsafe extern "C" fn WI_unloadCallback(name: *mut c_char, variable: *mut *mut patch_t) {
     W_ReleaseLumpName(name);
     *variable = ptr::null_mut();
@@ -1864,6 +2087,12 @@ unsafe extern "C" fn WI_unloadCallback(name: *mut c_char, variable: *mut *mut pa
 /// Release all intermission WAD patches loaded by `WI_loadData`.
 ///
 /// Called indirectly by `WI_End` at the close of the intermission screen.
+///
+/// # Safety
+///
+/// Nulls every cached patch pointer in the intermission globals and
+/// releases their WAD lumps. Caller must ensure no draw or update
+/// functions are still executing.
 #[no_mangle]
 pub unsafe extern "C" fn WI_unloadData() {
     WI_loadUnloadData(WI_unloadCallback);
@@ -1877,6 +2106,13 @@ pub unsafe extern "C" fn WI_unloadData() {
 ///
 /// Dispatches to the appropriate draw function based on `state` and `deathmatch`/`netgame` flags.
 /// Called by `D_Display` in `d_main.c` every frame while `gamestate == GS_INTERMISSION`.
+///
+/// # Safety
+///
+/// Reads the global `state`, `deathmatch`, and `netgame` flags and
+/// dispatches to one of the per-phase draw functions, each of which
+/// dereferences the intermission globals (`wbs`, patch pointers, etc.).
+/// Caller must ensure `WI_Start` has been invoked.
 #[no_mangle]
 pub unsafe extern "C" fn WI_Drawer() {
     match state {
@@ -1907,6 +2143,14 @@ pub unsafe extern "C" fn WI_Drawer() {
 /// Clamps all max-count fields to a minimum of 1 to avoid division-by-zero in
 /// percentage calculations. Adjusts `wbs.epsd` downward by 3 for non-retail
 /// builds that were given an out-of-range episode number.
+///
+/// # Safety
+///
+/// Caller must ensure `wbstartstruct` is a valid, non-null, properly aligned
+/// pointer to an initialised `wbstartstruct_t` that remains live for the
+/// duration of the intermission. Mutates the global state pointers `wbs`,
+/// `plrs` and the counter globals (`acceleratestage`, `cnt`, `bcnt`,
+/// `firstrefresh`, `me`).
 unsafe fn WI_initVariables(wbstartstruct: *mut wbstartstruct_t) {
     wbs = wbstartstruct;
     plrs = (*wbs).plyr.as_mut_ptr();
@@ -1937,6 +2181,14 @@ unsafe fn WI_initVariables(wbstartstruct: *mut wbstartstruct_t) {
 /// Initialises all state variables, loads WAD patches, and enters the appropriate
 /// stats phase (deathmatch, netgame, or single-player). Called from `G_WorldDone`
 /// in `g_game.c`.
+///
+/// # Safety
+///
+/// Caller must ensure `wbstartstruct` is a valid, non-null, properly aligned
+/// pointer to an initialised `wbstartstruct_t` whose lifetime spans the
+/// intermission. Mutates every intermission global via `WI_initVariables`,
+/// `WI_loadData`, and the per-mode `WI_init*Stats` helpers; the WAD, zone,
+/// and sound subsystems must be initialised.
 #[no_mangle]
 pub unsafe extern "C" fn WI_Start(wbstartstruct: *mut wbstartstruct_t) {
     WI_initVariables(wbstartstruct);

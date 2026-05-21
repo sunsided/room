@@ -264,6 +264,12 @@ const STSTR_CLEV: *mut c_char = c"Changing Level...".as_ptr().cast_mut();
 /// In the C codebase, `DEH_String` may substitute a string that was patched by
 /// a `.deh` file. This port does not yet support Dehacked, so the function
 /// returns its argument unchanged.
+///
+/// # Safety
+///
+/// Caller must ensure `s` is either null or a valid C-string pointer; this
+/// implementation does not dereference it and simply returns the pointer
+/// unchanged.
 #[inline(always)]
 unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
     s
@@ -279,6 +285,11 @@ unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
 /// - `pack_chex` maps to `doom`.
 /// - `pack_hacx` maps to `doom2`.
 /// - All other values are returned as-is.
+///
+/// # Safety
+///
+/// Reads the global `gamemission` static. Caller must ensure `D_DoomMain` has
+/// initialised the game-mode globals before calling.
 unsafe fn logical_gamemission() -> c_int {
     if gamemission == d_mode::pack_chex {
         d_mode::doom
@@ -533,6 +544,13 @@ static mut st_stopped: c_int = 1;
 ///
 /// Only runs when `st_statusbaron` is set. In a network game the face-background
 /// patch (`STFB#`) is drawn on top of the bar before the copy.
+///
+/// # Safety
+///
+/// Reads the global status-bar visibility flag `st_statusbaron` and the cached
+/// patches `sbar`/`faceback`, and writes to the backing screen buffer
+/// `st_backing_screen`. Caller must ensure `ST_Init` has loaded the patches
+/// and allocated the buffer, and that the video subsystem is ready.
 #[no_mangle]
 pub unsafe extern "C" fn ST_refreshBackground() {
     if st_statusbaron != 0 {
@@ -558,6 +576,13 @@ pub unsafe extern "C" fn ST_refreshBackground() {
 /// Cheat codes are suppressed in network games and on the Nightmare skill level.
 /// The level-change cheat (`idclev`) is suppressed in network games regardless of
 /// skill.
+///
+/// # Safety
+///
+/// Caller must ensure `ev` is a valid, non-null, properly aligned pointer to an
+/// initialised `event_t`. Reads and mutates global cheat-sequence state and the
+/// status-bar game state (`st_gamestate`, `st_firsttime`, etc.); caller must
+/// ensure no concurrent access to these globals.
 #[no_mangle]
 pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
     let ev = &*ev;
@@ -745,6 +770,12 @@ pub unsafe extern "C" fn ST_Responder(ev: *mut event_t) -> c_int {
 /// happens when `health` changes.
 ///
 /// Precondition: `plyr` is non-null and points to a valid `PlayerT`.
+///
+/// # Safety
+///
+/// Dereferences the global `plyr` pointer and reads/writes function-local
+/// `static mut` cache slots. Caller must ensure `ST_initData` has set `plyr`
+/// to a valid player and that no concurrent access to the cache occurs.
 #[no_mangle]
 pub unsafe extern "C" fn ST_calcPainOffset() -> c_int {
     static mut lastcalc: c_int = 0;
@@ -768,14 +799,25 @@ pub unsafe extern "C" fn ST_calcPainOffset() -> c_int {
 /// Priority system (highest wins):
 /// 1. Dead face (priority 9).
 /// 2. Evil grin on weapon pickup (priority 8).
-/// 3. Ouch or turn face when taking damage from an attacker (priority 7).
-/// 4. Ouch or rampage face when taking damage from an unknown source (priority 6).
+/// 3. Ouch face on large damage (`health - st_oldhealth > ST_MUCHPAIN`) or turn
+///    face on normal damage from an attacker (priority 7).
+/// 4. Ouch face on large damage or rampage face when taking damage from an
+///    unknown source (priority 6).
 /// 5. Rampage face after `ST_RAMPAGEDELAY` tics of continuous fire (priority 5).
 /// 6. God-mode / invulnerability face (priority 4).
 /// 7. Idle random straight face (priority 0, selected when `st_facecount` reaches 0).
 ///
 /// Precondition: `plyr` is non-null and `oldweaponsowned` matches the snapshot
 /// from the previous call.
+///
+/// # Safety
+///
+/// Dereferences the global `plyr` pointer (and `plyr->mo`/`plyr->attacker`
+/// when computing turn directions) and reads/mutates the face-widget globals
+/// (`st_faceindex`, `st_facecount`, `st_oldhealth`, `oldweaponsowned`,
+/// function-local `priority`/`lastattackdown`). Caller must ensure
+/// `ST_Start`/`ST_initData` has been called and that no other thread accesses
+/// these globals concurrently.
 #[no_mangle]
 pub unsafe extern "C" fn ST_updateFaceWidget() {
     static mut lastattackdown: c_int = -1;
@@ -898,6 +940,13 @@ pub unsafe extern "C" fn ST_updateFaceWidget() {
 /// visibility flags for the arms panel and frag counter, the frag total, and
 /// the face widget via `ST_updateFaceWidget`. Also decrements `st_msgcounter`
 /// and restores `st_chat` when it expires.
+///
+/// # Safety
+///
+/// Dereferences the global `plyr` pointer and mutates the widget globals
+/// (`w_ready`, `keyboxes`, `st_notdeathmatch`, `st_armson`, `st_fragson`,
+/// `st_fragscount`, `st_chat`, `st_msgcounter`). Caller must ensure
+/// `ST_createWidgets` has run and that `plyr` is valid.
 #[no_mangle]
 pub unsafe extern "C" fn ST_updateWidgets() {
     static mut largeammo: c_int = 1994;
@@ -963,6 +1012,12 @@ pub unsafe extern "C" fn ST_updateWidgets() {
 /// variation, updates all widget data via `ST_updateWidgets`, and records the
 /// current health for the ouch-face comparison next tic.
 /// Called once per tic by `G_Ticker` in `g_game.c`.
+///
+/// # Safety
+///
+/// Mutates `st_clock`, `st_randomnumber`, and `st_oldhealth`, and indirectly
+/// touches every widget global via `ST_updateWidgets`. Caller must ensure
+/// `ST_Start` has been called and that `plyr` is valid.
 #[no_mangle]
 pub unsafe extern "C" fn ST_Ticker() {
     st_clock = st_clock.wrapping_add(1);
@@ -985,6 +1040,13 @@ pub unsafe extern "C" fn ST_Ticker() {
 ///
 /// In Chex Quest the red-damage palettes are replaced with `RADIATIONPAL` to
 /// avoid gore. Only calls `I_SetPalette` when the palette index changes.
+///
+/// # Safety
+///
+/// Dereferences the global `plyr` pointer and mutates `st_palette`. Calls
+/// `W_CacheLumpNum`/`I_SetPalette` so the WAD subsystem and video backend
+/// must be initialised, and `lu_palette` must hold a valid lump number set
+/// up by `ST_loadData`.
 #[no_mangle]
 pub unsafe extern "C" fn ST_doPaletteStuff() {
     let mut palette: c_int;
@@ -1039,6 +1101,13 @@ pub unsafe extern "C" fn ST_doPaletteStuff() {
 /// `refresh` is passed through to each widget: non-zero forces a full redraw,
 /// zero redraws only widgets whose value changed since last frame.
 /// Updates `st_armson` and `st_fragson` visibility flags before iterating.
+///
+/// # Safety
+///
+/// Mutates `st_armson`/`st_fragson` and reads every `w_*` widget global,
+/// passing them to the `STlib_update*` family. Caller must ensure
+/// `ST_createWidgets` has been called so the widget pointers refer to live
+/// player/state values.
 #[no_mangle]
 pub unsafe extern "C" fn ST_drawWidgets(refresh: c_int) {
     st_armson = if st_statusbaron != 0 && deathmatch == 0 {
@@ -1077,6 +1146,12 @@ pub unsafe extern "C" fn ST_drawWidgets(refresh: c_int) {
 }
 
 /// Perform a full status-bar redraw: clear `st_firsttime`, refresh the background, then redraw all widgets.
+///
+/// # Safety
+///
+/// Mutates `st_firsttime` and delegates to `ST_refreshBackground` and
+/// `ST_drawWidgets`, which require an initialised status bar and live
+/// `plyr` pointer.
 #[no_mangle]
 pub unsafe extern "C" fn ST_doRefresh() {
     st_firsttime = 0;
@@ -1085,6 +1160,11 @@ pub unsafe extern "C" fn ST_doRefresh() {
 }
 
 /// Perform a differential redraw: only redraw widgets whose value changed.
+///
+/// # Safety
+///
+/// Delegates to `ST_drawWidgets`; same invariants apply (widgets must have
+/// been created and `plyr` must be valid).
 #[no_mangle]
 pub unsafe extern "C" fn ST_diffDraw() {
     ST_drawWidgets(0);
@@ -1098,6 +1178,13 @@ pub unsafe extern "C" fn ST_diffDraw() {
 /// it is hidden.
 ///
 /// Called once per frame by the main render loop (`D_Display` in `d_main.c`).
+///
+/// # Safety
+///
+/// Mutates `st_statusbaron` and `st_firsttime` and dispatches to
+/// `ST_doPaletteStuff`, `ST_doRefresh`, and `ST_diffDraw`. Caller must
+/// ensure the status-bar subsystem has been started (`ST_Start`) and the
+/// video backend is ready.
 #[no_mangle]
 pub unsafe extern "C" fn ST_Drawer(fullscreen: Boolean, refresh: Boolean) {
     st_statusbaron = if fullscreen.is_false() || automapactive != 0 {
@@ -1133,6 +1220,14 @@ type LoadCallback = unsafe extern "C" fn(*mut c_char, *mut *mut patch_t);
 /// Shared by `ST_loadGraphics` (which passes `ST_loadCallback`) and
 /// `ST_unloadGraphics` (which passes `ST_unloadCallback`). The face lump names
 /// are generated dynamically; all other names are string literals.
+///
+/// # Safety
+///
+/// `callback` is invoked as an `unsafe extern "C"` function and is given raw
+/// pointers into the static `tallnum`/`shortnum`/`faces`/etc. arrays. Caller
+/// must pass a callback that respects those pointers' validity and only
+/// reads/writes the single patch slot supplied. The WAD subsystem must be
+/// initialised before the load variant is invoked.
 unsafe fn ST_loadUnloadGraphics(callback: LoadCallback) {
     let mut namebuf = [0i8; 9];
 
@@ -1196,17 +1291,36 @@ unsafe fn ST_loadUnloadGraphics(callback: LoadCallback) {
 }
 
 /// Load callback: cache the named WAD lump and store the pointer in `*variable`.
+///
+/// # Safety
+///
+/// Caller must ensure `lumpname` is a valid NUL-terminated C-string pointer
+/// recognised by `W_CacheLumpName`, and `variable` is a valid, non-null,
+/// properly aligned pointer to a `*mut patch_t` slot the function may overwrite.
 unsafe extern "C" fn ST_loadCallback(lumpname: *mut c_char, variable: *mut *mut patch_t) {
     *variable = W_CacheLumpName(lumpname, PU_STATIC) as *mut patch_t;
 }
 
 /// Cache all status-bar graphics from the WAD into `PU_STATIC` memory.
+///
+/// # Safety
+///
+/// Mutates every cached patch pointer in the status-bar globals
+/// (`tallnum`, `shortnum`, `tallpercent`, `keys`, `armsbg`, `arms`,
+/// `faceback`, `sbar`, `faces`). Caller must ensure the WAD subsystem is
+/// initialised and that no other code is reading these pointers concurrently.
 #[no_mangle]
 pub unsafe extern "C" fn ST_loadGraphics() {
     ST_loadUnloadGraphics(ST_loadCallback);
 }
 
 /// Cache the palette lump number and load all status-bar graphics.
+///
+/// # Safety
+///
+/// Writes the global `lu_palette` and delegates to `ST_loadGraphics`, which
+/// mutates the cached patch pointers. Caller must ensure the WAD subsystem
+/// is initialised.
 #[no_mangle]
 pub unsafe extern "C" fn ST_loadData() {
     lu_palette = W_GetNumForName(c"PLAYPAL".as_ptr());
@@ -1214,18 +1328,36 @@ pub unsafe extern "C" fn ST_loadData() {
 }
 
 /// Unload callback: release the named WAD lump and null the pointer in `*variable`.
+///
+/// # Safety
+///
+/// Caller must ensure `lumpname` is a valid NUL-terminated C-string pointer
+/// previously cached via `W_CacheLumpName`, and `variable` is a valid,
+/// non-null, properly aligned pointer to a `*mut patch_t` slot that this
+/// function may overwrite with null.
 unsafe extern "C" fn ST_unloadCallback(lumpname: *mut c_char, variable: *mut *mut patch_t) {
     W_ReleaseLumpName(lumpname);
     *variable = ptr::null_mut();
 }
 
 /// Release all status-bar graphics and null their pointers.
+///
+/// # Safety
+///
+/// Nulls every cached patch pointer in the status-bar globals and releases
+/// their WAD lumps. Caller must ensure no other code is currently using
+/// those patches (e.g. drawing must be stopped via `ST_Stop`).
 #[no_mangle]
 pub unsafe extern "C" fn ST_unloadGraphics() {
     ST_loadUnloadGraphics(ST_unloadCallback);
 }
 
 /// Release all status-bar data (currently delegates to `ST_unloadGraphics`).
+///
+/// # Safety
+///
+/// Delegates to `ST_unloadGraphics`; same invariants apply (status bar must
+/// not currently be drawing).
 #[no_mangle]
 pub unsafe extern "C" fn ST_unloadData() {
     ST_unloadGraphics();
@@ -1240,6 +1372,13 @@ pub unsafe extern "C" fn ST_unloadData() {
 /// Sets `st_firsttime`, clears the clock, chat state, cursor, face index, and
 /// palette sentinel. Snapshots the current weapon ownership array and resets
 /// key-slot values to -1. Calls `STlib_init` to reset the widget library.
+///
+/// # Safety
+///
+/// Writes to every internal status-bar state global and to `plyr`, deriving
+/// it from `players[consoleplayer]`. Caller must ensure `consoleplayer` is a
+/// valid index into `players` (i.e. `D_DoomMain` has set the network/player
+/// globals).
 #[no_mangle]
 pub unsafe extern "C" fn ST_initData() {
     st_firsttime = 1;
@@ -1271,6 +1410,13 @@ pub unsafe extern "C" fn ST_initData() {
 /// have been loaded (which populates `tallnum`, `shortnum`, etc.). Creates
 /// widgets for: ready ammo, health, armor, arms background, weapons-owned icons,
 /// frag counter, face, key slots, and per-ammo-type current/max displays.
+///
+/// # Safety
+///
+/// Initialises every `w_*` widget global with raw pointers into `plyr`'s
+/// ammo/health/armor/weapon-owned arrays and the cached patch tables.
+/// Caller must ensure `ST_initData` and `ST_loadGraphics` ran first so
+/// `plyr` is valid and the patches are loaded.
 #[no_mangle]
 pub unsafe extern "C" fn ST_createWidgets() {
     STlib_initNum(
@@ -1425,6 +1571,13 @@ pub unsafe extern "C" fn ST_createWidgets() {
 ///
 /// Calls `ST_Stop` if already running, then re-initialises state, creates
 /// widgets, and clears `st_stopped`. Called from `G_DoLoadLevel` in `g_game.c`.
+///
+/// # Safety
+///
+/// Reads/mutates `st_stopped` and runs `ST_initData`/`ST_createWidgets`,
+/// which mutate every status-bar global and require the WAD/player subsystems
+/// to be initialised (see those functions' own safety contracts). Caller must
+/// ensure `ST_Init` has run once at startup.
 #[no_mangle]
 pub unsafe extern "C" fn ST_Start() {
     if st_stopped == 0 {
@@ -1440,6 +1593,12 @@ pub unsafe extern "C" fn ST_Start() {
 /// Resets the display palette to `PLAYPAL` index 0 and sets `st_stopped`.
 /// Safe to call when already stopped (guard at the top). Called from `G_WorldDone`
 /// and `ST_Start` in `g_game.c`.
+///
+/// # Safety
+///
+/// Reads/mutates `st_stopped` and calls `I_SetPalette` with the cached
+/// `lu_palette` lump. Caller must ensure `ST_loadData` has cached the
+/// palette lump and the video backend is ready.
 #[no_mangle]
 pub unsafe extern "C" fn ST_Stop() {
     if st_stopped != 0 {
@@ -1454,6 +1613,13 @@ pub unsafe extern "C" fn ST_Stop() {
 /// Loads all WAD graphics into `PU_STATIC` memory and allocates the backing
 /// screen buffer. Must be called exactly once during startup, before `ST_Start`.
 /// Called from `G_InitNew` in `g_game.c`.
+///
+/// # Safety
+///
+/// Allocates `st_backing_screen` via `Z_Malloc` and runs `ST_loadData`,
+/// which mutates the cached patch globals. Caller must ensure the WAD and
+/// zone-memory subsystems are initialised, and that this function is called
+/// exactly once.
 #[no_mangle]
 pub unsafe extern "C" fn ST_Init() {
     ST_loadData();

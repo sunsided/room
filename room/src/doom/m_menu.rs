@@ -11,8 +11,8 @@
 //!   reference other statics in Rust's const evaluator.
 //! - `make_gamma_msg` and `mi` are `const fn` helpers replacing C compound
 //!   literals, keeping the lookup tables in static storage.
-//! - `logical_gamemission` is a safe free function (no `unsafe`) because it reads
-//!   a C-linked global through Rust's ordinary `unsafe` block internally.
+//! - `logical_gamemission` has a safe signature (`fn`, not `unsafe fn`); the
+//!   C-linked global read is wrapped in an internal `unsafe { ... }` block.
 
 #![allow(non_upper_case_globals, non_snake_case)]
 
