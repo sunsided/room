@@ -1,6 +1,15 @@
 //! Rust port of vendor/doomgeneric/w_wad.c.
 //!
 //! WAD file header / directory parsing, lump lookup, and caching.
+//!
+//! The global `lumpinfo` array and its companion `numlumps` /
+//! `lumphash` form the in-memory directory of every lump loaded from
+//! all WADs. `W_AddFile` is the entry point that appends a WAD or
+//! single-lump file; `W_CheckNumForName` and `W_GetNumForName`
+//! resolve lump names to indices; `W_CacheLumpNum` returns a
+//! reusable pointer to the lump's bytes, populating the zone-managed
+//! cache on first miss. The hash table built by `W_GenerateHashTable`
+//! is consulted in preference to the linear scan once present.
 
 #![allow(non_upper_case_globals, non_snake_case, non_camel_case_types)]
 
@@ -16,50 +25,105 @@ use crate::doom::i_video::{I_BeginRead, I_EndRead};
 use crate::doom::m_misc::M_ExtractFileBase;
 use crate::doom::z_zone::{Z_ChangeTag2, Z_ChangeUser, Z_Free, Z_Malloc, PU_CACHE, PU_STATIC};
 
+/// One entry in the global lump directory. Mirrors `lumpinfo_t` in
+/// `w_wad.h`. The size (40 bytes on x86_64) is asserted by a
+/// `cfg(test)` test below since other modules read this layout
+/// across the FFI boundary.
 #[repr(C)]
 pub struct lumpinfo_t {
+    /// 8-char ASCII lump name, **not** NUL-terminated when full.
     pub name: [c_char; 8],
+    /// File the lump lives in.
     pub wad_file: *mut wad_file_t,
+    /// Offset of the lump payload inside the file, in bytes.
     pub position: c_int,
+    /// Payload size in bytes.
     pub size: c_int,
+    /// Zone-allocated cache pointer, or null if not yet loaded.
+    /// Memory-mapped files leave this null; `W_CacheLumpNum`
+    /// returns a pointer into the mapping directly.
     pub cache: *mut c_void,
+    /// Next entry in the per-hash-bucket chain when `lumphash` is
+    /// populated; null otherwise.
     pub next: *mut lumpinfo_t,
 }
 
+/// On-disk WAD header. Read from offset 0 of every `.wad` file
+/// loaded by `W_AddFile`. Layout matches `wadinfo_t` in `w_wad.c`,
+/// 12 bytes on x86_64.
 #[repr(C)]
 struct wadinfo_t {
+    /// Magic identifier: `"IWAD"` for the main IWAD, `"PWAD"` for
+    /// a patch WAD. Anything else triggers `I_Error`.
     identification: [c_char; 4],
+    /// Little-endian number of lumps in the directory.
     numlumps: c_int,
+    /// Little-endian byte offset to the lump-directory table.
     infotableofs: c_int,
 }
 
+/// On-disk directory entry as it appears at `infotableofs`. Mirrors
+/// `filelump_t` in `w_wad.c`, 16 bytes on x86_64.
 #[repr(C)]
 struct filelump_t {
+    /// Little-endian byte offset of the lump payload inside the WAD.
     filepos: c_int,
+    /// Little-endian payload length in bytes.
     size: c_int,
+    /// 8-char ASCII lump name, NUL-padded.
     name: [c_char; 8],
 }
 
+/// Pointer to the global lump directory. Mirrors the `lumpinfo` C
+/// global; sized by `numlumps`. Reallocated by `ExtendLumpInfo`
+/// every time a new file is added. C linkage so other translation
+/// units (and tests) can reach it.
 #[no_mangle]
 pub static mut lumpinfo: *mut lumpinfo_t = ptr::null_mut();
 
+/// Number of entries in `lumpinfo`. Mirrors the C `numlumps` global.
 #[no_mangle]
 pub static mut numlumps: c_uint = 0;
 
+/// Hash table: `numlumps` buckets, each a singly-linked list through
+/// `lumpinfo_t::next`. Built lazily by `W_GenerateHashTable` and
+/// dropped whenever a new file is added.
 static mut lumphash: *mut *mut lumpinfo_t = ptr::null_mut();
 
 extern "C" {
+    /// libc: case-insensitive compare of first `n` bytes.
     fn strncasecmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int;
+    /// libc: case-insensitive string compare.
     fn strcasecmp(s1: *const c_char, s2: *const c_char) -> c_int;
+    /// libc: byte-equal compare of first `n` bytes.
     fn strncmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int;
+    /// libc: copy up to `n` bytes, NUL-padding the destination.
     fn strncpy(dst: *mut c_char, src: *const c_char, n: usize) -> *mut c_char;
+    /// libc: NUL-terminated string length.
     fn strlen(s: *const c_char) -> usize;
+    /// libc: ASCII-upper-case.
     fn toupper(c: c_int) -> c_int;
 
+    /// libc: zero-initialised allocation.
     fn calloc(nmemb: usize, size: usize) -> *mut c_void;
+    /// libc: free a `malloc`/`calloc` block.
     fn free(ptr: *mut c_void);
 }
 
+/// Grow the global `lumpinfo` array to `newnumlumps` entries, copy
+/// the existing entries across, fix up any zone-allocator user
+/// pointers (`Z_ChangeUser`), and re-link any in-flight `next`
+/// chains so they point into the new array.
+///
+/// On allocation failure, calls `I_Error`. After return,
+/// `lumpinfo` points at the new array, `numlumps == newnumlumps`,
+/// and the old array has been `free`'d.
+///
+/// # Safety
+///
+/// Mutates the `lumpinfo` and `numlumps` globals. Assumes
+/// `newnumlumps >= numlumps`. Mirrors the file-static helper of
+/// the same name in `w_wad.c`.
 unsafe fn ExtendLumpInfo(newnumlumps: c_uint) {
     let newlumpinfo =
         calloc(newnumlumps as usize, std::mem::size_of::<lumpinfo_t>()) as *mut lumpinfo_t;
@@ -89,6 +153,12 @@ unsafe fn ExtendLumpInfo(newnumlumps: c_uint) {
     numlumps = newnumlumps;
 }
 
+/// djb2-style hash of an 8-char lump name (NUL-terminated or padded).
+///
+/// The hash uses `((h << 5) ^ h) ^ toupper(ch)` per character, so
+/// the result is case-insensitive and matches the C reference in
+/// `w_wad.c` exactly. Caller must ensure `s` points to at least 8
+/// bytes (or a shorter NUL-terminated string).
 #[no_mangle]
 pub extern "C" fn W_LumpNameHash(s: *const c_char) -> c_uint {
     unsafe {
@@ -104,6 +174,21 @@ pub extern "C" fn W_LumpNameHash(s: *const c_char) -> c_uint {
     }
 }
 
+/// Open `filename` and append its lumps to the global directory.
+///
+/// Files whose extension is not `wad` (case-insensitive) are loaded
+/// as single-lump files: a synthetic `filelump_t` is built whose
+/// name is the file's basename (via `M_ExtractFileBase`). True WAD
+/// files read the 12-byte `wadinfo_t` header, validate the `IWAD`
+/// or `PWAD` magic, and then load the full directory at
+/// `infotableofs`. Little-endian fields are byte-swapped via
+/// `i32::from_le`.
+///
+/// On success returns the borrowed `wad_file_t*`, owned by
+/// `w_file`. On open failure prints `couldn't open <path>` and
+/// returns null. Any existing `lumphash` is freed so the next
+/// lookup falls back to the linear scan until
+/// `W_GenerateHashTable` is called again.
 #[no_mangle]
 pub extern "C" fn W_AddFile(filename: *mut c_char) -> *mut wad_file_t {
     unsafe {
@@ -191,11 +276,22 @@ pub extern "C" fn W_AddFile(filename: *mut c_char) -> *mut wad_file_t {
     }
 }
 
+/// Return the total number of registered lumps as a signed integer.
+/// Mirrors `W_NumLumps` from `w_wad.c`.
 #[no_mangle]
 pub extern "C" fn W_NumLumps() -> c_int {
     unsafe { numlumps as c_int }
 }
 
+/// Look up a lump by name and return its index, or `-1` if not
+/// found.
+///
+/// Uses the hash table when `W_GenerateHashTable` has been called;
+/// otherwise scans `lumpinfo` backwards so that later-loaded WADs
+/// override earlier ones (matching the C implementation).
+/// Comparison is via `strncasecmp` over 8 bytes, so trailing bytes
+/// past a NUL must match too (they're zeroed in `lumpinfo_t::name`
+/// after `strncpy`).
 #[no_mangle]
 pub extern "C" fn W_CheckNumForName(name: *const c_char) -> c_int {
     unsafe {
@@ -223,6 +319,10 @@ pub extern "C" fn W_CheckNumForName(name: *const c_char) -> c_int {
     }
 }
 
+/// Look up a lump by name and return its index. Calls `I_Error`
+/// (and never returns) if the lump is missing. The C source uses
+/// this as the strict variant; callers that tolerate misses use
+/// `W_CheckNumForName` directly.
 #[no_mangle]
 pub extern "C" fn W_GetNumForName(name: *const c_char) -> c_int {
     unsafe {
@@ -237,6 +337,8 @@ pub extern "C" fn W_GetNumForName(name: *const c_char) -> c_int {
     }
 }
 
+/// Return the byte size of `lump`. Errors out via `I_Error` if
+/// `lump` is out of range. Mirrors `W_LumpLength` from `w_wad.c`.
 #[no_mangle]
 pub extern "C" fn W_LumpLength(lump: c_uint) -> c_int {
     unsafe {
@@ -247,6 +349,16 @@ pub extern "C" fn W_LumpLength(lump: c_uint) -> c_int {
     }
 }
 
+/// Read `lump` into the caller-supplied buffer `dest`.
+///
+/// The buffer must be at least `W_LumpLength(lump)` bytes. Wraps
+/// the read in `I_BeginRead` / `I_EndRead` so the platform can
+/// display a disk icon. If the underlying `W_Read` returns fewer
+/// bytes than requested, calls `I_Error`.
+///
+/// Differs from the C source by also emitting a stderr diagnostic
+/// when the actual read exceeds `lump.size` (a "shouldn't happen"
+/// defensive log, not present in `w_wad.c`).
 #[no_mangle]
 pub extern "C" fn W_ReadLump(lump: c_uint, dest: *mut c_void) {
     unsafe {
@@ -282,6 +394,18 @@ pub extern "C" fn W_ReadLump(lump: c_uint, dest: *mut c_void) {
     }
 }
 
+/// Return a borrowed pointer to the bytes of `lumpnum`, loading
+/// them into the zone cache on first miss.
+///
+/// Three branches:
+///  - Memory-mapped wad: returns a pointer inside the mapping (no
+///    copy, no zone allocation).
+///  - Already cached: returns the cached pointer and switches its
+///    zone tag to `tag` via `Z_ChangeTag2`.
+///  - Cold miss: `Z_Malloc(size, tag, &cache)` and `W_ReadLump`.
+///
+/// `tag` is typically `PU_STATIC` (long-lived) or `PU_CACHE`
+/// (purgeable). Out-of-range `lumpnum` triggers `I_Error`.
 #[no_mangle]
 pub extern "C" fn W_CacheLumpNum(lumpnum: c_int, tag: c_int) -> *mut c_void {
     unsafe {
@@ -311,11 +435,18 @@ pub extern "C" fn W_CacheLumpNum(lumpnum: c_int, tag: c_int) -> *mut c_void {
     }
 }
 
+/// Convenience wrapper: resolve `name` to a lump number via
+/// `W_GetNumForName` (fatal if missing) and call `W_CacheLumpNum`.
 #[no_mangle]
 pub extern "C" fn W_CacheLumpName(name: *const c_char, tag: c_int) -> *mut c_void {
     W_CacheLumpNum(W_GetNumForName(name), tag)
 }
 
+/// Mark `lumpnum` as releasable by demoting its cached block to
+/// `PU_CACHE`, so the zone allocator may purge it under memory
+/// pressure. No-op for memory-mapped wads.
+///
+/// Mirrors `W_ReleaseLumpNum` from `w_wad.c`.
 #[no_mangle]
 pub extern "C" fn W_ReleaseLumpNum(lumpnum: c_int) {
     unsafe {
@@ -331,11 +462,21 @@ pub extern "C" fn W_ReleaseLumpNum(lumpnum: c_int) {
     }
 }
 
+/// Convenience wrapper: resolve `name` and call `W_ReleaseLumpNum`.
+/// Mirrors `W_ReleaseLumpName` from `w_wad.c`.
 #[no_mangle]
 pub extern "C" fn W_ReleaseLumpName(name: *const c_char) {
     W_ReleaseLumpNum(W_GetNumForName(name))
 }
 
+/// Build the lump-name hash table. Allocates `numlumps` buckets in
+/// the zone heap, then inserts every lump into the bucket given by
+/// `W_LumpNameHash(name) % numlumps`, chaining through
+/// `lumpinfo_t::next`. Frees any pre-existing table first.
+///
+/// Called once after the last `W_AddFile`; subsequent additions
+/// invalidate (free) the table so a regeneration must be requested
+/// explicitly.
 #[no_mangle]
 pub extern "C" fn W_GenerateHashTable() {
     unsafe {
@@ -361,13 +502,29 @@ pub extern "C" fn W_GenerateHashTable() {
     }
 }
 
+/// Refuse to launch when the user supplies an IWAD whose unique
+/// marker lump belongs to a different game (e.g. running with
+/// `hexen.wad` while the active mission is Doom).
+///
+/// For each `(mission, lumpname)` pair in `UNIQUE_LUMPS`, if the
+/// active `mission` differs but the lump is still present, call
+/// `I_Error` with a friendly message suggesting the right binary.
+///
+/// The C source uses a `PROGRAM_PREFIX` macro for the binary name;
+/// this port hardcodes `"doomgeneric"`.
 #[no_mangle]
 pub extern "C" fn W_CheckCorrectIWAD(mission: c_int) {
+    /// One row of the IWAD-mismatch detection table.
     struct UniqueLump {
+        /// `GameMission_t` value for which this lump is expected.
         mission: c_int,
+        /// 8-char lump name (NUL-padded) that uniquely identifies
+        /// the mission's IWAD.
         lumpname: &'static [u8],
     }
 
+    /// Table of lumps that uniquely identify each supported IWAD.
+    /// Order/contents mirror the `unique_lumps[]` array in `w_wad.c`.
     const UNIQUE_LUMPS: [UniqueLump; 4] = [
         UniqueLump {
             mission: 0, // doom
@@ -405,6 +562,13 @@ pub extern "C" fn W_CheckCorrectIWAD(mission: c_int) {
         }
     }
 }
+/// Link anchor referencing every public C symbol in this module so
+/// the linker keeps them all. Not part of the original Doom API.
+///
+/// # Safety
+///
+/// Passes null pointers everywhere and would crash if called.
+/// Treat as link-only.
 #[no_mangle]
 pub unsafe extern "C" fn W_Wad_Link_Anchor() {
     W_LumpNameHash(ptr::null());
@@ -426,6 +590,8 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
+    /// `lumpinfo_t` is shared with C code: its 40-byte size on
+    /// x86_64 must not silently change.
     #[test]
     fn lumpinfo_size_matches_c() {
         // C lumpinfo_t = name[8] + wad_file* + position + size + cache + next
@@ -433,6 +599,8 @@ mod tests {
         assert_eq!(std::mem::size_of::<lumpinfo_t>(), 40);
     }
 
+    /// `wadinfo_t` must match the on-disk WAD header layout: 12
+    /// packed bytes.
     #[test]
     fn wadinfo_size_matches_c() {
         // C wadinfo_t = ident[4] + numlumps + infotableofs
@@ -440,6 +608,8 @@ mod tests {
         assert_eq!(std::mem::size_of::<wadinfo_t>(), 12);
     }
 
+    /// `filelump_t` must match the on-disk directory-entry layout:
+    /// 16 packed bytes.
     #[test]
     fn filelump_size_matches_c() {
         // C filelump_t = filepos + size + name[8]
@@ -447,19 +617,34 @@ mod tests {
         assert_eq!(std::mem::size_of::<filelump_t>(), 16);
     }
 
-    // Serialize tests that mutate the lumpinfo/numlumps/lumphash globals.
+    /// Mutex serialising tests that swap out the global
+    /// `lumpinfo` / `numlumps` / `lumphash` state. Cargo runs tests
+    /// in parallel by default; without this guard two tests could
+    /// see each other's fake globals.
     static WAD_LOCK: Mutex<()> = Mutex::new(());
 
-    // RAII guard: installs fake globals on construction, restores originals on drop.
-    // Declare before fake_wad/fake_lumps so it drops first (LIFO), restoring the
-    // globals before the local storage they pointed to goes out of scope.
+    /// RAII scope that installs fake values for the WAD globals on
+    /// construction and restores the originals on drop. Declared
+    /// **before** the local backing storage in each test so it
+    /// drops first (LIFO), restoring the globals before the storage
+    /// itself goes out of scope.
     struct WadTestScope {
+        /// Original `lumpinfo` pointer to restore on drop.
         saved_lumpinfo: *mut lumpinfo_t,
+        /// Original `numlumps` count to restore on drop.
         saved_numlumps: c_uint,
+        /// Original `lumphash` pointer to restore on drop.
         saved_lumphash: *mut *mut lumpinfo_t,
     }
 
     impl WadTestScope {
+        /// Save the current globals and install `info` /`count` /
+        /// `null` for the duration of the test. Returns the guard.
+        ///
+        /// # Safety
+        ///
+        /// `info` must remain live for the lifetime of the returned
+        /// guard. The caller must serialise with `WAD_LOCK`.
         unsafe fn install(info: *mut lumpinfo_t, count: c_uint) -> Self {
             let scope = WadTestScope {
                 saved_lumpinfo: lumpinfo,
@@ -474,6 +659,7 @@ mod tests {
     }
 
     impl Drop for WadTestScope {
+        /// Restore the saved globals.
         fn drop(&mut self) {
             unsafe {
                 lumpinfo = self.saved_lumpinfo;
@@ -483,6 +669,8 @@ mod tests {
         }
     }
 
+    /// Build a `[c_char; 8]` lump name from a byte slice, NUL-padding
+    /// or truncating to 8 bytes.
     fn make_lump_name(s: &[u8]) -> [c_char; 8] {
         let mut name = [0i8; 8];
         for (i, &b) in s.iter().take(8).enumerate() {
@@ -491,8 +679,10 @@ mod tests {
         name
     }
 
-    // Returns a wad_file_t with mapped != null so W_ReleaseLumpNum takes the
-    // memory-mapped no-op branch, bypassing Z_ChangeTag2 (needs Z_Init).
+    /// Build a fake `wad_file_t` whose `mapped` pointer is non-null,
+    /// so `W_ReleaseLumpNum` takes the memory-mapped no-op branch
+    /// and avoids the zone allocator (which is not initialised in
+    /// the test harness).
     fn mapped_wad() -> wad_file_t {
         static SENTINEL: u8 = 0;
         wad_file_t {
@@ -502,6 +692,8 @@ mod tests {
         }
     }
 
+    /// Build a minimal `lumpinfo_t` for tests: just the name, the
+    /// owning fake wad, and zero/null everywhere else.
     fn make_lump(name: &[u8], wad: *mut wad_file_t) -> lumpinfo_t {
         lumpinfo_t {
             name: make_lump_name(name),
@@ -513,8 +705,9 @@ mod tests {
         }
     }
 
-    // W_ReleaseLumpName must delegate correctly: name resolves to lump 0 and
-    // W_ReleaseLumpNum(0) completes without error.
+    /// `W_ReleaseLumpName` must delegate correctly: the name
+    /// resolves to lump 0 and `W_ReleaseLumpNum(0)` completes
+    /// without error.
     #[test]
     fn release_lump_name_delegates_to_num() {
         let _lock = WAD_LOCK.lock().unwrap();
@@ -525,7 +718,8 @@ mod tests {
         unsafe { W_ReleaseLumpName(c"TESTLUMP".as_ptr()) };
     }
 
-    // The underlying strncasecmp lookup is case-insensitive.
+    /// The underlying `strncasecmp` lookup is case-insensitive, so
+    /// "testlump" must resolve to the same entry as "TESTLUMP".
     #[test]
     fn release_lump_name_is_case_insensitive() {
         let _lock = WAD_LOCK.lock().unwrap();
@@ -536,9 +730,10 @@ mod tests {
         unsafe { W_ReleaseLumpName(c"testlump".as_ptr()) };
     }
 
-    // With multiple lumps loaded each name must resolve to its own entry.
-    // The linear scan runs backwards so the last-registered match wins for
-    // duplicate names, but here every name is unique.
+    /// With multiple lumps loaded, each name must resolve to its
+    /// own entry. The linear scan runs backwards so the
+    /// last-registered match wins for duplicates - here every name
+    /// is unique so order is immaterial.
     #[test]
     fn release_lump_name_picks_correct_lump_among_multiple() {
         let _lock = WAD_LOCK.lock().unwrap();
