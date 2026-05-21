@@ -373,6 +373,9 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
 
     let mut sound: c_int = Sfx::Itemup as c_int;
     let player = (*toucher).player as *mut PlayerT;
+    if (*toucher).health <= 0 {
+        return;
+    }
 
     match (*special).sprite {
         // armor
