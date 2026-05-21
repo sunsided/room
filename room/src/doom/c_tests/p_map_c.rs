@@ -47,6 +47,7 @@ fn tmbbox_default_zero() {
     }
 }
 
+/// `tmbbox` must contain exactly 4 entries (one per box edge).
 #[test]
 fn tmbbox_length_is_4() {
     unsafe {

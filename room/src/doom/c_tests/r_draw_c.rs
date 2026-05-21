@@ -17,16 +17,19 @@ use crate::doom::i_video::{SCREENHEIGHT, SCREENWIDTH};
 // Screen / renderer constants
 // ---------------------------------------------------------------------------
 
+/// `SCREENWIDTH` is the vanilla Doom horizontal resolution (320 pixels).
 #[test]
 fn screenwidth_is_320() {
     assert_eq!(SCREENWIDTH, 320);
 }
 
+/// `SCREENHEIGHT` is the vanilla Doom vertical resolution (200 pixels).
 #[test]
 fn screenheight_is_200() {
     assert_eq!(SCREENHEIGHT, 200);
 }
 
+/// `SBARHEIGHT` is the status-bar pixel height (32 rows reserved at the bottom).
 #[test]
 fn sbarheight_is_32() {
     assert_eq!(c_ffi::SBARHEIGHT, 32);
@@ -36,11 +39,13 @@ fn sbarheight_is_32() {
 // Fuzz / spectre effect constants
 // ---------------------------------------------------------------------------
 
+/// `FUZZTABLE = 50`: the fuzz/spectre effect cycles through 50 row offsets.
 #[test]
 fn fuzztable_size() {
     assert_eq!(c_ffi::FUZZTABLE, 50);
 }
 
+/// `FUZZOFF` equals `SCREENWIDTH`: one screen row's worth of column stride.
 #[test]
 fn fuzzoff_equals_screenwidth() {
     assert_eq!(c_ffi::FUZZOFF, SCREENWIDTH);
@@ -54,13 +59,14 @@ fn fuzzoff_equals_screenwidth() {
 // to the left.  Every value must be either +SCREENWIDTH or −SCREENWIDTH.
 // ---------------------------------------------------------------------------
 
-/// Expected fuzzoffset values, verbatim from the C source.
+/// Expected `fuzzoffset` values, verbatim from `r_draw.c`.
 const EXPECTED_FUZZ: [c_int; 50] = [
     320, -320, 320, -320, 320, 320, -320, 320, 320, -320, 320, 320, 320, -320, 320, 320, 320, -320,
     -320, -320, -320, 320, -320, -320, 320, 320, 320, 320, -320, 320, -320, 320, 320, -320, -320,
     320, 320, -320, -320, -320, -320, 320, 320, 320, 320, -320, 320, 320, -320, 320,
 ];
 
+/// `fuzzoffset[]` must contain exactly `FUZZTABLE` (50) entries.
 #[test]
 fn fuzzoffset_length() {
     unsafe {
@@ -68,6 +74,8 @@ fn fuzzoffset_length() {
     }
 }
 
+/// Every `fuzzoffset` entry is either +FUZZOFF or -FUZZOFF (one column to
+/// the right or left).
 #[test]
 fn fuzzoffset_all_values_are_plus_or_minus_fuzzoff() {
     unsafe {
@@ -81,6 +89,7 @@ fn fuzzoffset_all_values_are_plus_or_minus_fuzzoff() {
     }
 }
 
+/// Each `fuzzoffset` entry matches the verbatim value from r_draw.c, in order.
 #[test]
 fn fuzzoffset_exact_values() {
     unsafe {
@@ -97,6 +106,8 @@ fn fuzzoffset_exact_values() {
     }
 }
 
+/// The fuzz table has exactly 29 positive (+SCREENWIDTH) and 21 negative
+/// (-SCREENWIDTH) entries; this asymmetry is part of the vanilla effect.
 #[test]
 fn fuzzoffset_positive_count() {
     // There are exactly 29 positive (+320) entries and 21 negative (−320).
@@ -123,6 +134,8 @@ fn fuzzoffset_positive_count() {
 //   viewwindowy = (SCREENHEIGHT − SBARHEIGHT − height) >> 1   otherwise
 // ---------------------------------------------------------------------------
 
+/// When `R_InitBuffer` is called with a full-width view (width == SCREENWIDTH),
+/// both `viewwindowx` and `viewwindowy` must be 0.
 #[test]
 fn r_init_buffer_fullscreen_sets_zero_offsets() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -142,6 +155,7 @@ fn r_init_buffer_fullscreen_sets_zero_offsets() {
     }
 }
 
+/// For a 256-pixel-wide window, `viewwindowx` must equal `(320-256) >> 1 = 32`.
 #[test]
 fn r_init_buffer_windowed_sets_correct_x_offset() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -156,6 +170,7 @@ fn r_init_buffer_windowed_sets_correct_x_offset() {
     }
 }
 
+/// For a 200x100 windowed view, `viewwindowy = (200 - 32 - 100) >> 1 = 34`.
 #[test]
 fn r_init_buffer_windowed_height_sets_correct_y_offset() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -171,6 +186,7 @@ fn r_init_buffer_windowed_height_sets_correct_y_offset() {
     }
 }
 
+/// Across a range of widths, `viewwindowx` follows `(SCREENWIDTH - w) >> 1`.
 #[test]
 fn r_init_buffer_various_widths_x_formula() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -188,6 +204,8 @@ fn r_init_buffer_various_widths_x_formula() {
     }
 }
 
+/// Across a range of heights, `viewwindowy` follows
+/// `(SCREENHEIGHT - SBARHEIGHT - h) >> 1` when width is below full screen.
 #[test]
 fn r_init_buffer_various_heights_y_formula() {
     let _guard = C_GLOBAL_LOCK.lock().unwrap();
@@ -213,6 +231,8 @@ fn r_init_buffer_various_heights_y_formula() {
 // These globals are set by the BSP/clipper before each draw call.
 // ---------------------------------------------------------------------------
 
+/// All column/span draw-parameter globals (`dc_*`, `ds_*`, `fuzzpos`) are
+/// `c_int` (4 bytes); verifies FFI linkage and read-without-UB.
 #[test]
 fn draw_globals_are_c_int_width() {
     // Compile-time: dc_x, dc_yl, dc_yh, dc_iscale, dc_texturemid, fuzzpos must

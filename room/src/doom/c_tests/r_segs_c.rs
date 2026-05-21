@@ -27,6 +27,8 @@ fn segtextured_default_zero() {
     }
 }
 
+/// `markfloor` is true when the current seg exposes a visible floor; starts
+/// false before the first `R_StoreWallRange` call.
 #[test]
 fn markfloor_default_zero() {
     unsafe {
@@ -34,6 +36,8 @@ fn markfloor_default_zero() {
     }
 }
 
+/// `markceiling` is true when the current seg exposes a visible ceiling;
+/// starts false before any rendering.
 #[test]
 fn markceiling_default_zero() {
     unsafe {
@@ -41,6 +45,8 @@ fn markceiling_default_zero() {
     }
 }
 
+/// `maskedtexture` is true when the seg's mid-texture has transparent gaps
+/// requiring deferred rendering; starts false.
 #[test]
 fn maskedtexture_default_zero() {
     unsafe {
@@ -67,6 +73,7 @@ fn texture_indices_default_zero() {
 // Angle globals – default zero
 // ---------------------------------------------------------------------------
 
+/// `rw_normalangle` is the seg's surface normal angle; zero before rendering.
 #[test]
 fn rw_normalangle_default_zero() {
     unsafe {
@@ -74,6 +81,8 @@ fn rw_normalangle_default_zero() {
     }
 }
 
+/// `rw_angle1` is the angle to the seg's first vertex relative to the view;
+/// zero before rendering.
 #[test]
 fn rw_angle1_default_zero() {
     unsafe {
@@ -81,6 +90,8 @@ fn rw_angle1_default_zero() {
     }
 }
 
+/// `rw_centerangle` is the angle between the view direction and the seg
+/// normal; zero before rendering.
 #[test]
 fn rw_centerangle_default_zero() {
     unsafe {
@@ -106,6 +117,9 @@ fn rw_column_range_default_zero() {
 // Scale / distance / offset globals – default zero
 // ---------------------------------------------------------------------------
 
+/// `rw_offset`, `rw_distance`, `rw_scale`, and `rw_scalestep` carry the
+/// perspective-scale parameters for the current wall strip; all zero before
+/// rendering.
 #[test]
 fn rw_scale_globals_default_zero() {
     unsafe {
@@ -151,6 +165,9 @@ fn world_bounds_default_zero() {
 // Pixel-position step globals – default zero
 // ---------------------------------------------------------------------------
 
+/// `pixhigh`, `pixlow`, `pixhighstep`, and `pixlowstep` hold the high/low
+/// pixel positions and per-column steps for the current wall strip; all zero
+/// before rendering.
 #[test]
 fn pix_step_globals_default_zero() {
     unsafe {
@@ -165,6 +182,9 @@ fn pix_step_globals_default_zero() {
 // Texture-fraction step globals – default zero
 // ---------------------------------------------------------------------------
 
+/// `topfrac`, `topstep`, `bottomfrac`, and `bottomstep` are the texture-
+/// fraction accumulator and per-column step for the top and bottom textures;
+/// all zero before rendering.
 #[test]
 fn frac_step_globals_default_zero() {
     unsafe {

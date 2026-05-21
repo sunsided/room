@@ -3,6 +3,9 @@
 //! These tests use `#[repr(C)]` mirrors of the C structs.  If a field
 //! offset does not match the C compiler output, the test fails,
 //! catching data-type-size and alignment mismatches immediately.
+//!
+//! Coverage: `vertex_t`, `divline_t`, `line_t`, `sector_t`, `intercept_t`,
+//! `mobj_t`, `side_t`, `seg_t`, `node_t`, `drawseg_t`, `vissprite_t`.
 
 #![allow(non_snake_case)]
 
@@ -17,11 +20,13 @@ use crate::doom::c_ffi::{
 // vertex_t
 // ---------------------------------------------------------------------------
 
+/// `vertex_t` is exactly 8 bytes (two `fixed_t` coordinates, no padding).
 #[test]
 fn vertex_t_size() {
     assert_eq!(size_of::<vertex_t>(), 8);
 }
 
+/// `vertex_t` fields: `x` at offset 0, `y` at offset 4.
 #[test]
 fn vertex_t_offsets() {
     assert_eq!(offset_of!(vertex_t, x), 0);
@@ -32,11 +37,13 @@ fn vertex_t_offsets() {
 // divline_t
 // ---------------------------------------------------------------------------
 
+/// `divline_t` is exactly 16 bytes (origin x/y plus delta dx/dy, all `fixed_t`).
 #[test]
 fn divline_t_size() {
     assert_eq!(size_of::<divline_t>(), 16);
 }
 
+/// `divline_t` fields lay out as `x` (0), `y` (4), `dx` (8), `dy` (12).
 #[test]
 fn divline_t_offsets() {
     assert_eq!(offset_of!(divline_t, x), 0);
@@ -49,11 +56,14 @@ fn divline_t_offsets() {
 // line_t
 // ---------------------------------------------------------------------------
 
+/// `line_t` is 88 bytes on a 64-bit target (two 8-byte vertex pointers,
+/// fixed-point deltas, sidedef/sector pointers, bbox, and validcount).
 #[test]
 fn line_t_size() {
     assert_eq!(size_of::<line_t>(), 88);
 }
 
+/// `line_t` field offsets, computed for the LP64 layout (matches gcc x86_64).
 #[test]
 fn line_t_offsets() {
     assert_eq!(offset_of!(line_t, v1), 0);
@@ -76,11 +86,14 @@ fn line_t_offsets() {
 // sector_t
 // ---------------------------------------------------------------------------
 
+/// `sector_t` is 128 bytes (heights, picnums, tags, blockbox, validcount,
+/// thinglist, specialdata, and line list pointer).
 #[test]
 fn sector_t_size() {
     assert_eq!(size_of::<sector_t>(), 128);
 }
 
+/// `sector_t` field offsets for the LP64 layout.
 #[test]
 fn sector_t_offsets() {
     assert_eq!(offset_of!(sector_t, floorheight), 0);
@@ -104,11 +117,14 @@ fn sector_t_offsets() {
 // intercept_t
 // ---------------------------------------------------------------------------
 
+/// `intercept_t` is 16 bytes (frac + isaline + union `d`).
 #[test]
 fn intercept_t_size() {
     assert_eq!(size_of::<intercept_t>(), 16);
 }
 
+/// `intercept_t` exposes `frac` at offset 0 and `isaline` at offset 4; the
+/// union `d` begins at offset 8.
 #[test]
 fn intercept_t_offsets() {
     assert_eq!(offset_of!(intercept_t, frac), 0);
@@ -120,11 +136,14 @@ fn intercept_t_offsets() {
 // mobj_t
 // ---------------------------------------------------------------------------
 
+/// `mobj_t` is 224 bytes on LP64 (24-byte thinker_t prefix plus the body).
 #[test]
 fn mobj_t_size() {
     assert_eq!(size_of::<mobj_t>(), 224);
 }
 
+/// `mobj_t` field offsets — `x`/`y`/`z` start at 24 (after the thinker prefix);
+/// remaining offsets follow the d_player.h / p_mobj.h layout exactly.
 #[test]
 fn mobj_t_offsets() {
     assert_eq!(offset_of!(mobj_t, x), 24);
@@ -146,6 +165,8 @@ fn mobj_t_offsets() {
 // side_t  (r_defs.h — used by r_segs.c and many others)
 // ---------------------------------------------------------------------------
 
+/// `side_t` is 24 bytes (textureoffset + rowoffset + 3 short textures + 2 byte
+/// implicit padding + 8-byte sector pointer).
 #[test]
 fn side_t_size() {
     // textureoffset(4) + rowoffset(4) + toptexture(2) + bottomtexture(2)
@@ -153,6 +174,7 @@ fn side_t_size() {
     assert_eq!(size_of::<side_t>(), 24);
 }
 
+/// `side_t` field offsets matching the r_defs.h layout.
 #[test]
 fn side_t_offsets() {
     assert_eq!(offset_of!(side_t, textureoffset), 0);
@@ -167,6 +189,8 @@ fn side_t_offsets() {
 // seg_t  (r_defs.h — used by r_segs.c, r_bsp.c)
 // ---------------------------------------------------------------------------
 
+/// `seg_t` is 56 bytes on LP64 (two vertex pointers, offset/angle, four
+/// sidedef/linedef/sector pointers).
 #[test]
 fn seg_t_size() {
     // v1*(8) + v2*(8) + offset(4) + angle(4) + sidedef*(8) + linedef*(8)
@@ -174,6 +198,7 @@ fn seg_t_size() {
     assert_eq!(size_of::<seg_t>(), 56);
 }
 
+/// `seg_t` field offsets matching the r_defs.h layout.
 #[test]
 fn seg_t_offsets() {
     assert_eq!(offset_of!(seg_t, v1), 0);
@@ -190,6 +215,8 @@ fn seg_t_offsets() {
 // node_t  (r_defs.h — used by r_bsp.c)
 // ---------------------------------------------------------------------------
 
+/// `node_t` is 52 bytes (split origin/delta + bbox[2][4] + children[2]).
+/// Maximum alignment is `int` (4 bytes), so there is no trailing padding.
 #[test]
 fn node_t_size() {
     // x(4)+y(4)+dx(4)+dy(4)=16 + bbox[2][4](32) + children[2](4) = 52
@@ -197,6 +224,7 @@ fn node_t_size() {
     assert_eq!(size_of::<node_t>(), 52);
 }
 
+/// `node_t` field offsets matching r_defs.h.
 #[test]
 fn node_t_offsets() {
     assert_eq!(offset_of!(node_t, x), 0);
@@ -211,6 +239,7 @@ fn node_t_offsets() {
 // drawseg_t  (r_defs.h — used by r_segs.c, r_plane.c, r_things.c)
 // ---------------------------------------------------------------------------
 
+/// `drawseg_t` is 64 bytes (curline pointer + 8 ints + 3 pointers).
 #[test]
 fn drawseg_t_size() {
     // curline*(8) + 8×int(32) + 3×pointer(24) = 64
@@ -219,6 +248,7 @@ fn drawseg_t_size() {
     assert_eq!(size_of::<drawseg_t>(), 64);
 }
 
+/// `drawseg_t` field offsets matching r_defs.h.
 #[test]
 fn drawseg_t_offsets() {
     assert_eq!(offset_of!(drawseg_t, curline), 0);
@@ -239,6 +269,8 @@ fn drawseg_t_offsets() {
 // vissprite_t  (r_defs.h — used by r_things.c)
 // ---------------------------------------------------------------------------
 
+/// `vissprite_t` is 80 bytes: linked-list pointers + 9 ints + alignment pad +
+/// colormap pointer + mobjflags + trailing pad.
 #[test]
 fn vissprite_t_size() {
     // prev*(8) + next*(8) = 16
@@ -251,6 +283,7 @@ fn vissprite_t_size() {
     assert_eq!(size_of::<vissprite_t>(), 80);
 }
 
+/// `vissprite_t` field offsets matching r_defs.h.
 #[test]
 fn vissprite_t_offsets() {
     assert_eq!(offset_of!(vissprite_t, prev), 0);

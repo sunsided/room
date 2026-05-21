@@ -51,6 +51,7 @@ fn spriteframe_t_size_is_28() {
     assert_eq!(std::mem::size_of::<c_ffi::spriteframe_t>(), 28);
 }
 
+/// `spriteframe_t` alignment is 4 (dictated by the leading `int rotate` field).
 #[test]
 fn spriteframe_t_align_is_4() {
     assert_eq!(std::mem::align_of::<c_ffi::spriteframe_t>(), 4);
@@ -95,6 +96,7 @@ fn pspritescale_default_zero() {
     }
 }
 
+/// `pspriteiscale` (inverse scale) starts at zero before the first rendered frame.
 #[test]
 fn pspriteiscale_default_zero() {
     unsafe {
