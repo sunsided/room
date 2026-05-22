@@ -645,11 +645,34 @@ pub unsafe extern "C" fn I_Video_Link_Anchor() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::sync::{Mutex, MutexGuard};
 
     /// `COLORS` is a `static mut` shared across the whole crate; the
-    /// two tests below mutate it, so they must run serially.
+    /// tests below mutate it, so they must run serially.
     static PALETTE_LOCK: Mutex<()> = Mutex::new(());
+
+    /// RAII guard that owns the palette lock for the duration of a
+    /// test and restores the `COLORS` snapshot captured at acquisition
+    /// time on drop, even on panic. Keeps the global palette
+    /// invisible to subsequent tests in the same binary.
+    struct PaletteGuard {
+        _lock: MutexGuard<'static, ()>,
+        saved: [Color; 256],
+    }
+
+    impl PaletteGuard {
+        fn acquire() -> Self {
+            let lock = PALETTE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let saved = unsafe { ptr::addr_of!(COLORS).read() };
+            Self { _lock: lock, saved }
+        }
+    }
+
+    impl Drop for PaletteGuard {
+        fn drop(&mut self) {
+            unsafe { ptr::addr_of_mut!(COLORS).write(self.saved) };
+        }
+    }
 
     fn set_test_palette(entries: &[(u8, u8, u8)]) {
         let colors = ptr::addr_of_mut!(COLORS) as *mut Color;
@@ -663,7 +686,7 @@ mod tests {
 
     #[test]
     fn get_palette_index_nearest_rgb() {
-        let _guard = PALETTE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = PaletteGuard::acquire();
         let palette: [(u8, u8, u8); 4] = [(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255)];
         set_test_palette(&palette);
 
@@ -696,7 +719,7 @@ mod tests {
 
     #[test]
     fn get_palette_index_returns_first_exact_match() {
-        let _guard = PALETTE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = PaletteGuard::acquire();
 
         // Index 42 is the target; index 200 is a duplicate. Strict
         // `diff < best_diff` plus the outer-scope `if diff == 0
