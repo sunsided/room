@@ -294,12 +294,13 @@ extern "C" {
 unsafe fn PlayerQuitGame(player_idx: usize) {
     /// 80-byte scratch buffer holding the formatted "Player N left the game"
     /// message; its address is passed to the console-player's message pointer.
-    static mut EXITMSG: [c_char; 80] = [0; 80];
+    const EXITMSG_LEN: usize = 80;
+    static mut EXITMSG: [c_char; EXITMSG_LEN] = [0; EXITMSG_LEN];
 
     M_StringCopy(
         std::ptr::addr_of_mut!(EXITMSG[0]),
         DEH_String(EXIT_MSG.as_ptr() as *const c_char),
-        EXITMSG.len(),
+        EXITMSG_LEN,
     );
 
     EXITMSG[7] += player_idx as c_char;
