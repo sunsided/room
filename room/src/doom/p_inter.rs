@@ -695,6 +695,15 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
     let player_ptr = (*toucher).player as *mut PlayerT;
     let sprite = (*special).sprite;
     let special_flags = (*special).flags;
+    // Snapshot the DEH-tunable `static mut` values into locals so each
+    // unsafe read happens here, not inline inside the match arms.
+    let green_armor_class = deh_green_armor_class;
+    let blue_armor_class = deh_blue_armor_class;
+    let max_health = deh_max_health;
+    let max_armor = deh_max_armor;
+    let max_soulsphere = deh_max_soulsphere;
+    let soulsphere_health = deh_soulsphere_health;
+    let megasphere_health = deh_megasphere_health;
     // `player` is the long-lived borrow. Every helper called below
     // takes `&mut PlayerT` (the `p_give_*` inner fns), so no second
     // `&mut PlayerT` is ever derived from `player_ptr`.
@@ -704,13 +713,13 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
     match sprite {
         // armor
         SPR_ARM1 => {
-            if p_give_armor(player, deh_green_armor_class) == 0 {
+            if p_give_armor(player, green_armor_class) == 0 {
                 return;
             }
             player.message = DEH_String(GOTARMOR);
         }
         SPR_ARM2 => {
-            if p_give_armor(player, deh_blue_armor_class) == 0 {
+            if p_give_armor(player, blue_armor_class) == 0 {
                 return;
             }
             player.message = DEH_String(GOTMEGA);
@@ -718,8 +727,8 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
         // bonus items
         SPR_BON1 => {
             player.health += 1;
-            if player.health > deh_max_health {
-                player.health = deh_max_health;
+            if player.health > max_health {
+                player.health = max_health;
             }
             let mo = &mut *(player.mo as *mut mobj_t);
             mo.health = player.health;
@@ -727,18 +736,20 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
         }
         SPR_BON2 => {
             player.armorpoints += 1;
-            if player.armorpoints > deh_max_armor {
-                player.armorpoints = deh_max_armor;
+            if player.armorpoints > max_armor {
+                player.armorpoints = max_armor;
             }
+            // `deh_green_armor_class` only applies to the green armor
+            // shirt; for the armor helmets, armortype 1 is always used.
             if player.armortype == 0 {
                 player.armortype = 1;
             }
             player.message = DEH_String(GOTARMBONUS);
         }
         SPR_SOUL => {
-            player.health += deh_soulsphere_health;
-            if player.health > deh_max_soulsphere {
-                player.health = deh_max_soulsphere;
+            player.health += soulsphere_health;
+            if player.health > max_soulsphere {
+                player.health = max_soulsphere;
             }
             let mo = &mut *(player.mo as *mut mobj_t);
             mo.health = player.health;
@@ -749,12 +760,15 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             if gamemode != commercial {
                 return;
             }
-            player.health = deh_megasphere_health;
+            player.health = megasphere_health;
             {
                 let mo = &mut *(player.mo as *mut mobj_t);
                 mo.health = player.health;
             }
-            p_give_armor(player, deh_blue_armor_class);
+            // We always give armor type 2 for the megasphere; DEHacked
+            // only affects the standalone MegaArmor pickup
+            // (`SPR_ARM2`), not this one.
+            p_give_armor(player, 2);
             player.message = DEH_String(GOTMSPHERE);
             sound = Sfx::Getpow as c_int;
         }
