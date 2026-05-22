@@ -292,9 +292,12 @@ extern "C" {
 /// Caller must ensure `player_idx < MAXPLAYERS` and that the global state
 /// (`players`, `playeringame`, `consoleplayer`, `demorecording`) is valid.
 unsafe fn PlayerQuitGame(player_idx: usize) {
+    /// Capacity of [`EXITMSG`], named so `M_StringCopy` does not have to take
+    /// a shared reference to the `static mut` to read its length.
+    const EXITMSG_LEN: usize = 80;
+
     /// 80-byte scratch buffer holding the formatted "Player N left the game"
     /// message; its address is passed to the console-player's message pointer.
-    const EXITMSG_LEN: usize = 80;
     static mut EXITMSG: [c_char; EXITMSG_LEN] = [0; EXITMSG_LEN];
 
     M_StringCopy(
