@@ -318,29 +318,28 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
     r#type: c_int,
     thing: *mut mobj_t,
 ) -> c_int {
-    let p = (*thing).player as *mut PlayerT;
-    if p.is_null() {
+    let Some(p) = ((*thing).player as *mut PlayerT).as_mut() else {
         return 0;
-    }
+    };
 
     match (*line).special as c_int {
         99 | 133 => {
-            if (*p).cards[it_bluecard] == 0 && (*p).cards[it_blueskull] == 0 {
-                (*p).message = locked_object_message((*line).special as c_int);
+            if p.cards[it_bluecard] == 0 && p.cards[it_blueskull] == 0 {
+                p.message = locked_object_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return 0;
             }
         }
         134 | 135 => {
-            if (*p).cards[it_redcard] == 0 && (*p).cards[it_redskull] == 0 {
-                (*p).message = locked_object_message((*line).special as c_int);
+            if p.cards[it_redcard] == 0 && p.cards[it_redskull] == 0 {
+                p.message = locked_object_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return 0;
             }
         }
         136 | 137 => {
-            if (*p).cards[it_yellowcard] == 0 && (*p).cards[it_yellowskull] == 0 {
-                (*p).message = locked_object_message((*line).special as c_int);
+            if p.cards[it_yellowcard] == 0 && p.cards[it_yellowskull] == 0 {
+                p.message = locked_object_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return 0;
             }
@@ -476,31 +475,31 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
 
     match (*line).special as c_int {
         26 | 32 => {
-            if player.is_null() {
+            let Some(player) = player.as_mut() else {
                 return;
-            }
-            if (*player).cards[it_bluecard] == 0 && (*player).cards[it_blueskull] == 0 {
-                (*player).message = locked_door_message((*line).special as c_int);
+            };
+            if player.cards[it_bluecard] == 0 && player.cards[it_blueskull] == 0 {
+                player.message = locked_door_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return;
             }
         }
         27 | 34 => {
-            if player.is_null() {
+            let Some(player) = player.as_mut() else {
                 return;
-            }
-            if (*player).cards[it_yellowcard] == 0 && (*player).cards[it_yellowskull] == 0 {
-                (*player).message = locked_door_message((*line).special as c_int);
+            };
+            if player.cards[it_yellowcard] == 0 && player.cards[it_yellowskull] == 0 {
+                player.message = locked_door_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return;
             }
         }
         28 | 33 => {
-            if player.is_null() {
+            let Some(player) = player.as_mut() else {
                 return;
-            }
-            if (*player).cards[it_redcard] == 0 && (*player).cards[it_redskull] == 0 {
-                (*player).message = locked_door_message((*line).special as c_int);
+            };
+            if player.cards[it_redcard] == 0 && player.cards[it_redskull] == 0 {
+                player.message = locked_door_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return;
             }
