@@ -477,23 +477,13 @@ pub unsafe extern "C" fn R_PointOnSegSide(x: fixed_t, y: fixed_t, line: *const s
 // R_PointToAngle
 // ---------------------------------------------------------------------------
 
-/// Convert an absolute map coordinate to a view angle (BAM `u32`).
+/// Classify a relative vector `(dx, dy)` into one of eight octants and look
+/// up the corresponding BAM angle from the `tantoangle` table.
 ///
-/// Subtracts the current [`viewx`]/[`viewy`] to get a relative vector, then
-/// classifies the vector into one of eight octants and looks up the angle
-/// using the `tantoangle` table. Returns 0 for the view position itself.
-///
-/// Equivalent to `R_PointToAngle` in `r_main.c`.
-///
-/// # Safety
-/// Reads the global [`viewx`] and [`viewy`]; these must have been
-/// initialised by [`R_SetupFrame`] (or [`R_PointToAngle2`]) before this
-/// function is called.
-#[no_mangle]
-pub unsafe extern "C" fn R_PointToAngle(x: fixed_t, y: fixed_t) -> angle_t {
-    let mut x = x - viewx;
-    let mut y = y - viewy;
-
+/// This is the pure octant-classification core shared by [`R_PointToAngle`]
+/// and [`R_PointToAngle2`]; it never reads or writes any global state.
+/// Returns 0 for the zero vector.
+fn point_to_angle_from_delta(mut x: fixed_t, mut y: fixed_t) -> angle_t {
     if x == 0 && y == 0 {
         return 0;
     }
@@ -546,24 +536,39 @@ pub unsafe extern "C" fn R_PointToAngle(x: fixed_t, y: fixed_t) -> angle_t {
     }
 }
 
+/// Convert an absolute map coordinate to a view angle (BAM `u32`).
+///
+/// Subtracts the current [`viewx`]/[`viewy`] to get a relative vector, then
+/// classifies the vector into one of eight octants and looks up the angle
+/// using the `tantoangle` table. Returns 0 for the view position itself.
+///
+/// Equivalent to `R_PointToAngle` in `r_main.c`.
+///
+/// # Safety
+/// Reads the global [`viewx`] and [`viewy`]; these must have been
+/// initialised by [`R_SetupFrame`] before this function is called.
+#[no_mangle]
+pub unsafe extern "C" fn R_PointToAngle(x: fixed_t, y: fixed_t) -> angle_t {
+    point_to_angle_from_delta(x - viewx, y - viewy)
+}
+
 // ---------------------------------------------------------------------------
 // R_PointToAngle2
 // ---------------------------------------------------------------------------
 
 /// Compute the BAM angle from map point `(x1, y1)` to map point `(x2, y2)`.
 ///
-/// Temporarily sets the global [`viewx`]/[`viewy`] to `(x1, y1)` and
-/// delegates to [`R_PointToAngle`]. This matches the C implementation, which
-/// reuses the same globals.
+/// Computes the delta `(x2 - x1, y2 - y1)` and classifies it directly via the
+/// shared octant lookup. Unlike the C original (and earlier Rust port), this
+/// implementation does not touch the [`viewx`]/[`viewy`] globals, so it is
+/// reentrant and safe to call between a read and a use of the view position.
 ///
-/// Equivalent to `R_PointToAngle2` in `r_main.c`.
+/// Equivalent to `R_PointToAngle2` in `r_main.c`, with the global-aliasing
+/// trick removed.
 ///
 /// # Safety
-/// Writes the global [`viewx`] and [`viewy`]; callers must ensure no
-/// concurrent read of those globals occurs.
-// FIXME: R_PointToAngle2 temporarily clobbers the global viewx/viewy, which
-// is safe in the original single-threaded C engine but would be hazardous in
-// any multi-threaded context. The C source has the same design.
+/// Pure computation; takes no globals. Marked `unsafe extern "C"` only to
+/// keep the C ABI for callers linked against the legacy engine.
 #[no_mangle]
 pub unsafe extern "C" fn R_PointToAngle2(
     x1: fixed_t,
@@ -571,9 +576,7 @@ pub unsafe extern "C" fn R_PointToAngle2(
     x2: fixed_t,
     y2: fixed_t,
 ) -> angle_t {
-    viewx = x1;
-    viewy = y1;
-    R_PointToAngle(x2, y2)
+    point_to_angle_from_delta(x2 - x1, y2 - y1)
 }
 
 // ---------------------------------------------------------------------------
@@ -1198,6 +1201,65 @@ mod tests {
 
             // Due south is exact.
             assert_eq!(R_PointToAngle2(0, 0, 0, -FRACUNIT), ANG270);
+        }
+    }
+
+    /// R_PointToAngle2 used to set `viewx = x1; viewy = y1` and delegate to
+    /// R_PointToAngle, clobbering the view-position globals. The refactored
+    /// implementation must compute the angle purely from the delta and leave
+    /// `viewx` / `viewy` untouched.
+    #[test]
+    fn r_point_to_angle2_preserves_view_globals() {
+        unsafe {
+            viewx = 12345;
+            viewy = -6789;
+
+            let _ = R_PointToAngle2(1000, 2000, 3000, 4000);
+
+            assert_eq!(viewx, 12345, "R_PointToAngle2 must not modify viewx");
+            assert_eq!(viewy, -6789, "R_PointToAngle2 must not modify viewy");
+        }
+    }
+
+    /// R_PointToAngle2 must be translation-invariant: the angle from
+    /// `(x1, y1)` to `(x2, y2)` equals the angle of the delta vector from
+    /// the origin. Confirms the rewrite preserves the original semantics
+    /// for nonzero source points.
+    #[test]
+    fn r_point_to_angle2_translation_invariant() {
+        unsafe {
+            // Save view globals so the test is hermetic.
+            let saved_viewx = viewx;
+            let saved_viewy = viewy;
+
+            let cases: [(fixed_t, fixed_t); 8] = [
+                (FRACUNIT, 0),
+                (FRACUNIT, FRACUNIT),
+                (0, FRACUNIT),
+                (-FRACUNIT, FRACUNIT),
+                (-FRACUNIT, 0),
+                (-FRACUNIT, -FRACUNIT),
+                (0, -FRACUNIT),
+                (FRACUNIT, -FRACUNIT),
+            ];
+
+            for (dx, dy) in cases.iter().copied() {
+                let from_origin = R_PointToAngle2(0, 0, dx, dy);
+                let translated = R_PointToAngle2(
+                    100 * FRACUNIT,
+                    -50 * FRACUNIT,
+                    100 * FRACUNIT + dx,
+                    -50 * FRACUNIT + dy,
+                );
+                assert_eq!(
+                    from_origin, translated,
+                    "R_PointToAngle2 must be translation-invariant (dx={}, dy={})",
+                    dx, dy
+                );
+            }
+
+            viewx = saved_viewx;
+            viewy = saved_viewy;
         }
     }
 
