@@ -86,7 +86,9 @@ const PD_BLUEK: *mut c_char = c"You need a blue key to open this door".as_ptr().
 /// Locked-door message: red key required.
 const PD_REDK: *mut c_char = c"You need a red key to open this door".as_ptr().cast_mut();
 /// Locked-door message: yellow key required.
-const PD_YELLOWK: *mut c_char = c"You need a yellow key to open this door".as_ptr().cast_mut();
+const PD_YELLOWK: *mut c_char = c"You need a yellow key to open this door"
+    .as_ptr()
+    .cast_mut();
 
 /// Passes `s` through unchanged.
 ///
@@ -323,9 +325,6 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
 
     match (*line).special as c_int {
         99 | 133 => {
-            if p.is_null() {
-                return 0;
-            }
             if (*p).cards[it_bluecard] == 0 && (*p).cards[it_blueskull] == 0 {
                 (*p).message = locked_object_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
@@ -333,9 +332,6 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
             }
         }
         134 | 135 => {
-            if p.is_null() {
-                return 0;
-            }
             if (*p).cards[it_redcard] == 0 && (*p).cards[it_redskull] == 0 {
                 (*p).message = locked_object_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
@@ -343,9 +339,6 @@ pub unsafe extern "C" fn EV_DoLockedDoor(
             }
         }
         136 | 137 => {
-            if p.is_null() {
-                return 0;
-            }
             if (*p).cards[it_yellowcard] == 0 && (*p).cards[it_yellowskull] == 0 {
                 (*p).message = locked_object_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
