@@ -482,21 +482,37 @@ pub unsafe extern "C" fn I_SetPalette(palette: *mut u8) {
     }
 }
 
-// FIXME: Stub. C i_video.c performs an O(256) nearest-RGB search
-// against the active palette. Returning 0 unconditionally means
-// callers that look up a colour-by-RGB get index 0 every time -
-// currently nothing in this port calls it on the hot path, but
-// any future use will silently misbehave.
 /// Return the palette index closest to the given RGB triple.
-/// **Currently a stub** returning 0.
+///
+/// Mirrors `I_GetPaletteIndex` in `i_video.c`: linear scan over the
+/// 256-entry active palette, returning the index with the smallest
+/// squared RGB distance. Exits early on an exact match. The C source
+/// searches the gamma-corrected `rgb565_palette`; this port searches
+/// the gamma-corrected `COLORS` array directly (no 5/6/5 quantization
+/// because the Rust framebuffer is 32 bpp).
 ///
 /// # Safety
 ///
-/// Trivially safe (no pointer dereferences) but the result is wrong;
-/// see the FIXME above.
+/// Trivially safe; no pointer dereferences.
 #[no_mangle]
-pub unsafe extern "C" fn I_GetPaletteIndex(_r: c_int, _g: c_int, _b: c_int) -> c_int {
-    0
+pub unsafe extern "C" fn I_GetPaletteIndex(r: c_int, g: c_int, b: c_int) -> c_int {
+    let mut best: c_int = 0;
+    let mut best_diff: c_int = c_int::MAX;
+    for i in 0..256 {
+        let color = COLORS[i];
+        let dr = r - color.r as c_int;
+        let dg = g - color.g as c_int;
+        let db = b - color.b as c_int;
+        let diff = dr * dr + dg * dg + db * db;
+        if diff < best_diff {
+            best = i as c_int;
+            best_diff = diff;
+            if diff == 0 {
+                break;
+            }
+        }
+    }
+    best
 }
 
 /// SDL-era hook to signal the start of a disk read so a "loading"
@@ -613,4 +629,65 @@ pub unsafe extern "C" fn I_Video_Link_Anchor() {
     I_BindVideoVariables();
     I_DisplayFPSDots(Boolean::FALSE);
     I_CheckIsScreensaver();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn set_test_palette(entries: &[(u8, u8, u8)]) {
+        unsafe {
+            for (i, c) in COLORS.iter_mut().enumerate() {
+                c.r = 0;
+                c.g = 0;
+                c.b = 0;
+                c.a = 0;
+                if i < entries.len() {
+                    let (r, g, b) = entries[i];
+                    c.r = r;
+                    c.g = g;
+                    c.b = b;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn get_palette_index_nearest_rgb() {
+        let palette: [(u8, u8, u8); 4] = [(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255)];
+        set_test_palette(&palette);
+
+        unsafe {
+            assert_eq!(I_GetPaletteIndex(0, 0, 0), 0, "exact black");
+            assert_eq!(I_GetPaletteIndex(255, 0, 0), 1, "exact red");
+            assert_eq!(I_GetPaletteIndex(0, 255, 0), 2, "exact green");
+            assert_eq!(I_GetPaletteIndex(0, 0, 255), 3, "exact blue");
+
+            assert_eq!(I_GetPaletteIndex(250, 5, 5), 1, "near red");
+            assert_eq!(I_GetPaletteIndex(5, 250, 5), 2, "near green");
+            assert_eq!(I_GetPaletteIndex(10, 10, 10), 0, "near black");
+
+            assert_eq!(
+                I_GetPaletteIndex(128, 0, 0),
+                1,
+                "128 is one step closer to 255 (diff 127^2) than to 0 (diff 128^2)"
+            );
+            assert_eq!(
+                I_GetPaletteIndex(127, 0, 0),
+                0,
+                "127 is one step closer to 0 than to 255"
+            );
+        }
+    }
+
+    #[test]
+    fn get_palette_index_early_exit_does_not_change_result() {
+        let mut palette: Vec<(u8, u8, u8)> = (0..256).map(|i| (i as u8, 0, 0)).collect();
+        palette[42] = (42, 0, 0);
+        set_test_palette(&palette);
+
+        unsafe {
+            assert_eq!(I_GetPaletteIndex(42, 0, 0), 42);
+        }
+    }
 }
