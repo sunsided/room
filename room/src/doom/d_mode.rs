@@ -486,16 +486,6 @@ pub extern "C" fn D_IsEpisodeMap(mission: c_int) -> Boolean {
     }
 }
 
-/// Convenience macro to produce a `*mut c_char` from a string literal.
-///
-/// Appends a NUL terminator and casts the resulting static byte slice to a raw
-/// `c_char` pointer. Used only within [`D_GameMissionString`].
-macro_rules! cstr {
-    ($s:literal) => {
-        concat!($s, "\0").as_ptr() as *mut c_char
-    };
-}
-
 /// Return a NUL-terminated C string naming the given mission.
 ///
 /// Returns one of `"doom"`, `"doom2"`, `"tnt"`, `"plutonia"`, `"hacx"`,
@@ -512,16 +502,16 @@ macro_rules! cstr {
 #[no_mangle]
 pub extern "C" fn D_GameMissionString(mission: c_int) -> *mut c_char {
     match mission {
-        doom => cstr!("doom"),
-        doom2 => cstr!("doom2"),
-        pack_tnt => cstr!("tnt"),
-        pack_plut => cstr!("plutonia"),
-        pack_hacx => cstr!("hacx"),
-        pack_chex => cstr!("chex"),
-        heretic => cstr!("heretic"),
-        hexen => cstr!("hexen"),
-        strife => cstr!("strife"),
-        _ => cstr!("none"),
+        doom => c"doom".as_ptr().cast_mut(),
+        doom2 => c"doom2".as_ptr().cast_mut(),
+        pack_tnt => c"tnt".as_ptr().cast_mut(),
+        pack_plut => c"plutonia".as_ptr().cast_mut(),
+        pack_hacx => c"hacx".as_ptr().cast_mut(),
+        pack_chex => c"chex".as_ptr().cast_mut(),
+        heretic => c"heretic".as_ptr().cast_mut(),
+        hexen => c"hexen".as_ptr().cast_mut(),
+        strife => c"strife".as_ptr().cast_mut(),
+        _ => c"none".as_ptr().cast_mut(),
     }
 }
 

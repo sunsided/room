@@ -10,9 +10,8 @@
 //! `Sync` by default, even though the pointers here only ever point at
 //! immutable `'static` data.
 //!
-//! The `cstr!` macro appends `"\0"` at compile time and casts the resulting
-//! `&str` to `*const c_char`, producing a valid NUL-terminated C string from
-//! a Rust string literal without any heap allocation.
+//! C string literals (`c"..."`) provide static NUL-terminated pointers without
+//! heap allocation.
 //!
 //! The engine selects a message from these tables at random when the player
 //! attempts to quit, using `gamemission` to pick the correct table
@@ -42,17 +41,6 @@ impl Ptr {
     }
 }
 
-/// Construct a [`Ptr`] pointing to a NUL-terminated C string from a string literal.
-///
-/// The macro concatenates `"\0"` onto the literal at compile time, then casts
-/// the `&'static str` data pointer to `*const c_char`.  No heap allocation
-/// occurs; the string resides in the binary's read-only data segment.
-macro_rules! cstr {
-    ($s:literal) => {
-        Ptr(concat!($s, "\0").as_ptr() as *const c_char)
-    };
-}
-
 /// Eight randomised quit messages shown when a Doom 1 player tries to exit.
 ///
 /// Corresponds to `char *doom1_endmsg[]` in `dstrings.c`.  The game picks
@@ -61,14 +49,14 @@ macro_rules! cstr {
 /// equivalent) to access the table by its original symbol name.
 #[no_mangle]
 pub static doom1_endmsg: [Ptr; 8] = [
-    cstr!("are you sure you want to\nquit this great game?"),
-    cstr!("please don't leave, there's more\ndemons to toast!"),
-    cstr!("let's beat it -- this is turning\ninto a bloodbath!"),
-    cstr!("i wouldn't leave if i were you.\ndos is much worse."),
-    cstr!("you're trying to say you like dos\nbetter than me, right?"),
-    cstr!("don't leave yet -- there's a\ndemon around that corner!"),
-    cstr!("ya know, next time you come in here\ni'm gonna toast ya."),
-    cstr!("go ahead and leave. see if i care."),
+    Ptr(c"are you sure you want to\nquit this great game?".as_ptr()),
+    Ptr(c"please don't leave, there's more\ndemons to toast!".as_ptr()),
+    Ptr(c"let's beat it -- this is turning\ninto a bloodbath!".as_ptr()),
+    Ptr(c"i wouldn't leave if i were you.\ndos is much worse.".as_ptr()),
+    Ptr(c"you're trying to say you like dos\nbetter than me, right?".as_ptr()),
+    Ptr(c"don't leave yet -- there's a\ndemon around that corner!".as_ptr()),
+    Ptr(c"ya know, next time you come in here\ni'm gonna toast ya.".as_ptr()),
+    Ptr(c"go ahead and leave. see if i care.".as_ptr()),
 ];
 
 /// Eight randomised quit messages shown when a Doom 2 player tries to exit.
@@ -78,14 +66,14 @@ pub static doom1_endmsg: [Ptr; 8] = [
 /// `gamemission` is `doom2`, `pack_tnt`, or `pack_plut`.
 #[no_mangle]
 pub static doom2_endmsg: [Ptr; 8] = [
-    cstr!("are you sure you want to\nquit this great game?"),
-    cstr!("you want to quit?\nthen, thou hast lost an eighth!"),
-    cstr!("don't go now, there's a \ndimensional shambler waiting\nat the dos prompt!"),
-    cstr!("get outta here and go back\nto your boring programs."),
-    cstr!("if i were your boss, i'd \n deathmatch ya in a minute!"),
-    cstr!("look, bud. you leave now\nand you forfeit your body count!"),
-    cstr!("just leave. when you come\nback, i'll be waiting with a bat."),
-    cstr!("you're lucky i don't smack\nyou for thinking about leaving."),
+    Ptr(c"are you sure you want to\nquit this great game?".as_ptr()),
+    Ptr(c"you want to quit?\nthen, thou hast lost an eighth!".as_ptr()),
+    Ptr(c"don't go now, there's a \ndimensional shambler waiting\nat the dos prompt!".as_ptr()),
+    Ptr(c"get outta here and go back\nto your boring programs.".as_ptr()),
+    Ptr(c"if i were your boss, i'd \n deathmatch ya in a minute!".as_ptr()),
+    Ptr(c"look, bud. you leave now\nand you forfeit your body count!".as_ptr()),
+    Ptr(c"just leave. when you come\nback, i'll be waiting with a bat.".as_ptr()),
+    Ptr(c"you're lucky i don't smack\nyou for thinking about leaving.".as_ptr()),
 ];
 
 #[cfg(test)]

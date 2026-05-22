@@ -13,7 +13,7 @@
 
 #![allow(non_upper_case_globals, non_snake_case)]
 
-use std::ffi::{c_char, c_int, c_void};
+use std::ffi::{c_int, c_void};
 
 /// Snapshot of intermission-screen state captured at the end of every
 /// level. Mirrors the C `wbstartstruct_t` layout from `d_player.h`.
@@ -90,14 +90,6 @@ static mut num_captured_stats: c_int = 0;
 
 use crate::doom::m_argv::M_ParmExists;
 
-/// Construct a `*mut c_char` pointing at a null-terminated string literal,
-/// used to pass `-statdump` to `M_ParmExists` without an extra allocation.
-macro_rules! cstr {
-    ($s:literal) => {
-        concat!($s, "\0").as_ptr() as *mut c_char
-    };
-}
-
 extern "C" {
     /// C `memcpy` from libc. Used for the bulk struct copy below; an
     /// `std::ptr::copy_nonoverlapping` would do equally well but the
@@ -119,7 +111,7 @@ extern "C" {
 #[no_mangle]
 pub extern "C" fn StatCopy(stats: *mut wbstartstruct_t) {
     unsafe {
-        if M_ParmExists(cstr!("-statdump")) != 0 && num_captured_stats < MAX_CAPTURES as c_int {
+        if M_ParmExists(c"-statdump".as_ptr()) != 0 && num_captured_stats < MAX_CAPTURES as c_int {
             memcpy(
                 std::ptr::addr_of_mut!(captured_stats[0]).offset(num_captured_stats as isize)
                     as *mut c_void,

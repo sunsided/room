@@ -64,7 +64,7 @@ use crate::doom::m_misc::{M_FileLength, FILE as MiscFILE};
 /// Returns the matched argument index (1..argc-num_args) or 0 if not
 /// present. Comparison is case-insensitive.
 #[no_mangle]
-pub extern "C" fn M_CheckParmWithArgs(check: *mut c_char, num_args: c_int) -> c_int {
+pub extern "C" fn M_CheckParmWithArgs(check: *const c_char, num_args: c_int) -> c_int {
     unsafe {
         let mut i: c_int = 1;
         while i < myargc - num_args {
@@ -80,14 +80,14 @@ pub extern "C" fn M_CheckParmWithArgs(check: *mut c_char, num_args: c_int) -> c_
 /// `boolean M_ParmExists(char *check)` — returns nonzero if `check` is
 /// present on the command line, 0 otherwise.
 #[no_mangle]
-pub extern "C" fn M_ParmExists(check: *mut c_char) -> c_int {
+pub extern "C" fn M_ParmExists(check: *const c_char) -> c_int {
     (M_CheckParm(check) != 0) as c_int
 }
 
 /// `int M_CheckParm(char *check)` — convenience wrapper for
 /// `M_CheckParmWithArgs(check, 0)`.
 #[no_mangle]
-pub extern "C" fn M_CheckParm(check: *mut c_char) -> c_int {
+pub extern "C" fn M_CheckParm(check: *const c_char) -> c_int {
     M_CheckParmWithArgs(check, 0)
 }
 

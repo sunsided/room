@@ -38,17 +38,6 @@ const DIR_SEPARATOR: c_char = b'/' as c_char;
 /// C string-joining functions.
 const DIR_SEPARATOR_S: &[u8] = b"/\0";
 
-/// Convenience macro that appends a null terminator to a string literal and
-/// returns a `*mut c_char` pointer to it.
-///
-/// The resulting pointer points into the program's read-only data segment;
-/// callers must never write through it.
-macro_rules! cstr {
-    ($s:literal) => {
-        concat!($s, "\0").as_ptr() as *mut c_char
-    };
-}
-
 extern "C" {
     /// C standard `printf`; used to emit diagnostic messages during IWAD
     /// search.
@@ -114,88 +103,88 @@ unsafe impl Sync for iwad_t {}
 /// shareware releases. Mirrors `iwads[]` in `d_iwad.c`.
 static IWADS: [iwad_t; 14] = [
     iwad_t {
-        name: cstr!("doom2.wad"),
+        name: c"doom2.wad".as_ptr().cast_mut(),
         mission: d_mode::doom2,
         mode: d_mode::commercial,
-        description: cstr!("Doom II"),
+        description: c"Doom II".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("plutonia.wad"),
+        name: c"plutonia.wad".as_ptr().cast_mut(),
         mission: d_mode::pack_plut,
         mode: d_mode::commercial,
-        description: cstr!("Final Doom: Plutonia Experiment"),
+        description: c"Final Doom: Plutonia Experiment".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("tnt.wad"),
+        name: c"tnt.wad".as_ptr().cast_mut(),
         mission: d_mode::pack_tnt,
         mode: d_mode::commercial,
-        description: cstr!("Final Doom: TNT: Evilution"),
+        description: c"Final Doom: TNT: Evilution".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("doom.wad"),
+        name: c"doom.wad".as_ptr().cast_mut(),
         mission: d_mode::doom,
         mode: d_mode::retail,
-        description: cstr!("Doom"),
+        description: c"Doom".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("doom1.wad"),
+        name: c"doom1.wad".as_ptr().cast_mut(),
         mission: d_mode::doom,
         mode: d_mode::shareware,
-        description: cstr!("Doom Shareware"),
+        description: c"Doom Shareware".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("chex.wad"),
+        name: c"chex.wad".as_ptr().cast_mut(),
         mission: d_mode::pack_chex,
         mode: d_mode::shareware,
-        description: cstr!("Chex Quest"),
+        description: c"Chex Quest".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("hacx.wad"),
+        name: c"hacx.wad".as_ptr().cast_mut(),
         mission: d_mode::pack_hacx,
         mode: d_mode::commercial,
-        description: cstr!("Hacx"),
+        description: c"Hacx".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("freedm.wad"),
+        name: c"freedm.wad".as_ptr().cast_mut(),
         mission: d_mode::doom2,
         mode: d_mode::commercial,
-        description: cstr!("FreeDM"),
+        description: c"FreeDM".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("freedoom2.wad"),
+        name: c"freedoom2.wad".as_ptr().cast_mut(),
         mission: d_mode::doom2,
         mode: d_mode::commercial,
-        description: cstr!("Freedoom: Phase 2"),
+        description: c"Freedoom: Phase 2".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("freedoom1.wad"),
+        name: c"freedoom1.wad".as_ptr().cast_mut(),
         mission: d_mode::doom,
         mode: d_mode::retail,
-        description: cstr!("Freedoom: Phase 1"),
+        description: c"Freedoom: Phase 1".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("heretic.wad"),
+        name: c"heretic.wad".as_ptr().cast_mut(),
         mission: d_mode::heretic,
         mode: d_mode::retail,
-        description: cstr!("Heretic"),
+        description: c"Heretic".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("heretic1.wad"),
+        name: c"heretic1.wad".as_ptr().cast_mut(),
         mission: d_mode::heretic,
         mode: d_mode::shareware,
-        description: cstr!("Heretic Shareware"),
+        description: c"Heretic Shareware".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("hexen.wad"),
+        name: c"hexen.wad".as_ptr().cast_mut(),
         mission: d_mode::hexen,
         mode: d_mode::commercial,
-        description: cstr!("Hexen"),
+        description: c"Hexen".as_ptr().cast_mut(),
     },
     iwad_t {
-        name: cstr!("strife1.wad"),
+        name: c"strife1.wad".as_ptr().cast_mut(),
         mission: d_mode::strife,
         mode: d_mode::commercial,
-        description: cstr!("Strife"),
+        description: c"Strife".as_ptr().cast_mut(),
     },
 ];
 
@@ -281,7 +270,7 @@ unsafe fn CheckDirectoryHasIWAD(dir: *mut c_char, iwadname: *mut c_char) -> *mut
         return strdup(dir);
     }
 
-    let filename = if strcmp(dir, cstr!(".")) == 0 {
+    let filename = if strcmp(dir, c".".as_ptr()) == 0 {
         strdup(iwadname)
     } else {
         let strs: [*const c_char; 4] = [
@@ -386,7 +375,7 @@ unsafe fn IdentifyIWADByName(mut name: *mut c_char, mask: c_int) -> c_int {
 /// `iwad_dirs_built` without synchronisation, and calls `AddIWADDir` which
 /// imposes the same requirement.
 unsafe fn BuildIWADDirList() {
-    AddIWADDir(cstr!("."));
+    AddIWADDir(c".".as_ptr().cast_mut());
     iwad_dirs_built = true;
 }
 
@@ -471,7 +460,7 @@ pub unsafe extern "C" fn D_TryFindWADByName(filename: *mut c_char) -> *mut c_cha
 /// `mission` must be a valid, non-null pointer.
 #[no_mangle]
 pub unsafe extern "C" fn D_FindIWAD(mask: c_int, mission: *mut c_int) -> *mut c_char {
-    let iwadparm = M_CheckParmWithArgs(cstr!("-iwad"), 1);
+    let iwadparm = M_CheckParmWithArgs(c"-iwad".as_ptr(), 1);
 
     if iwadparm != 0 {
         let iwadfile = *myargv.offset((iwadparm + 1) as isize);
@@ -554,7 +543,7 @@ pub unsafe extern "C" fn D_SaveGameIWADName(gamemission: c_int) -> *mut c_char {
             return IWADS[i].name;
         }
     }
-    cstr!("unknown.wad")
+    c"unknown.wad".as_ptr().cast_mut()
 }
 
 /// Returns the canonical IWAD filename that best matches `mission` and `mode`.
@@ -570,7 +559,7 @@ pub unsafe extern "C" fn D_SuggestIWADName(mission: c_int, mode: c_int) -> *mut 
             return IWADS[i].name;
         }
     }
-    cstr!("unknown.wad")
+    c"unknown.wad".as_ptr().cast_mut()
 }
 
 /// Returns a human-readable game name for the given `mission` and `mode`.
@@ -587,7 +576,7 @@ pub unsafe extern "C" fn D_SuggestGameName(mission: c_int, mode: c_int) -> *mut 
             return IWADS[i].description;
         }
     }
-    cstr!("Unknown game?")
+    c"Unknown game?".as_ptr().cast_mut()
 }
 
 /// Validates that the loaded IWAD matches the expected `_mission`.

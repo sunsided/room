@@ -757,15 +757,6 @@ pub extern "C" fn R_InitBuffer(width: c_int, height: c_int) {
 // DEH_String shim — identity in this build
 // ---------------------------------------------------------------------------
 
-/// Converts a string literal to a null-terminated `*mut c_char` pointer suitable for C FFI.
-///
-/// Appends a NUL byte at compile time and casts the resulting byte slice to a C string pointer.
-macro_rules! cstr {
-    ($s:literal) => {
-        concat!($s, "\0").as_ptr() as *mut c_char
-    };
-}
-
 /// Identity shim for the DeHackEd string-replacement function.
 ///
 /// In the original C codebase `DEH_String` allows patch files to substitute string constants
@@ -815,9 +806,9 @@ pub extern "C" fn R_FillBackScreen() {
         }
 
         let name = if gamemode == commercial {
-            DEH_String(cstr!("GRNROCK"))
+            DEH_String(c"GRNROCK".as_ptr())
         } else {
-            DEH_String(cstr!("FLOOR7_2"))
+            DEH_String(c"FLOOR7_2".as_ptr())
         };
 
         let src = W_CacheLumpName(name, 8) as *mut u8; // PU_CACHE = 8
@@ -839,22 +830,22 @@ pub extern "C" fn R_FillBackScreen() {
         // Draw screen and bezel; this is done to a separate screen buffer.
         V_UseBuffer(background_buffer);
 
-        let mut patch = W_CacheLumpName(DEH_String(cstr!("brdr_t")), 8) as *mut patch_t;
+        let mut patch = W_CacheLumpName(DEH_String(c"brdr_t".as_ptr()), 8) as *mut patch_t;
         for x in (0..scaledviewwidth).step_by(8) {
             V_DrawPatch(viewwindowx + x, viewwindowy - 8, patch);
         }
 
-        patch = W_CacheLumpName(DEH_String(cstr!("brdr_b")), 8) as *mut patch_t;
+        patch = W_CacheLumpName(DEH_String(c"brdr_b".as_ptr()), 8) as *mut patch_t;
         for x in (0..scaledviewwidth).step_by(8) {
             V_DrawPatch(viewwindowx + x, viewwindowy + viewheight, patch);
         }
 
-        patch = W_CacheLumpName(DEH_String(cstr!("brdr_l")), 8) as *mut patch_t;
+        patch = W_CacheLumpName(DEH_String(c"brdr_l".as_ptr()), 8) as *mut patch_t;
         for y in (0..viewheight).step_by(8) {
             V_DrawPatch(viewwindowx - 8, viewwindowy + y, patch);
         }
 
-        patch = W_CacheLumpName(DEH_String(cstr!("brdr_r")), 8) as *mut patch_t;
+        patch = W_CacheLumpName(DEH_String(c"brdr_r".as_ptr()), 8) as *mut patch_t;
         for y in (0..viewheight).step_by(8) {
             V_DrawPatch(viewwindowx + scaledviewwidth, viewwindowy + y, patch);
         }
@@ -863,22 +854,22 @@ pub extern "C" fn R_FillBackScreen() {
         V_DrawPatch(
             viewwindowx - 8,
             viewwindowy - 8,
-            W_CacheLumpName(DEH_String(cstr!("brdr_tl")), 8) as *mut patch_t,
+            W_CacheLumpName(DEH_String(c"brdr_tl".as_ptr()), 8) as *mut patch_t,
         );
         V_DrawPatch(
             viewwindowx + scaledviewwidth,
             viewwindowy - 8,
-            W_CacheLumpName(DEH_String(cstr!("brdr_tr")), 8) as *mut patch_t,
+            W_CacheLumpName(DEH_String(c"brdr_tr".as_ptr()), 8) as *mut patch_t,
         );
         V_DrawPatch(
             viewwindowx - 8,
             viewwindowy + viewheight,
-            W_CacheLumpName(DEH_String(cstr!("brdr_bl")), 8) as *mut patch_t,
+            W_CacheLumpName(DEH_String(c"brdr_bl".as_ptr()), 8) as *mut patch_t,
         );
         V_DrawPatch(
             viewwindowx + scaledviewwidth,
             viewwindowy + viewheight,
-            W_CacheLumpName(DEH_String(cstr!("brdr_br")), 8) as *mut patch_t,
+            W_CacheLumpName(DEH_String(c"brdr_br".as_ptr()), 8) as *mut patch_t,
         );
 
         V_RestoreBuffer();

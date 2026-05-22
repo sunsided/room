@@ -20,15 +20,6 @@ use crate::doom::d_iwad::D_TryFindWADByName;
 use crate::doom::m_argv::{myargc, myargv, M_CheckParmWithArgs};
 use crate::doom::w_wad::W_AddFile;
 
-/// Construct a `*mut c_char` pointing at a null-terminated string literal.
-/// Used to pass Rust string literals to libc / FFI APIs that expect C
-/// strings.
-macro_rules! cstr {
-    ($s:literal) => {
-        concat!($s, "\0").as_ptr() as *mut c_char
-    };
-}
-
 /// Parse `-file <wad>...` from the command line and append each WAD to the
 /// lump directory.
 ///
@@ -49,13 +40,13 @@ pub extern "C" fn W_ParseCommandLine() -> Boolean {
     let mut modifiedgame: Boolean = Boolean::FALSE;
 
     unsafe {
-        let p = M_CheckParmWithArgs(cstr!("-file"), 1);
+        let p = M_CheckParmWithArgs(c"-file".as_ptr(), 1);
         if p != 0 {
             let mut idx = p + 1;
             modifiedgame = Boolean::TRUE;
             while idx < myargc && **myargv.offset(idx as isize) != b'-' as c_char {
                 let filename = D_TryFindWADByName(*myargv.offset(idx as isize));
-                printf(cstr!(" adding %s\n"), filename);
+                printf(c" adding %s\n".as_ptr(), filename);
                 W_AddFile(filename);
                 idx += 1;
             }

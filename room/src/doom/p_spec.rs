@@ -44,16 +44,6 @@ use crate::doom::z_zone::PU_LEVSPEC;
 use crate::i_error;
 
 // ---------------------------------------------------------------------------
-// Macros
-// ---------------------------------------------------------------------------
-
-macro_rules! cstr {
-    ($s:expr) => {
-        concat!($s, "\0").as_ptr() as *mut c_char
-    };
-}
-
-// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -204,32 +194,32 @@ mod layout_checks {
 ///
 /// Each tuple is `(istexture, endname, startname, speed)`.  A sentinel entry
 /// with `istexture == -1` terminates the list.  Pointers are created from
-/// string literals via the `cstr!` macro and are valid for the program
-/// lifetime.  Sourced from p_spec.c `animdefs[]`.
+/// C string literals and are valid for the program lifetime. Sourced from
+/// p_spec.c `animdefs[]`.
 const ANIMDEFS: &[(c_int, *mut c_char, *mut c_char, c_int)] = &[
-    (0, cstr!("NUKAGE3"), cstr!("NUKAGE1"), 8),
-    (0, cstr!("FWATER4"), cstr!("FWATER1"), 8),
-    (0, cstr!("SWATER4"), cstr!("SWATER1"), 8),
-    (0, cstr!("LAVA4"), cstr!("LAVA1"), 8),
-    (0, cstr!("BLOOD3"), cstr!("BLOOD1"), 8),
-    (0, cstr!("RROCK08"), cstr!("RROCK05"), 8),
-    (0, cstr!("SLIME04"), cstr!("SLIME01"), 8),
-    (0, cstr!("SLIME08"), cstr!("SLIME05"), 8),
-    (0, cstr!("SLIME12"), cstr!("SLIME09"), 8),
-    (1, cstr!("BLODGR4"), cstr!("BLODGR1"), 8),
-    (1, cstr!("SLADRIP3"), cstr!("SLADRIP1"), 8),
-    (1, cstr!("BLODRIP4"), cstr!("BLODRIP1"), 8),
-    (1, cstr!("FIREWALL"), cstr!("FIREWALA"), 8),
-    (1, cstr!("GSTFONT3"), cstr!("GSTFONT1"), 8),
-    (1, cstr!("FIRELAVA"), cstr!("FIRELAV3"), 8),
-    (1, cstr!("FIREMAG3"), cstr!("FIREMAG1"), 8),
-    (1, cstr!("FIREBLU2"), cstr!("FIREBLU1"), 8),
-    (1, cstr!("ROCKRED3"), cstr!("ROCKRED1"), 8),
-    (1, cstr!("BFALL4"), cstr!("BFALL1"), 8),
-    (1, cstr!("SFALL4"), cstr!("SFALL1"), 8),
-    (1, cstr!("WFALL4"), cstr!("WFALL1"), 8),
-    (1, cstr!("DBRAIN4"), cstr!("DBRAIN1"), 8),
-    (-1, cstr!(""), cstr!(""), 0),
+    (0, c"NUKAGE3".as_ptr().cast_mut(), c"NUKAGE1".as_ptr().cast_mut(), 8),
+    (0, c"FWATER4".as_ptr().cast_mut(), c"FWATER1".as_ptr().cast_mut(), 8),
+    (0, c"SWATER4".as_ptr().cast_mut(), c"SWATER1".as_ptr().cast_mut(), 8),
+    (0, c"LAVA4".as_ptr().cast_mut(), c"LAVA1".as_ptr().cast_mut(), 8),
+    (0, c"BLOOD3".as_ptr().cast_mut(), c"BLOOD1".as_ptr().cast_mut(), 8),
+    (0, c"RROCK08".as_ptr().cast_mut(), c"RROCK05".as_ptr().cast_mut(), 8),
+    (0, c"SLIME04".as_ptr().cast_mut(), c"SLIME01".as_ptr().cast_mut(), 8),
+    (0, c"SLIME08".as_ptr().cast_mut(), c"SLIME05".as_ptr().cast_mut(), 8),
+    (0, c"SLIME12".as_ptr().cast_mut(), c"SLIME09".as_ptr().cast_mut(), 8),
+    (1, c"BLODGR4".as_ptr().cast_mut(), c"BLODGR1".as_ptr().cast_mut(), 8),
+    (1, c"SLADRIP3".as_ptr().cast_mut(), c"SLADRIP1".as_ptr().cast_mut(), 8),
+    (1, c"BLODRIP4".as_ptr().cast_mut(), c"BLODRIP1".as_ptr().cast_mut(), 8),
+    (1, c"FIREWALL".as_ptr().cast_mut(), c"FIREWALA".as_ptr().cast_mut(), 8),
+    (1, c"GSTFONT3".as_ptr().cast_mut(), c"GSTFONT1".as_ptr().cast_mut(), 8),
+    (1, c"FIRELAVA".as_ptr().cast_mut(), c"FIRELAV3".as_ptr().cast_mut(), 8),
+    (1, c"FIREMAG3".as_ptr().cast_mut(), c"FIREMAG1".as_ptr().cast_mut(), 8),
+    (1, c"FIREBLU2".as_ptr().cast_mut(), c"FIREBLU1".as_ptr().cast_mut(), 8),
+    (1, c"ROCKRED3".as_ptr().cast_mut(), c"ROCKRED1".as_ptr().cast_mut(), 8),
+    (1, c"BFALL4".as_ptr().cast_mut(), c"BFALL1".as_ptr().cast_mut(), 8),
+    (1, c"SFALL4".as_ptr().cast_mut(), c"SFALL1".as_ptr().cast_mut(), 8),
+    (1, c"WFALL4".as_ptr().cast_mut(), c"WFALL1".as_ptr().cast_mut(), 8),
+    (1, c"DBRAIN4".as_ptr().cast_mut(), c"DBRAIN1".as_ptr().cast_mut(), 8),
+    (-1, c"".as_ptr().cast_mut(), c"".as_ptr().cast_mut(), 0),
 ];
 
 // ---------------------------------------------------------------------------
@@ -1244,7 +1234,7 @@ unsafe fn DonutOverrun(
         tmp_s3_floorheight = 0;
         tmp_s3_floorpic = 0x16;
 
-        let p = M_CheckParmWithArgs(cstr!("-donut"), 2);
+        let p = M_CheckParmWithArgs(c"-donut".as_ptr(), 2);
         if p > 0 {
             M_StrToInt(
                 *myargv.offset((p + 1) as isize),
