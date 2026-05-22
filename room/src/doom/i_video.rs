@@ -486,30 +486,41 @@ pub unsafe extern "C" fn I_SetPalette(palette: *mut u8) {
 ///
 /// Mirrors `I_GetPaletteIndex` in `i_video.c`: linear scan over the
 /// 256-entry active palette, returning the index with the smallest
-/// squared RGB distance. Exits early on an exact match. The C source
-/// searches the gamma-corrected `rgb565_palette`; this port searches
-/// the gamma-corrected `COLORS` array directly (no 5/6/5 quantization
-/// because the Rust framebuffer is 32 bpp).
+/// squared RGB distance. Exits early on the first exact match. The C
+/// source searches the gamma-corrected `rgb565_palette`; this port
+/// searches the gamma-corrected `COLORS` array directly (no 5/6/5
+/// quantization because the Rust framebuffer is 32 bpp).
+///
+/// The diff is accumulated in `i64` so out-of-range `r`/`g`/`b` values
+/// (the C ABI accepts any `int`) cannot overflow even though all real
+/// callers pass values in `0..=255`.
 ///
 /// # Safety
 ///
-/// Trivially safe; no pointer dereferences.
+/// Reads `static mut COLORS`. The caller must have run `I_SetPalette`
+/// at least once and must not race a concurrent writer.
 #[no_mangle]
 pub unsafe extern "C" fn I_GetPaletteIndex(r: c_int, g: c_int, b: c_int) -> c_int {
+    let r = r as i64;
+    let g = g as i64;
+    let b = b as i64;
+    // `best = 0` is a sound default only because the palette is
+    // always 256 entries and the loop visits all of them.
     let mut best: c_int = 0;
-    let mut best_diff: c_int = c_int::MAX;
+    let mut best_diff: i64 = i64::MAX;
+    let colors = ptr::addr_of!(COLORS) as *const Color;
     for i in 0..256 {
-        let color = COLORS[i];
-        let dr = r - color.r as c_int;
-        let dg = g - color.g as c_int;
-        let db = b - color.b as c_int;
+        let color = colors.add(i).read();
+        let dr = r - color.r as i64;
+        let dg = g - color.g as i64;
+        let db = b - color.b as i64;
         let diff = dr * dr + dg * dg + db * db;
         if diff < best_diff {
             best = i as c_int;
             best_diff = diff;
-            if diff == 0 {
-                break;
-            }
+        }
+        if diff == 0 {
+            break;
         }
     }
     best
@@ -634,26 +645,25 @@ pub unsafe extern "C" fn I_Video_Link_Anchor() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// `COLORS` is a `static mut` shared across the whole crate; the
+    /// two tests below mutate it, so they must run serially.
+    static PALETTE_LOCK: Mutex<()> = Mutex::new(());
 
     fn set_test_palette(entries: &[(u8, u8, u8)]) {
+        let colors = ptr::addr_of_mut!(COLORS) as *mut Color;
         unsafe {
-            for (i, c) in COLORS.iter_mut().enumerate() {
-                c.r = 0;
-                c.g = 0;
-                c.b = 0;
-                c.a = 0;
-                if i < entries.len() {
-                    let (r, g, b) = entries[i];
-                    c.r = r;
-                    c.g = g;
-                    c.b = b;
-                }
+            for i in 0..256 {
+                let (r, g, b) = entries.get(i).copied().unwrap_or((0, 0, 0));
+                colors.add(i).write(Color { b, g, r, a: 0 });
             }
         }
     }
 
     #[test]
     fn get_palette_index_nearest_rgb() {
+        let _guard = PALETTE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let palette: [(u8, u8, u8); 4] = [(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255)];
         set_test_palette(&palette);
 
@@ -677,13 +687,26 @@ mod tests {
                 0,
                 "127 is one step closer to 0 than to 255"
             );
+
+            // Out-of-range inputs must not overflow the diff accumulator.
+            assert_eq!(I_GetPaletteIndex(c_int::MAX, 0, 0), 1, "saturate to red");
+            assert_eq!(I_GetPaletteIndex(c_int::MIN, 0, 0), 0, "saturate to black");
         }
     }
 
     #[test]
-    fn get_palette_index_early_exit_does_not_change_result() {
-        let mut palette: Vec<(u8, u8, u8)> = (0..256).map(|i| (i as u8, 0, 0)).collect();
+    fn get_palette_index_returns_first_exact_match() {
+        let _guard = PALETTE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        // Index 42 is the target; index 200 is a duplicate. Strict
+        // `diff < best_diff` plus the outer-scope `if diff == 0
+        // { break }` together guarantee the first exact match wins
+        // and the loop terminates there; this test pins the
+        // first-match contract so regressions in either branch show
+        // up as a wrong index.
+        let mut palette: Vec<(u8, u8, u8)> = (0..256).map(|_| (200, 0, 0)).collect();
         palette[42] = (42, 0, 0);
+        palette[200] = (42, 0, 0);
         set_test_palette(&palette);
 
         unsafe {
