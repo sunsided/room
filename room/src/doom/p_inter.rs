@@ -366,14 +366,20 @@ pub static mut clipammo: [c_int; NUMAMMO] = [10, 4, 20, 1];
 /// Global mutable statics `maxammo`, `clipammo`, `gameskill` must only be
 /// accessed from the game-logic thread.
 #[no_mangle]
-pub unsafe extern "C" fn P_GiveAmmo(player: *mut PlayerT, ammo: c_int, mut num: c_int) -> c_int {
+pub unsafe extern "C" fn P_GiveAmmo(player: *mut PlayerT, ammo: c_int, num: c_int) -> c_int {
+    p_give_ammo(&mut *player, ammo, num)
+}
+
+/// Rust-side body of [`P_GiveAmmo`]. Takes `&mut PlayerT` so callers can
+/// pass an existing borrow without re-deriving a second `&mut` from the
+/// same raw pointer (which would violate aliasing rules).
+unsafe fn p_give_ammo(player: &mut PlayerT, ammo: c_int, mut num: c_int) -> c_int {
     if ammo == am_noammo {
         return 0;
     }
     if ammo > NUMAMMO as c_int {
         i_error!("P_GiveAmmo: bad type");
     }
-    let player = &mut *player;
     let idx = ammo as usize;
     if player.ammo[idx] == player.maxammo[idx] {
         return 0;
@@ -449,8 +455,13 @@ pub unsafe extern "C" fn P_GiveWeapon(
     weapon: c_int,
     dropped: c_int,
 ) -> c_int {
-    let player_ptr = player;
-    let player = &mut *player_ptr;
+    p_give_weapon(&mut *player, weapon, dropped)
+}
+
+/// Rust-side body of [`P_GiveWeapon`]. Takes `&mut PlayerT` so callers can
+/// pass an existing borrow; avoids re-deriving a second `&mut` from the
+/// same raw pointer.
+unsafe fn p_give_weapon(player: &mut PlayerT, weapon: c_int, dropped: c_int) -> c_int {
     let widx = weapon as usize;
     let ammo_kind = weaponinfo[widx].ammo;
     if netgame != 0 && deathmatch != 2 && dropped == 0 {
@@ -460,11 +471,12 @@ pub unsafe extern "C" fn P_GiveWeapon(
         player.bonuscount += BONUSADD;
         player.weaponowned[widx] = 1;
         if deathmatch != 0 {
-            P_GiveAmmo(player_ptr, ammo_kind, 5);
+            p_give_ammo(player, ammo_kind, 5);
         } else {
-            P_GiveAmmo(player_ptr, ammo_kind, 2);
+            p_give_ammo(player, ammo_kind, 2);
         }
         player.pendingweapon = weapon;
+        let player_ptr = player as *mut PlayerT;
         if std::ptr::eq(
             player_ptr,
             std::ptr::addr_of_mut!(players[0]).add(consoleplayer as usize),
@@ -475,9 +487,9 @@ pub unsafe extern "C" fn P_GiveWeapon(
     }
     let gaveammo: c_int = if ammo_kind != am_noammo {
         if dropped != 0 {
-            P_GiveAmmo(player_ptr, ammo_kind, 1)
+            p_give_ammo(player, ammo_kind, 1)
         } else {
-            P_GiveAmmo(player_ptr, ammo_kind, 2)
+            p_give_ammo(player, ammo_kind, 2)
         }
     } else {
         0
@@ -509,7 +521,11 @@ pub unsafe extern "C" fn P_GiveWeapon(
 /// `player.mo` must be a valid, non-null pointer to the player's map object.
 #[no_mangle]
 pub unsafe extern "C" fn P_GiveBody(player: *mut PlayerT, num: c_int) -> c_int {
-    let player = &mut *player;
+    p_give_body(&mut *player, num)
+}
+
+/// Rust-side body of [`P_GiveBody`]. See [`p_give_ammo`] for rationale.
+unsafe fn p_give_body(player: &mut PlayerT, num: c_int) -> c_int {
     if player.health >= MAXHEALTH {
         return 0;
     }
@@ -538,7 +554,11 @@ pub unsafe extern "C" fn P_GiveBody(player: *mut PlayerT, num: c_int) -> c_int {
 /// `player` must be a valid, non-null pointer to a live `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn P_GiveArmor(player: *mut PlayerT, armortype: c_int) -> c_int {
-    let player = &mut *player;
+    p_give_armor(&mut *player, armortype)
+}
+
+/// Rust-side body of [`P_GiveArmor`]. See [`p_give_ammo`] for rationale.
+fn p_give_armor(player: &mut PlayerT, armortype: c_int) -> c_int {
     let hits = armortype * 100;
     if player.armorpoints >= hits {
         return 0;
@@ -563,7 +583,11 @@ pub unsafe extern "C" fn P_GiveArmor(player: *mut PlayerT, armortype: c_int) -> 
 /// `player` must be a valid, non-null pointer to a live `PlayerT`.
 #[no_mangle]
 pub unsafe extern "C" fn P_GiveCard(player: *mut PlayerT, card: c_int) {
-    let player = &mut *player;
+    p_give_card(&mut *player, card)
+}
+
+/// Rust-side body of [`P_GiveCard`]. See [`p_give_ammo`] for rationale.
+fn p_give_card(player: &mut PlayerT, card: c_int) {
     let idx = card as usize;
     if player.cards[idx] != 0 {
         return;
@@ -591,8 +615,11 @@ pub unsafe extern "C" fn P_GiveCard(player: *mut PlayerT, card: c_int) {
 /// `pw_invisibility`, `player.mo` must also be valid.
 #[no_mangle]
 pub unsafe extern "C" fn P_GivePower(player: *mut PlayerT, power: c_int) -> c_int {
-    let player_ptr = player;
-    let player = &mut *player_ptr;
+    p_give_power(&mut *player, power)
+}
+
+/// Rust-side body of [`P_GivePower`]. See [`p_give_ammo`] for rationale.
+unsafe fn p_give_power(player: &mut PlayerT, power: c_int) -> c_int {
     let power = power as usize;
     if power == pw_invulnerability {
         player.powers[power] = INVULNTICS;
@@ -613,7 +640,7 @@ pub unsafe extern "C" fn P_GivePower(player: *mut PlayerT, power: c_int) -> c_in
         return 1;
     }
     if power == pw_strength {
-        P_GiveBody(player_ptr, 100);
+        p_give_body(player, 100);
         player.powers[power] = 1;
         return 1;
     }
@@ -649,36 +676,41 @@ pub unsafe extern "C" fn P_GivePower(player: *mut PlayerT, power: c_int) -> c_in
 /// game-logic thread.
 #[no_mangle]
 pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut mobj_t) {
-    let special = &mut *special;
-    let toucher = &mut *toucher;
-    let delta = special.z - toucher.z;
-    if delta > toucher.height || delta < -8 * FRACUNIT {
+    // Read all primitives from `special` / `toucher` up front via raw
+    // pointers so we never hold a `&mut` to either of them across the
+    // FFI helper calls or `P_RemoveMobj` below; those reborrow the
+    // raw pointers and would alias.
+    let delta = (*special).z - (*toucher).z;
+    if delta > (*toucher).height || delta < -8 * FRACUNIT {
         return;
     }
 
     // Dead thing touching.
     // Can happen with a sliding player corpse.
-    if toucher.health <= 0 {
+    if (*toucher).health <= 0 {
         return;
     }
 
     let mut sound: c_int = Sfx::Itemup as c_int;
-    let player_ptr = toucher.player as *mut PlayerT;
+    let player_ptr = (*toucher).player as *mut PlayerT;
+    let sprite = (*special).sprite;
+    let special_flags = (*special).flags;
+    // `player` is the long-lived borrow. Every helper called below
+    // takes `&mut PlayerT` (the `p_give_*` inner fns), so no second
+    // `&mut PlayerT` is ever derived from `player_ptr`.
     let player = &mut *player_ptr;
-    let sprite = special.sprite;
-    let special_flags = special.flags;
 
     // Identify by sprite.
     match sprite {
         // armor
         SPR_ARM1 => {
-            if P_GiveArmor(player_ptr, deh_green_armor_class) == 0 {
+            if p_give_armor(player, deh_green_armor_class) == 0 {
                 return;
             }
             player.message = DEH_String(GOTARMOR);
         }
         SPR_ARM2 => {
-            if P_GiveArmor(player_ptr, deh_blue_armor_class) == 0 {
+            if p_give_armor(player, deh_blue_armor_class) == 0 {
                 return;
             }
             player.message = DEH_String(GOTMEGA);
@@ -722,7 +754,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
                 let mo = &mut *(player.mo as *mut mobj_t);
                 mo.health = player.health;
             }
-            P_GiveArmor(player_ptr, deh_blue_armor_class);
+            p_give_armor(player, deh_blue_armor_class);
             player.message = DEH_String(GOTMSPHERE);
             sound = Sfx::Getpow as c_int;
         }
@@ -731,7 +763,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             if player.cards[it_bluecard as usize] == 0 {
                 player.message = DEH_String(GOTBLUECARD);
             }
-            P_GiveCard(player_ptr, it_bluecard);
+            p_give_card(player, it_bluecard);
             if netgame != 0 {
                 return;
             }
@@ -740,7 +772,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             if player.cards[it_yellowcard as usize] == 0 {
                 player.message = DEH_String(GOTYELWCARD);
             }
-            P_GiveCard(player_ptr, it_yellowcard);
+            p_give_card(player, it_yellowcard);
             if netgame != 0 {
                 return;
             }
@@ -749,7 +781,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             if player.cards[it_redcard as usize] == 0 {
                 player.message = DEH_String(GOTREDCARD);
             }
-            P_GiveCard(player_ptr, it_redcard);
+            p_give_card(player, it_redcard);
             if netgame != 0 {
                 return;
             }
@@ -758,7 +790,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             if player.cards[it_blueskull as usize] == 0 {
                 player.message = DEH_String(GOTBLUESKUL);
             }
-            P_GiveCard(player_ptr, it_blueskull);
+            p_give_card(player, it_blueskull);
             if netgame != 0 {
                 return;
             }
@@ -767,7 +799,7 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             if player.cards[it_yellowskull as usize] == 0 {
                 player.message = DEH_String(GOTYELWSKUL);
             }
-            P_GiveCard(player_ptr, it_yellowskull);
+            p_give_card(player, it_yellowskull);
             if netgame != 0 {
                 return;
             }
@@ -776,20 +808,20 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             if player.cards[it_redskull as usize] == 0 {
                 player.message = DEH_String(GOTREDSKULL);
             }
-            P_GiveCard(player_ptr, it_redskull);
+            p_give_card(player, it_redskull);
             if netgame != 0 {
                 return;
             }
         }
         // medikits, heals
         SPR_STIM => {
-            if P_GiveBody(player_ptr, 10) == 0 {
+            if p_give_body(player, 10) == 0 {
                 return;
             }
             player.message = DEH_String(GOTSTIM);
         }
         SPR_MEDI => {
-            if P_GiveBody(player_ptr, 25) == 0 {
+            if p_give_body(player, 25) == 0 {
                 return;
             }
             if player.health < 25 {
@@ -800,14 +832,14 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
         }
         // power ups
         SPR_PINV => {
-            if P_GivePower(player_ptr, pw_invulnerability as c_int) == 0 {
+            if p_give_power(player, pw_invulnerability as c_int) == 0 {
                 return;
             }
             player.message = DEH_String(GOTINVUL);
             sound = Sfx::Getpow as c_int;
         }
         SPR_PSTR => {
-            if P_GivePower(player_ptr, pw_strength as c_int) == 0 {
+            if p_give_power(player, pw_strength as c_int) == 0 {
                 return;
             }
             player.message = DEH_String(GOTBERSERK);
@@ -817,28 +849,28 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             sound = Sfx::Getpow as c_int;
         }
         SPR_PINS => {
-            if P_GivePower(player_ptr, pw_invisibility as c_int) == 0 {
+            if p_give_power(player, pw_invisibility as c_int) == 0 {
                 return;
             }
             player.message = DEH_String(GOTINVIS);
             sound = Sfx::Getpow as c_int;
         }
         SPR_SUIT => {
-            if P_GivePower(player_ptr, pw_ironfeet as c_int) == 0 {
+            if p_give_power(player, pw_ironfeet as c_int) == 0 {
                 return;
             }
             player.message = DEH_String(GOTSUIT);
             sound = Sfx::Getpow as c_int;
         }
         SPR_PMAP => {
-            if P_GivePower(player_ptr, pw_allmap as c_int) == 0 {
+            if p_give_power(player, pw_allmap as c_int) == 0 {
                 return;
             }
             player.message = DEH_String(GOTMAP);
             sound = Sfx::Getpow as c_int;
         }
         SPR_PVIS => {
-            if P_GivePower(player_ptr, pw_infrared as c_int) == 0 {
+            if p_give_power(player, pw_infrared as c_int) == 0 {
                 return;
             }
             player.message = DEH_String(GOTVISOR);
@@ -851,49 +883,49 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             } else {
                 1
             };
-            if P_GiveAmmo(player_ptr, am_clip, amount) == 0 {
+            if p_give_ammo(player, am_clip, amount) == 0 {
                 return;
             }
             player.message = DEH_String(GOTCLIP);
         }
         SPR_AMMO => {
-            if P_GiveAmmo(player_ptr, am_clip, 5) == 0 {
+            if p_give_ammo(player, am_clip, 5) == 0 {
                 return;
             }
             player.message = DEH_String(GOTCLIPBOX);
         }
         SPR_ROCK => {
-            if P_GiveAmmo(player_ptr, am_misl, 1) == 0 {
+            if p_give_ammo(player, am_misl, 1) == 0 {
                 return;
             }
             player.message = DEH_String(GOTROCKET);
         }
         SPR_BROK => {
-            if P_GiveAmmo(player_ptr, am_misl, 5) == 0 {
+            if p_give_ammo(player, am_misl, 5) == 0 {
                 return;
             }
             player.message = DEH_String(GOTROCKBOX);
         }
         SPR_CELL => {
-            if P_GiveAmmo(player_ptr, am_cell, 1) == 0 {
+            if p_give_ammo(player, am_cell, 1) == 0 {
                 return;
             }
             player.message = DEH_String(GOTCELL);
         }
         SPR_CELP => {
-            if P_GiveAmmo(player_ptr, am_cell, 5) == 0 {
+            if p_give_ammo(player, am_cell, 5) == 0 {
                 return;
             }
             player.message = DEH_String(GOTCELLBOX);
         }
         SPR_SHEL => {
-            if P_GiveAmmo(player_ptr, am_shell, 1) == 0 {
+            if p_give_ammo(player, am_shell, 1) == 0 {
                 return;
             }
             player.message = DEH_String(GOTSHELLS);
         }
         SPR_SBOX => {
-            if P_GiveAmmo(player_ptr, am_shell, 5) == 0 {
+            if p_give_ammo(player, am_shell, 5) == 0 {
                 return;
             }
             player.message = DEH_String(GOTSHELLBOX);
@@ -906,21 +938,21 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
                 player.backpack = 1;
             }
             for i in 0..NUMAMMO {
-                P_GiveAmmo(player_ptr, i as c_int, 1);
+                p_give_ammo(player, i as c_int, 1);
             }
             player.message = DEH_String(GOTBACKPACK);
         }
         // weapons
         SPR_BFUG => {
-            if P_GiveWeapon(player_ptr, wp_bfg, 0) == 0 {
+            if p_give_weapon(player, wp_bfg, 0) == 0 {
                 return;
             }
             player.message = DEH_String(GOTBFG9000);
             sound = Sfx::Wpnup as c_int;
         }
         SPR_MGUN => {
-            if P_GiveWeapon(
-                player_ptr,
+            if p_give_weapon(
+                player,
                 wp_chaingun,
                 ((special_flags & MF_DROPPED) != 0) as c_int,
             ) == 0
@@ -931,29 +963,29 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             sound = Sfx::Wpnup as c_int;
         }
         SPR_CSAW => {
-            if P_GiveWeapon(player_ptr, wp_chainsaw, 0) == 0 {
+            if p_give_weapon(player, wp_chainsaw, 0) == 0 {
                 return;
             }
             player.message = DEH_String(GOTCHAINSAW);
             sound = Sfx::Wpnup as c_int;
         }
         SPR_LAUN => {
-            if P_GiveWeapon(player_ptr, wp_missile, 0) == 0 {
+            if p_give_weapon(player, wp_missile, 0) == 0 {
                 return;
             }
             player.message = DEH_String(GOTLAUNCHER);
             sound = Sfx::Wpnup as c_int;
         }
         SPR_PLAS => {
-            if P_GiveWeapon(player_ptr, wp_plasma, 0) == 0 {
+            if p_give_weapon(player, wp_plasma, 0) == 0 {
                 return;
             }
             player.message = DEH_String(GOTPLASMA);
             sound = Sfx::Wpnup as c_int;
         }
         SPR_SHOT => {
-            if P_GiveWeapon(
-                player_ptr,
+            if p_give_weapon(
+                player,
                 wp_shotgun,
                 ((special_flags & MF_DROPPED) != 0) as c_int,
             ) == 0
@@ -964,8 +996,8 @@ pub unsafe extern "C" fn P_TouchSpecialThing(special: *mut mobj_t, toucher: *mut
             sound = Sfx::Wpnup as c_int;
         }
         SPR_SGN2 => {
-            if P_GiveWeapon(
-                player_ptr,
+            if p_give_weapon(
+                player,
                 wp_supershotgun,
                 ((special_flags & MF_DROPPED) != 0) as c_int,
             ) == 0
