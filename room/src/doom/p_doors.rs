@@ -69,11 +69,55 @@ const it_yellowskull: usize = 4;
 /// Index into the player card array for the red skull key.
 const it_redskull: usize = 5;
 
-/// Helper macro: produce a null-terminated `*mut c_char` from a string literal.
-macro_rules! cstr {
-    ($s:literal) => {
-        concat!($s, "\0").as_ptr() as *mut c_char
-    };
+/// Locked-object message: blue key required.
+const PD_BLUEO: *mut c_char = c"You need a blue key to activate this object"
+    .as_ptr()
+    .cast_mut();
+/// Locked-object message: red key required.
+const PD_REDO: *mut c_char = c"You need a red key to activate this object"
+    .as_ptr()
+    .cast_mut();
+/// Locked-object message: yellow key required.
+const PD_YELLOWO: *mut c_char = c"You need a yellow key to activate this object"
+    .as_ptr()
+    .cast_mut();
+/// Locked-door message: blue key required.
+const PD_BLUEK: *mut c_char = c"You need a blue key to open this door".as_ptr().cast_mut();
+/// Locked-door message: red key required.
+const PD_REDK: *mut c_char = c"You need a red key to open this door".as_ptr().cast_mut();
+/// Locked-door message: yellow key required.
+const PD_YELLOWK: *mut c_char = c"You need a yellow key to open this door"
+    .as_ptr()
+    .cast_mut();
+
+/// Passes `s` through unchanged.
+///
+/// When DEHacked support is compiled in this function would look up a patched
+/// string replacement. Here it is a no-op identity shim because
+/// `FEATURE_DEHACKED` is not defined.
+#[inline(always)]
+unsafe fn DEH_String(s: *mut c_char) -> *mut c_char {
+    s
+}
+
+#[inline(always)]
+unsafe fn locked_object_message(special: c_int) -> *mut c_char {
+    match special {
+        99 | 133 => DEH_String(PD_BLUEO),
+        134 | 135 => DEH_String(PD_REDO),
+        136 | 137 => DEH_String(PD_YELLOWO),
+        _ => unreachable!("unexpected locked object special: {special}"),
+    }
+}
+
+#[inline(always)]
+unsafe fn locked_door_message(special: c_int) -> *mut c_char {
+    match special {
+        26 | 32 => DEH_String(PD_BLUEK),
+        27 | 34 => DEH_String(PD_YELLOWK),
+        28 | 33 => DEH_String(PD_REDK),
+        _ => unreachable!("unexpected locked door special: {special}"),
+    }
 }
 
 /// Thinker state for an active vertical door.
@@ -266,51 +310,36 @@ pub unsafe extern "C" fn T_VerticalDoor(door: *mut vldoor_t) {
 ///
 /// `line`, `thing` must be valid non-null pointers for the current map.
 ///
-/// # FIXME
-/// The lock-failure messages are hardcoded English strings. The C original uses
-/// `DEH_String(PD_BLUEO)` etc., which allows Dehacked patches to override them.
-/// This port drops that indirection, so Dehacked key messages cannot be patched.
+/// Lock-failure messages are routed through `DEH_String`, matching the C
+/// original so Dehacked patches can override them.
 #[no_mangle]
 pub unsafe extern "C" fn EV_DoLockedDoor(
     line: *mut line_t,
     r#type: c_int,
     thing: *mut mobj_t,
 ) -> c_int {
-    let p = (*thing).player as *mut PlayerT;
-    if p.is_null() {
+    let Some(p) = ((*thing).player as *mut PlayerT).as_mut() else {
         return 0;
-    }
+    };
 
     match (*line).special as c_int {
         99 | 133 => {
-            if p.is_null() {
-                return 0;
-            }
-            if (*p).cards[it_bluecard] == 0 && (*p).cards[it_blueskull] == 0 {
-                // FIXME: C uses DEH_String(PD_BLUEO) here; Dehacked blue-object message is not patchable.
-                (*p).message = cstr!("You need a blue key to activate this object");
+            if p.cards[it_bluecard] == 0 && p.cards[it_blueskull] == 0 {
+                p.message = locked_object_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return 0;
             }
         }
         134 | 135 => {
-            if p.is_null() {
-                return 0;
-            }
-            if (*p).cards[it_redcard] == 0 && (*p).cards[it_redskull] == 0 {
-                // FIXME: C uses DEH_String(PD_REDO) here; Dehacked red-object message is not patchable.
-                (*p).message = cstr!("You need a red key to activate this object");
+            if p.cards[it_redcard] == 0 && p.cards[it_redskull] == 0 {
+                p.message = locked_object_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return 0;
             }
         }
         136 | 137 => {
-            if p.is_null() {
-                return 0;
-            }
-            if (*p).cards[it_yellowcard] == 0 && (*p).cards[it_yellowskull] == 0 {
-                // FIXME: C uses DEH_String(PD_YELLOWO) here; Dehacked yellow-object message is not patchable.
-                (*p).message = cstr!("You need a yellow key to activate this object");
+            if p.cards[it_yellowcard] == 0 && p.cards[it_yellowskull] == 0 {
+                p.message = locked_object_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return 0;
             }
@@ -435,10 +464,8 @@ pub unsafe extern "C" fn EV_DoDoor(line: *mut line_t, r#type: c_int) -> c_int {
 /// `line` and `thing` must be valid non-null pointers for the current map; the
 /// global `sides` array must be initialised.
 ///
-/// # FIXME
-/// The key-locked door messages use hardcoded English strings (e.g.
-/// `"You need a blue key to open this door"`). The C original uses
-/// `DEH_String(PD_BLUEK)` etc., allowing Dehacked to override them.
+/// Key-locked door messages are routed through `DEH_String`, matching the C
+/// original so Dehacked patches can override them.
 #[no_mangle]
 pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) {
     let side = 0;
@@ -448,34 +475,31 @@ pub unsafe extern "C" fn EV_VerticalDoor(line: *mut line_t, thing: *mut mobj_t) 
 
     match (*line).special as c_int {
         26 | 32 => {
-            if player.is_null() {
+            let Some(player) = player.as_mut() else {
                 return;
-            }
-            if (*player).cards[it_bluecard] == 0 && (*player).cards[it_blueskull] == 0 {
-                // FIXME: C uses DEH_String(PD_BLUEK) here; Dehacked blue-door message is not patchable.
-                (*player).message = cstr!("You need a blue key to open this door");
+            };
+            if player.cards[it_bluecard] == 0 && player.cards[it_blueskull] == 0 {
+                player.message = locked_door_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return;
             }
         }
         27 | 34 => {
-            if player.is_null() {
+            let Some(player) = player.as_mut() else {
                 return;
-            }
-            if (*player).cards[it_yellowcard] == 0 && (*player).cards[it_yellowskull] == 0 {
-                // FIXME: C uses DEH_String(PD_YELLOWK) here; Dehacked yellow-door message is not patchable.
-                (*player).message = cstr!("You need a yellow key to open this door");
+            };
+            if player.cards[it_yellowcard] == 0 && player.cards[it_yellowskull] == 0 {
+                player.message = locked_door_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return;
             }
         }
         28 | 33 => {
-            if player.is_null() {
+            let Some(player) = player.as_mut() else {
                 return;
-            }
-            if (*player).cards[it_redcard] == 0 && (*player).cards[it_redskull] == 0 {
-                // FIXME: C uses DEH_String(PD_REDK) here; Dehacked red-door message is not patchable.
-                (*player).message = cstr!("You need a red key to open this door");
+            };
+            if player.cards[it_redcard] == 0 && player.cards[it_redskull] == 0 {
+                player.message = locked_door_message((*line).special as c_int);
                 S_StartSound(std::ptr::null_mut(), Sfx::Oof as c_int);
                 return;
             }
@@ -713,5 +737,31 @@ mod tests {
             std::mem::offset_of!(vldoor_t, topcountdown),
             VLDOOR_T_TOPCOUNTDOWN
         );
+    }
+
+    #[test]
+    fn locked_object_specials_map_to_dehacked_messages() {
+        let _g = LOCK.lock().unwrap();
+        unsafe {
+            assert_eq!(locked_object_message(99), DEH_String(PD_BLUEO));
+            assert_eq!(locked_object_message(133), DEH_String(PD_BLUEO));
+            assert_eq!(locked_object_message(134), DEH_String(PD_REDO));
+            assert_eq!(locked_object_message(135), DEH_String(PD_REDO));
+            assert_eq!(locked_object_message(136), DEH_String(PD_YELLOWO));
+            assert_eq!(locked_object_message(137), DEH_String(PD_YELLOWO));
+        }
+    }
+
+    #[test]
+    fn vertical_door_specials_map_to_dehacked_messages() {
+        let _g = LOCK.lock().unwrap();
+        unsafe {
+            assert_eq!(locked_door_message(26), DEH_String(PD_BLUEK));
+            assert_eq!(locked_door_message(32), DEH_String(PD_BLUEK));
+            assert_eq!(locked_door_message(27), DEH_String(PD_YELLOWK));
+            assert_eq!(locked_door_message(34), DEH_String(PD_YELLOWK));
+            assert_eq!(locked_door_message(28), DEH_String(PD_REDK));
+            assert_eq!(locked_door_message(33), DEH_String(PD_REDK));
+        }
     }
 }

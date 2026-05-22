@@ -8,7 +8,7 @@ edition = "2021"
 # code — they are expected to coexist only as a behavioural reference.
 
 [dependencies]
-c2rust-bitfields = "0.21"
+c2rust-bitfields = "0.22"
 libc = "0.2"
 
 [lib]

@@ -477,6 +477,65 @@ pub unsafe extern "C" fn R_PointOnSegSide(x: fixed_t, y: fixed_t, line: *const s
 // R_PointToAngle
 // ---------------------------------------------------------------------------
 
+/// Classify a relative vector `(dx, dy)` into one of eight octants and look
+/// up the corresponding BAM angle from the `tantoangle` table.
+///
+/// This is the pure octant-classification core shared by [`R_PointToAngle`]
+/// and [`R_PointToAngle2`]; it never reads or writes any global state.
+/// Returns 0 for the zero vector.
+fn point_to_angle_from_delta(mut dx: fixed_t, mut dy: fixed_t) -> angle_t {
+    if dx == 0 && dy == 0 {
+        return 0;
+    }
+
+    if dx >= 0 {
+        // dx >= 0
+        if dy >= 0 {
+            // dy >= 0
+            if dx > dy {
+                // octant 0
+                tables::tantoangle[SlopeDiv(dy as c_uint, dx as c_uint) as usize]
+            } else {
+                // octant 1
+                ANG90 - 1 - tables::tantoangle[SlopeDiv(dx as c_uint, dy as c_uint) as usize]
+            }
+        } else {
+            // dy < 0
+            dy = -dy;
+            if dx > dy {
+                // octant 8
+                0u32.wrapping_sub(tables::tantoangle[SlopeDiv(dy as c_uint, dx as c_uint) as usize])
+            } else {
+                // octant 7
+                ANG270 + tables::tantoangle[SlopeDiv(dx as c_uint, dy as c_uint) as usize]
+            }
+        }
+    } else {
+        // dx < 0
+        dx = -dx;
+        if dy >= 0 {
+            // dy >= 0
+            if dx > dy {
+                // octant 3
+                ANG180 - 1 - tables::tantoangle[SlopeDiv(dy as c_uint, dx as c_uint) as usize]
+            } else {
+                // octant 2
+                ANG90 + tables::tantoangle[SlopeDiv(dx as c_uint, dy as c_uint) as usize]
+            }
+        } else {
+            // dy < 0
+            dy = -dy;
+            if dx > dy {
+                // octant 4
+                ANG180 + tables::tantoangle[SlopeDiv(dy as c_uint, dx as c_uint) as usize]
+            } else {
+                // octant 5
+                ANG270 - 1 - tables::tantoangle[SlopeDiv(dx as c_uint, dy as c_uint) as usize]
+            }
+        }
+    }
+}
+
 /// Convert an absolute map coordinate to a view angle (BAM `u32`).
 ///
 /// Subtracts the current [`viewx`]/[`viewy`] to get a relative vector, then
@@ -487,63 +546,10 @@ pub unsafe extern "C" fn R_PointOnSegSide(x: fixed_t, y: fixed_t, line: *const s
 ///
 /// # Safety
 /// Reads the global [`viewx`] and [`viewy`]; these must have been
-/// initialised by [`R_SetupFrame`] (or [`R_PointToAngle2`]) before this
-/// function is called.
+/// initialised by [`R_SetupFrame`] before this function is called.
 #[no_mangle]
 pub unsafe extern "C" fn R_PointToAngle(x: fixed_t, y: fixed_t) -> angle_t {
-    let mut x = x - viewx;
-    let mut y = y - viewy;
-
-    if x == 0 && y == 0 {
-        return 0;
-    }
-
-    if x >= 0 {
-        // x >= 0
-        if y >= 0 {
-            // y >= 0
-            if x > y {
-                // octant 0
-                tables::tantoangle[SlopeDiv(y as c_uint, x as c_uint) as usize]
-            } else {
-                // octant 1
-                ANG90 - 1 - tables::tantoangle[SlopeDiv(x as c_uint, y as c_uint) as usize]
-            }
-        } else {
-            // y < 0
-            y = -y;
-            if x > y {
-                // octant 8
-                0u32.wrapping_sub(tables::tantoangle[SlopeDiv(y as c_uint, x as c_uint) as usize])
-            } else {
-                // octant 7
-                ANG270 + tables::tantoangle[SlopeDiv(x as c_uint, y as c_uint) as usize]
-            }
-        }
-    } else {
-        // x < 0
-        x = -x;
-        if y >= 0 {
-            // y >= 0
-            if x > y {
-                // octant 3
-                ANG180 - 1 - tables::tantoangle[SlopeDiv(y as c_uint, x as c_uint) as usize]
-            } else {
-                // octant 2
-                ANG90 + tables::tantoangle[SlopeDiv(x as c_uint, y as c_uint) as usize]
-            }
-        } else {
-            // y < 0
-            y = -y;
-            if x > y {
-                // octant 4
-                ANG180 + tables::tantoangle[SlopeDiv(y as c_uint, x as c_uint) as usize]
-            } else {
-                // octant 5
-                ANG270 - 1 - tables::tantoangle[SlopeDiv(x as c_uint, y as c_uint) as usize]
-            }
-        }
-    }
+    point_to_angle_from_delta(x - viewx, y - viewy)
 }
 
 // ---------------------------------------------------------------------------
@@ -552,18 +558,17 @@ pub unsafe extern "C" fn R_PointToAngle(x: fixed_t, y: fixed_t) -> angle_t {
 
 /// Compute the BAM angle from map point `(x1, y1)` to map point `(x2, y2)`.
 ///
-/// Temporarily sets the global [`viewx`]/[`viewy`] to `(x1, y1)` and
-/// delegates to [`R_PointToAngle`]. This matches the C implementation, which
-/// reuses the same globals.
+/// Computes the delta `(x2 - x1, y2 - y1)` and classifies it directly via the
+/// shared octant lookup. Unlike the C original (and earlier Rust port), this
+/// implementation does not touch the [`viewx`]/[`viewy`] globals, so it is
+/// reentrant and safe to call between a read and a use of the view position.
 ///
-/// Equivalent to `R_PointToAngle2` in `r_main.c`.
+/// Equivalent to `R_PointToAngle2` in `r_main.c`, with the global-aliasing
+/// trick removed.
 ///
 /// # Safety
-/// Writes the global [`viewx`] and [`viewy`]; callers must ensure no
-/// concurrent read of those globals occurs.
-// FIXME: R_PointToAngle2 temporarily clobbers the global viewx/viewy, which
-// is safe in the original single-threaded C engine but would be hazardous in
-// any multi-threaded context. The C source has the same design.
+/// Pure computation; takes no globals. Marked `unsafe extern "C"` only to
+/// keep the C ABI for callers linked against the legacy engine.
 #[no_mangle]
 pub unsafe extern "C" fn R_PointToAngle2(
     x1: fixed_t,
@@ -571,9 +576,7 @@ pub unsafe extern "C" fn R_PointToAngle2(
     x2: fixed_t,
     y2: fixed_t,
 ) -> angle_t {
-    viewx = x1;
-    viewy = y1;
-    R_PointToAngle(x2, y2)
+    point_to_angle_from_delta(x2 - x1, y2 - y1)
 }
 
 // ---------------------------------------------------------------------------
@@ -1129,6 +1132,42 @@ pub unsafe extern "C" fn R_Main_Link_Anchor() {
 mod tests {
     use super::*;
     use crate::doom::m_fixed::FixedDiv;
+    use std::sync::Mutex;
+
+    /// Process-wide guard serialising tests that read or write the renderer
+    /// globals (`viewx`, `viewy`, `viewangle`, ...). `cargo test` runs tests
+    /// in parallel by default; without this lock, two tests touching these
+    /// statics could race and tear each other's state.
+    static RENDER_GLOBALS_LOCK: Mutex<()> = Mutex::new(());
+
+    /// RAII guard that snapshots `viewx`/`viewy` on construction and
+    /// restores them on drop, so an assertion panic cannot leave the
+    /// globals in a perturbed state for any subsequent test that
+    /// happens to acquire the lock.
+    struct ViewPosGuard {
+        saved_x: fixed_t,
+        saved_y: fixed_t,
+    }
+
+    impl ViewPosGuard {
+        fn new() -> Self {
+            unsafe {
+                Self {
+                    saved_x: viewx,
+                    saved_y: viewy,
+                }
+            }
+        }
+    }
+
+    impl Drop for ViewPosGuard {
+        fn drop(&mut self) {
+            unsafe {
+                viewx = self.saved_x;
+                viewy = self.saved_y;
+            }
+        }
+    }
 
     /// The DBITS constant was once incorrectly set to 15 instead of
     /// FRACBITS - SLOPEBITS = 16 - 11 = 5.  With the wrong value,
@@ -1156,6 +1195,8 @@ mod tests {
 
     #[test]
     fn r_point_to_dist_reasonable_values() {
+        let _g = RENDER_GLOBALS_LOCK.lock().unwrap();
+        let _vp = ViewPosGuard::new();
         unsafe {
             viewx = 0;
             viewy = 0;
@@ -1198,6 +1239,66 @@ mod tests {
 
             // Due south is exact.
             assert_eq!(R_PointToAngle2(0, 0, 0, -FRACUNIT), ANG270);
+        }
+    }
+
+    /// R_PointToAngle2 used to set `viewx = x1; viewy = y1` and delegate to
+    /// R_PointToAngle, clobbering the view-position globals. The refactored
+    /// implementation must compute the angle purely from the delta and leave
+    /// `viewx` / `viewy` untouched.
+    #[test]
+    fn r_point_to_angle2_preserves_view_globals() {
+        let _g = RENDER_GLOBALS_LOCK.lock().unwrap();
+        let _vp = ViewPosGuard::new();
+        unsafe {
+            viewx = 12345;
+            viewy = -6789;
+
+            let _ = R_PointToAngle2(1000, 2000, 3000, 4000);
+
+            assert_eq!(viewx, 12345, "R_PointToAngle2 must not modify viewx");
+            assert_eq!(viewy, -6789, "R_PointToAngle2 must not modify viewy");
+        }
+    }
+
+    /// R_PointToAngle2 must be translation-invariant: the angle from
+    /// `(x1, y1)` to `(x2, y2)` equals the angle of the delta vector from
+    /// the origin. Confirms the rewrite preserves the original semantics
+    /// for nonzero source points.
+    #[test]
+    fn r_point_to_angle2_translation_invariant() {
+        // R_PointToAngle2 itself does not read viewx/viewy, but acquire
+        // the lock and restore guard anyway so this test never observes
+        // a torn state if a future change introduces a global read.
+        let _g = RENDER_GLOBALS_LOCK.lock().unwrap();
+        let _vp = ViewPosGuard::new();
+
+        let cases: [(fixed_t, fixed_t); 8] = [
+            (FRACUNIT, 0),
+            (FRACUNIT, FRACUNIT),
+            (0, FRACUNIT),
+            (-FRACUNIT, FRACUNIT),
+            (-FRACUNIT, 0),
+            (-FRACUNIT, -FRACUNIT),
+            (0, -FRACUNIT),
+            (FRACUNIT, -FRACUNIT),
+        ];
+
+        for (dx, dy) in cases.iter().copied() {
+            let from_origin = unsafe { R_PointToAngle2(0, 0, dx, dy) };
+            let translated = unsafe {
+                R_PointToAngle2(
+                    100 * FRACUNIT,
+                    -50 * FRACUNIT,
+                    100 * FRACUNIT + dx,
+                    -50 * FRACUNIT + dy,
+                )
+            };
+            assert_eq!(
+                from_origin, translated,
+                "R_PointToAngle2 must be translation-invariant (dx={}, dy={})",
+                dx, dy
+            );
         }
     }
 
