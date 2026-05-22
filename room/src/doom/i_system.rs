@@ -355,11 +355,10 @@ enum DosMemDump {
     Custom,
 }
 
-// FIXME: C i_system.c defaults `dos_mem_dump = mem_dump_dos622`, but
-// this port defaults to `Win98`. May cause demo-compat divergence.
 /// Currently selected DOS memory dump. Mirrors the file-scope
-/// `dos_mem_dump` pointer in `i_system.c`.
-static mut dos_mem_dump: DosMemDump = DosMemDump::Win98;
+/// `dos_mem_dump` pointer in `i_system.c`, which is initialized to
+/// `mem_dump_dos622`.
+static mut dos_mem_dump: DosMemDump = DosMemDump::Dos622;
 
 /// PrBoom+ read-access-violation emulator: returns the byte/word/dword
 /// at `offset` in the currently selected DOS memory dump. Writes the
