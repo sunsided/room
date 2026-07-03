@@ -25,7 +25,7 @@ rangecheck = []
 winit = "0.30"
 
 # Cross-platform GPU API.
-wgpu = { version = "29", features = ["wgsl"] }
+wgpu = { version = "30", features = ["wgsl"] }
 
 # Blocking async executor – used to wait for wgpu futures.
 pollster = "0.4"
