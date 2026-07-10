@@ -28,7 +28,7 @@ winit = "0.30"
 wgpu = { version = "29", features = ["wgsl"] }
 
 # Blocking async executor – used to wait for wgpu futures.
-pollster = "0.4"
+pollster = "1.0"
 
 # Safe transmutation between byte slices and typed buffers.
 bytemuck = { version = "1", features = ["derive"] }
