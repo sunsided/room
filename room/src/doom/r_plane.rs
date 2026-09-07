@@ -23,6 +23,7 @@
 use std::ffi::{c_int, c_short, c_uchar};
 use std::ptr;
 
+use crate::i_error;
 use super::m_fixed::{fixed_t, FixedDiv, FixedMul};
 use super::r_sky;
 use super::tables;
@@ -41,7 +42,7 @@ const SCREENHEIGHT: usize = crate::doom::i_video::SCREENHEIGHT as usize;
 /// Maximum number of simultaneous visplanes per frame.
 ///
 /// Doom aborts with `I_Error` when this limit is exceeded.  The Rust port
-/// currently returns a null pointer instead (see [`R_FindPlane`]).
+/// aborts via [`i_error!`] when exceeded (see [`R_FindPlane`]).
 const MAXVISPLANES: usize = 128;
 
 /// Maximum number of `c_short` slots in the [`openings`] array.
@@ -546,8 +547,8 @@ pub extern "C" fn R_ClearPlanes() {
 /// All sky flats (`picnum == skyflatnum`) share a single visplane at height 0
 /// and light level 0.
 ///
-/// Returns a null pointer if the visplane pool (128 entries) is exhausted
-/// (the C source would call `I_Error` instead).
+/// Aborts via [`crate::i_error!`] if the visplane pool (128 entries) is exhausted
+/// (matches the C source `I_Error` path).
 ///
 /// Exported as `#[no_mangle]` for C callers.
 ///
@@ -556,9 +557,6 @@ pub extern "C" fn R_ClearPlanes() {
 /// Reads and writes the `static mut` globals [`visplanes`], [`lastvisplane`],
 /// and [`r_sky::skyflatnum`].  The returned pointer is valid for the lifetime
 /// of the current frame (until the next [`R_ClearPlanes`] call).
-// FIXME: C aborts with I_Error on MAXVISPLANES overflow; Rust returns null.
-//        Callers in r_segs dereference the result unconditionally, which will
-//        cause undefined behavior if the limit is hit.
 #[no_mangle]
 pub extern "C" fn R_FindPlane(
     height: fixed_t,
@@ -591,8 +589,9 @@ pub extern "C" fn R_FindPlane(
             / std::mem::size_of::<visplane_t>()
             >= MAXVISPLANES
         {
-            // Would call I_Error — for now just return null
-            return ptr::null_mut();
+            // Match C doomgeneric: abort rather than hand callers a null
+            // visplane pointer (they dereference unconditionally).
+            i_error!("R_FindPlane: no more visplanes");
         }
 
         let new_vp = lastvisplane;
