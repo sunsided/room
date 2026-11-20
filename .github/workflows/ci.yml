@@ -85,6 +85,6 @@ jobs:
           path: sbom.json
 
       - name: Submit dependencies to GitHub
-        uses: advanced-security/spdx-dependency-submission-action@v0.3.2
+        uses: advanced-security/spdx-dependency-submission-action@v0.4.0
         with:
           filePath: sbom.json
