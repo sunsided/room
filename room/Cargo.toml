@@ -37,7 +37,7 @@ bytemuck = { version = "1", features = ["derive"] }
 log = "0.4"
 
 # Cross-platform audio playback, used for SFX.
-rodio = "0.22"
+rodio = "0.23"
 
 # Pure-Rust SF2 soundfont synthesizer, used for Doom music playback.
 rustysynth = "1"
